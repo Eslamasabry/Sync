@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sync_flutter/app.dart';
 import 'package:sync_flutter/core/network/sync_api_client.dart';
 import 'package:sync_flutter/features/reader/data/reader_repository.dart';
+import 'package:sync_flutter/features/reader/state/reader_events_provider.dart';
 import 'package:sync_flutter/features/reader/state/reader_project_provider.dart';
 import 'package:sync_flutter/features/reader/state/sample_reader_data.dart';
 
@@ -28,6 +29,7 @@ void main() {
       ProviderScope(
         overrides: [
           readerRepositoryProvider.overrideWithValue(_FakeReaderRepository()),
+          projectEventsProvider.overrideWith((ref) => const Stream.empty()),
         ],
         child: const SyncApp(),
       ),

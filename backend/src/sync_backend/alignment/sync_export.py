@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
+from sync_backend.api.realtime import publish_project_event_sync
 from sync_backend.models import SyncArtifact
 from sync_backend.services import (
     get_job_or_404,
@@ -151,5 +152,11 @@ def build_sync_artifact(
     job.progress_percent = 90
     session.add(job)
     session.commit()
+    publish_project_event_sync(
+        project_id=project_id,
+        event_type="job.progress",
+        job_id=job_id,
+        payload={"stage": job.progress_stage, "percent": job.progress_percent},
+    )
     session.refresh(artifact)
     return artifact

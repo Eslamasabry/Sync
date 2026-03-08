@@ -5,6 +5,7 @@ import 'package:sync_flutter/features/reader/data/reader_repository.dart';
 import 'package:sync_flutter/features/reader/domain/reader_model.dart';
 import 'package:sync_flutter/features/reader/domain/sync_artifact.dart';
 import 'package:sync_flutter/features/reader/state/reader_playback_controller.dart';
+import 'package:sync_flutter/features/reader/state/reader_events_provider.dart';
 import 'package:sync_flutter/features/reader/state/reader_project_provider.dart';
 
 class ReaderScreen extends ConsumerWidget {
@@ -16,7 +17,23 @@ class ReaderScreen extends ConsumerWidget {
     final bundle = project.asData?.value;
     final playback = ref.watch(readerPlaybackProvider);
     final controller = ref.read(readerPlaybackProvider.notifier);
+    final latestEvent = ref.watch(latestProjectEventProvider);
     final palette = ReaderPalette.of(context);
+
+    ref.listen(projectEventsProvider, (_, next) {
+      final event = next.asData?.value;
+      if (event == null) {
+        return;
+      }
+
+      ref.read(latestProjectEventProvider.notifier).setEvent(event);
+      final type = event['type'] as String?;
+      if (type == 'job.completed' ||
+          type == 'job.failed' ||
+          type == 'job.cancelled') {
+        ref.invalidate(readerProjectProvider);
+      }
+    });
 
     return Scaffold(
       body: DecoratedBox(
@@ -107,6 +124,9 @@ class ReaderScreen extends ConsumerWidget {
                                 ref.invalidate(readerProjectProvider),
                           ),
                         if (bundle != null) const SizedBox(height: 12),
+                        if (latestEvent != null)
+                          _JobEventBanner(event: latestEvent),
+                        if (latestEvent != null) const SizedBox(height: 12),
                         Row(
                           children: [
                             Expanded(
@@ -339,6 +359,35 @@ class _SourceBanner extends StatelessWidget {
           ),
           TextButton(onPressed: onRefresh, child: const Text('Refresh')),
         ],
+      ),
+    );
+  }
+}
+
+class _JobEventBanner extends StatelessWidget {
+  const _JobEventBanner({required this.event});
+
+  final Map<String, dynamic> event;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final type = event['type'] as String? ?? 'job.progress';
+    final payload = (event['payload'] as Map<Object?, Object?>?) ?? const {};
+    final stage = payload['stage'] as String? ?? 'unknown';
+    final percent = payload['percent'] as int? ?? 0;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: palette.backgroundBase,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Text(
+        '$type • $stage • $percent%',
+        style: Theme.of(context).textTheme.labelLarge,
       ),
     );
   }

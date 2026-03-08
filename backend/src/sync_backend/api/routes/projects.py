@@ -28,6 +28,7 @@ from sync_backend.api.schemas import (
     SyncArtifactResponse,
     TranscriptArtifactResponse,
 )
+from sync_backend.config import get_settings
 from sync_backend.models import (
     AlignmentJob,
     Asset,
@@ -55,6 +56,7 @@ from sync_backend.services import (
     store_uploaded_asset,
 )
 from sync_backend.storage import get_object_store
+from sync_backend.workers.pipeline import run_alignment_job_task
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 DbSession = Annotated[Session, Depends(get_db_session)]
@@ -290,6 +292,9 @@ async def create_job_route(
         job_id=job.id,
         payload={"stage": job.progress_stage, "percent": job.progress_percent},
     )
+    settings = get_settings()
+    if settings.app_env != "test":
+        run_alignment_job_task.delay(project_id, job.id)
     return JobCreateResponse(job_id=UUID(job.id), status=job.status)
 
 

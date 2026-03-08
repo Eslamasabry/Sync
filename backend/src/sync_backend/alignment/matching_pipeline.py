@@ -5,6 +5,7 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from sync_backend.alignment.matching import match_transcript_to_reader_model
+from sync_backend.api.realtime import publish_project_event_sync
 from sync_backend.models import MatchArtifact
 from sync_backend.services import (
     get_job_or_404,
@@ -62,5 +63,11 @@ def build_match_artifact(
     job.mismatch_ranges = match_payload["gaps"]
     session.add(job)
     session.commit()
+    publish_project_event_sync(
+        project_id=project_id,
+        event_type="job.progress",
+        job_id=job_id,
+        payload={"stage": job.progress_stage, "percent": job.progress_percent},
+    )
     session.refresh(artifact)
     return artifact

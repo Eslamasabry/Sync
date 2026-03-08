@@ -11,6 +11,7 @@ from sync_backend.alignment.transcription import (
     TranscriptWord,
     transcript_payload,
 )
+from sync_backend.api.realtime import publish_project_event_sync
 from sync_backend.models import TranscriptArtifact
 from sync_backend.services import (
     get_asset_or_404,
@@ -37,6 +38,12 @@ def transcribe_alignment_job(
     job.progress_percent = 10
     session.add(job)
     session.commit()
+    publish_project_event_sync(
+        project_id=project_id,
+        event_type="job.started",
+        job_id=job_id,
+        payload={"stage": job.progress_stage, "percent": job.progress_percent},
+    )
 
     transcript_segments: list[TranscriptSegment] = []
     timeline_offset_ms = 0
@@ -73,6 +80,12 @@ def transcribe_alignment_job(
         )
         session.add(job)
         session.commit()
+        publish_project_event_sync(
+            project_id=project_id,
+            event_type="job.progress",
+            job_id=job_id,
+            payload={"stage": job.progress_stage, "percent": job.progress_percent},
+        )
         timeline_offset_ms += asset_duration_ms
 
     payload = transcript_payload(
@@ -106,5 +119,11 @@ def transcribe_alignment_job(
     job.progress_percent = 40
     session.add(job)
     session.commit()
+    publish_project_event_sync(
+        project_id=project_id,
+        event_type="job.progress",
+        job_id=job_id,
+        payload={"stage": job.progress_stage, "percent": job.progress_percent},
+    )
     session.refresh(artifact)
     return artifact
