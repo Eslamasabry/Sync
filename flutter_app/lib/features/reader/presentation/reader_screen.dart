@@ -111,8 +111,8 @@ class ReaderScreen extends ConsumerWidget {
                   ),
                 ),
               ),
-              Flexible(
-                fit: FlexFit.loose,
+              SizedBox(
+                height: bundle != null ? 220 : 180,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                   child: Card(
@@ -305,7 +305,7 @@ class _ReaderLoadedView extends StatelessWidget {
     };
     final activeLocationKey = _activeToken(
       bundle.syncArtifact,
-      playback.positionMs,
+      playback.displayedPositionMs,
     )?.location.locationKey;
 
     return SingleChildScrollView(

@@ -40,6 +40,27 @@ Optional shorter excerpt:
 ./scripts/local/run_public_domain_regression.sh --excerpt-seconds 120
 ```
 
+Threshold-gated run:
+
+```bash
+make local-regression-gate
+```
+
+That target fails the command if any of these baselines regress:
+
+- match confidence below `0.9`
+- coverage below `0.85`
+- gap ranges above `80`
+
+Override thresholds directly from the script when tuning the gate:
+
+```bash
+./scripts/local/run_public_domain_regression.sh \
+  --min-match-confidence 0.92 \
+  --min-coverage 0.88 \
+  --max-gap-ranges 60
+```
+
 ## Metrics to Watch
 
 - `STATUS`: must be `completed`
@@ -52,3 +73,14 @@ Optional shorter excerpt:
 
 - `audiobook_front_matter` and `audiobook_end_matter` are expected boundary gaps
 - `narration_mismatch` inside the content window is the main signal of transcript or matching drift
+
+## Artifacts
+
+The regression script saves:
+
+- `job-status.json`
+- `sync.json`
+- `transcript.json`
+- `metrics.json`
+
+`metrics.json` is the machine-readable output intended for trend tracking and regression gating.

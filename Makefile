@@ -4,7 +4,7 @@ API_BASE_URL ?= http://localhost:8000/v1
 PROJECT_ID ?= demo-book
 TRANSCRIBER_PROVIDER ?= static
 
-.PHONY: dev-up dev-down dev-logs backend-install backend-install-alignment backend-run backend-test backend-lint backend-typecheck worker-run flutter-get flutter-run flutter-analyze flutter-test local-bootstrap local-start local-stop local-smoke local-full-smoke local-bootstrap-whisperx local-full-smoke-whisperx local-regression
+.PHONY: dev-up dev-down dev-logs backend-install backend-install-alignment backend-run backend-test backend-lint backend-typecheck worker-run flutter-get flutter-run flutter-analyze flutter-test local-bootstrap local-bootstrap-host local-start local-status local-stop local-stop-host local-stop-docker local-smoke local-full-smoke local-full-smoke-host local-bootstrap-whisperx local-full-smoke-whisperx local-regression local-regression-gate
 
 dev-up:
 	docker compose up -d
@@ -51,14 +51,26 @@ flutter-test:
 local-bootstrap:
 	./scripts/local/bootstrap.sh --provider $(TRANSCRIBER_PROVIDER)
 
+local-bootstrap-host:
+	./scripts/local/bootstrap.sh --provider $(TRANSCRIBER_PROVIDER) --infra host
+
 local-bootstrap-whisperx:
 	./scripts/local/bootstrap.sh --provider whisperx
 
 local-start:
 	./scripts/local/start_services.sh
 
+local-status:
+	./scripts/local/status_services.sh
+
 local-stop:
 	./scripts/local/stop_services.sh
+
+local-stop-host:
+	./scripts/local/stop_services.sh --stop-host-infra
+
+local-stop-docker:
+	./scripts/local/stop_services.sh --stop-docker-infra
 
 local-smoke:
 	./scripts/local/run_smoke.sh --api-base-url $(API_BASE_URL) --provider $(TRANSCRIBER_PROVIDER)
@@ -66,8 +78,14 @@ local-smoke:
 local-full-smoke:
 	./scripts/local/full_smoke.sh --provider $(TRANSCRIBER_PROVIDER)
 
+local-full-smoke-host:
+	./scripts/local/full_smoke.sh --provider $(TRANSCRIBER_PROVIDER) --infra host
+
 local-full-smoke-whisperx:
 	./scripts/local/full_smoke.sh --provider whisperx
 
 local-regression:
 	./scripts/local/run_public_domain_regression.sh --api-base-url $(API_BASE_URL)
+
+local-regression-gate:
+	./scripts/local/run_public_domain_regression.sh --api-base-url $(API_BASE_URL) --min-match-confidence 0.9 --min-coverage 0.85 --max-gap-ranges 80

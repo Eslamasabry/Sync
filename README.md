@@ -4,7 +4,7 @@ An open-source system that aligns an EPUB with a matching audiobook and highligh
 
 ## Status
 
-This repository is in foundation setup. The goal of the current phase is to lock the baseline decisions before implementation starts.
+This repository now has a working local backend, worker, regression harness, and Flutter reader shell. The current phase is production hardening: quality gates, operations, and match accuracy on real public-domain content.
 
 ## Product Goal
 
@@ -81,13 +81,30 @@ The fastest scripted local flows are:
 
 ```bash
 make local-full-smoke
+make local-full-smoke-host
 make local-full-smoke-whisperx
 make local-regression
+make local-regression-gate
+```
+
+Recommended for host-installed PostgreSQL and Redis:
+
+```bash
+make local-bootstrap-host
+make local-start
+make local-smoke
+make local-status
+make local-stop
 ```
 
 Supporting scripts live under [scripts/local](/home/eslam/Storage/Code/Sync/scripts/local):
 
 - [bootstrap.sh](/home/eslam/Storage/Code/Sync/scripts/local/bootstrap.sh)
 - [start_services.sh](/home/eslam/Storage/Code/Sync/scripts/local/start_services.sh)
+- [status_services.sh](/home/eslam/Storage/Code/Sync/scripts/local/status_services.sh)
 - [run_smoke.sh](/home/eslam/Storage/Code/Sync/scripts/local/run_smoke.sh)
 - [full_smoke.sh](/home/eslam/Storage/Code/Sync/scripts/local/full_smoke.sh)
+- [run_public_domain_regression.sh](/home/eslam/Storage/Code/Sync/scripts/local/run_public_domain_regression.sh)
+- [stop_services.sh](/home/eslam/Storage/Code/Sync/scripts/local/stop_services.sh)
+
+The public-domain regression gate persists machine-readable metrics under `tmp/public-domain-regression/metrics.json` and fails if baseline thresholds regress.

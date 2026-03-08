@@ -2,6 +2,13 @@
 
 ## Local Services
 
+The repo supports two local infrastructure modes:
+
+- host services: PostgreSQL and Redis installed directly on the machine
+- Docker Compose: PostgreSQL, Redis, and MinIO in containers
+
+Use host services when you want a lighter loop and do not need MinIO locally.
+
 Use local containers for:
 
 - PostgreSQL
@@ -31,6 +38,23 @@ Notes:
 - current backend implementation stores blobs in the local filesystem under `ALIGNMENT_WORKDIR/object_store`
 - MinIO is provisioned now so a later S3-compatible adapter can switch in without changing local infrastructure
 
+## Host Services Stack
+
+Host mode expects:
+
+- PostgreSQL on `localhost:5432`
+- Redis on `localhost:6379`
+- backend code running directly from `backend/`
+- artifacts still stored in the local filesystem under `ALIGNMENT_WORKDIR/object_store`
+
+The local scripts can target host services directly:
+
+```bash
+make local-bootstrap-host
+make local-start
+make local-smoke
+```
+
 ## Bootstrap
 
 ```bash
@@ -51,6 +75,14 @@ Optional worker:
 
 ```bash
 make worker-run
+```
+
+Host-services alternative:
+
+```bash
+cp backend/.env.example backend/.env
+make local-bootstrap-host
+make local-start
 ```
 
 ## Environment Variables
