@@ -27,6 +27,8 @@ The scripted flow uses:
 - [run_smoke.sh](/home/eslam/Storage/Code/Sync/scripts/local/run_smoke.sh) to create a project, upload generated sample files, and run alignment
 - [stop_services.sh](/home/eslam/Storage/Code/Sync/scripts/local/stop_services.sh) to stop the background API and worker
 
+For a real public-domain quality pass instead of a synthetic smoke test, use [docs/operations/regression.md](/home/eslam/Storage/Code/Sync/docs/operations/regression.md).
+
 ## 2. Manual Path
 
 ### Start Infrastructure

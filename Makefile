@@ -4,7 +4,7 @@ API_BASE_URL ?= http://localhost:8000/v1
 PROJECT_ID ?= demo-book
 TRANSCRIBER_PROVIDER ?= static
 
-.PHONY: dev-up dev-down dev-logs backend-install backend-install-alignment backend-run backend-test backend-lint backend-typecheck worker-run flutter-get flutter-run flutter-analyze flutter-test local-bootstrap local-start local-stop local-smoke local-full-smoke local-bootstrap-whisperx local-full-smoke-whisperx
+.PHONY: dev-up dev-down dev-logs backend-install backend-install-alignment backend-run backend-test backend-lint backend-typecheck worker-run flutter-get flutter-run flutter-analyze flutter-test local-bootstrap local-start local-stop local-smoke local-full-smoke local-bootstrap-whisperx local-full-smoke-whisperx local-regression
 
 dev-up:
 	docker compose up -d
@@ -68,3 +68,6 @@ local-full-smoke:
 
 local-full-smoke-whisperx:
 	./scripts/local/full_smoke.sh --provider whisperx
+
+local-regression:
+	./scripts/local/run_public_domain_regression.sh --api-base-url $(API_BASE_URL)

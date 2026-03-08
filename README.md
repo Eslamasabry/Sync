@@ -65,6 +65,7 @@ docs/
 - Engineering standards: [docs/engineering/standards.md](/home/eslam/Storage/Code/Sync/docs/engineering/standards.md)
 - Local dev stack: [docs/operations/dev-stack.md](/home/eslam/Storage/Code/Sync/docs/operations/dev-stack.md)
 - Local run guide: [docs/operations/local-run.md](/home/eslam/Storage/Code/Sync/docs/operations/local-run.md)
+- Regression runs: [docs/operations/regression.md](/home/eslam/Storage/Code/Sync/docs/operations/regression.md)
 
 ## First Build Targets
 
@@ -81,6 +82,7 @@ The fastest scripted local flows are:
 ```bash
 make local-full-smoke
 make local-full-smoke-whisperx
+make local-regression
 ```
 
 Supporting scripts live under [scripts/local](/home/eslam/Storage/Code/Sync/scripts/local):
