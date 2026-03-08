@@ -4,7 +4,7 @@ API_BASE_URL ?= http://localhost:8000/v1
 PROJECT_ID ?= demo-book
 TRANSCRIBER_PROVIDER ?= static
 
-.PHONY: dev-up dev-down dev-logs backend-install backend-install-alignment backend-run backend-test backend-lint backend-typecheck worker-run flutter-get flutter-run flutter-analyze flutter-test local-bootstrap local-bootstrap-host local-start local-status local-stop local-stop-host local-stop-docker local-smoke local-full-smoke local-full-smoke-host local-bootstrap-whisperx local-full-smoke-whisperx local-regression local-regression-gate
+.PHONY: dev-up dev-down dev-logs backend-install backend-install-alignment backend-run backend-test backend-lint backend-typecheck worker-run flutter-get flutter-run flutter-analyze flutter-test local-bootstrap local-bootstrap-host local-start local-status local-stop local-stop-host local-stop-docker local-smoke local-full-smoke local-full-smoke-host local-bootstrap-whisperx local-full-smoke-whisperx local-regression local-regression-gate local-regression-corpus local-regression-corpus-gate
 
 dev-up:
 	docker compose up -d
@@ -89,3 +89,9 @@ local-regression:
 
 local-regression-gate:
 	./scripts/local/run_public_domain_regression.sh --api-base-url $(API_BASE_URL) --min-match-confidence 0.9 --min-coverage 0.85 --max-gap-ranges 80
+
+local-regression-corpus:
+	./scripts/local/run_regression_corpus.sh --api-base-url $(API_BASE_URL)
+
+local-regression-corpus-gate:
+	./scripts/local/run_regression_corpus.sh --api-base-url $(API_BASE_URL) --gate

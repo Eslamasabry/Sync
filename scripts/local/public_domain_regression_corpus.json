@@ -1,0 +1,49 @@
+{
+  "cases": [
+    {
+      "id": "yellow-wallpaper",
+      "title": "The Yellow Wallpaper",
+      "language": "en",
+      "epub_url": "https://www.gutenberg.org/ebooks/1952.epub3.images",
+      "audio_urls": [
+        "https://commons.wikimedia.org/wiki/Special:FilePath/Yellow%20wallpaper%20gilman_lr.ogg"
+      ],
+      "excerpt_seconds": 300,
+      "thresholds": {
+        "min_match_confidence": 0.9,
+        "min_coverage": 0.85,
+        "max_gap_ranges": 80
+      }
+    },
+    {
+      "id": "princess-of-mars",
+      "title": "A Princess of Mars",
+      "language": "en",
+      "epub_url": "https://www.gutenberg.org/ebooks/62.epub3.images",
+      "audio_urls": [
+        "https://www.gutenberg.org/files/8748/mp3/8748-001.mp3"
+      ],
+      "excerpt_seconds": 0,
+      "thresholds": {
+        "min_match_confidence": 0.88,
+        "min_coverage": 0.8,
+        "max_gap_ranges": 90
+      }
+    },
+    {
+      "id": "time-machine",
+      "title": "The Time Machine",
+      "language": "en",
+      "epub_url": "https://www.gutenberg.org/ebooks/35.epub3.images",
+      "audio_urls": [
+        "https://www.gutenberg.org/files/17401/17401-mp3/17401-chap_1.mp3"
+      ],
+      "excerpt_seconds": 0,
+      "thresholds": {
+        "min_match_confidence": 0.88,
+        "min_coverage": 0.8,
+        "max_gap_ranges": 90
+      }
+    }
+  ]
+}

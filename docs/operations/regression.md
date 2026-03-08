@@ -4,7 +4,7 @@
 
 The project needs a repeatable quality gate that runs against real public-domain content, not only synthetic samples.
 
-## Public-Domain Regression Script
+## Single-Case Regression Script
 
 Use [run_public_domain_regression.sh](/home/eslam/Storage/Code/Sync/scripts/local/run_public_domain_regression.sh) to:
 
@@ -14,10 +14,22 @@ Use [run_public_domain_regression.sh](/home/eslam/Storage/Code/Sync/scripts/loca
 - execute an alignment job
 - print coverage and mismatch metrics from the resulting artifacts
 
-Default corpus:
+Default case:
 
 - EPUB: *The Yellow Wallpaper* from Project Gutenberg
 - Audio: public-domain human narration hosted on Wikimedia Commons
+
+Use this path when you want to debug one title in isolation.
+
+## Real Regression Corpus
+
+Use [run_regression_corpus.sh](/home/eslam/Storage/Code/Sync/scripts/local/run_regression_corpus.sh) to execute the current multi-title public-domain corpus defined in [public_domain_regression_corpus.json](/home/eslam/Storage/Code/Sync/scripts/local/public_domain_regression_corpus.json).
+
+Current corpus:
+
+- `yellow-wallpaper`: Project Gutenberg EPUB + Wikimedia-hosted LibriVox audio
+- `princess-of-mars`: Project Gutenberg EPUB + Project Gutenberg MP3 chapter audio
+- `time-machine`: Project Gutenberg EPUB + Project Gutenberg MP3 chapter audio
 
 ## Prerequisites
 
@@ -40,7 +52,7 @@ Optional shorter excerpt:
 ./scripts/local/run_public_domain_regression.sh --excerpt-seconds 120
 ```
 
-Threshold-gated run:
+Threshold-gated single-case run:
 
 ```bash
 make local-regression-gate
@@ -61,6 +73,27 @@ Override thresholds directly from the script when tuning the gate:
   --max-gap-ranges 60
 ```
 
+Corpus run:
+
+```bash
+make local-regression-corpus
+```
+
+Corpus gate:
+
+```bash
+make local-regression-corpus-gate
+```
+
+The plain corpus run records metrics for all titles without failing on thresholds.
+The gate variant enforces each case's thresholds from the corpus manifest.
+
+Run a specific title only:
+
+```bash
+./scripts/local/run_regression_corpus.sh --case-id yellow-wallpaper
+```
+
 ## Metrics to Watch
 
 - `STATUS`: must be `completed`
@@ -76,7 +109,7 @@ Override thresholds directly from the script when tuning the gate:
 
 ## Artifacts
 
-The regression script saves:
+The single-case script saves:
 
 - `job-status.json`
 - `sync.json`
@@ -84,3 +117,8 @@ The regression script saves:
 - `metrics.json`
 
 `metrics.json` is the machine-readable output intended for trend tracking and regression gating.
+
+The corpus runner saves:
+
+- per-case artifacts under `tmp/regression-corpus/<case-id>/`
+- aggregate summary under `tmp/regression-corpus/summary.json`

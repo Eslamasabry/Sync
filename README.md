@@ -85,6 +85,8 @@ make local-full-smoke-host
 make local-full-smoke-whisperx
 make local-regression
 make local-regression-gate
+make local-regression-corpus
+make local-regression-corpus-gate
 ```
 
 Recommended for host-installed PostgreSQL and Redis:
@@ -105,6 +107,8 @@ Supporting scripts live under [scripts/local](/home/eslam/Storage/Code/Sync/scri
 - [run_smoke.sh](/home/eslam/Storage/Code/Sync/scripts/local/run_smoke.sh)
 - [full_smoke.sh](/home/eslam/Storage/Code/Sync/scripts/local/full_smoke.sh)
 - [run_public_domain_regression.sh](/home/eslam/Storage/Code/Sync/scripts/local/run_public_domain_regression.sh)
+- [run_regression_corpus.sh](/home/eslam/Storage/Code/Sync/scripts/local/run_regression_corpus.sh)
 - [stop_services.sh](/home/eslam/Storage/Code/Sync/scripts/local/stop_services.sh)
 
 The public-domain regression gate persists machine-readable metrics under `tmp/public-domain-regression/metrics.json` and fails if baseline thresholds regress.
+The real corpus gate persists per-title artifacts under `tmp/regression-corpus/` and aggregates them into `tmp/regression-corpus/summary.json`.
