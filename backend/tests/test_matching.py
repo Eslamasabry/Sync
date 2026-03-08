@@ -77,3 +77,5 @@ def test_matching_classifies_leading_and_trailing_audiobook_matter() -> None:
         "audiobook_front_matter",
         "audiobook_end_matter",
     ]
+    assert payload["matches"][0]["word"] == "The"
+    assert payload["matches"][-1]["word"] == "wallpaper"

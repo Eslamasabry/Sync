@@ -95,6 +95,8 @@ def build_sync_payload(
         "book_id": project_id,
         "language": language,
         "audio": _build_audio_manifest(transcript_payload),
+        "content_start_ms": tokens[0]["start_ms"] if tokens else 0,
+        "content_end_ms": tokens[-1]["end_ms"] if tokens else 0,
         "tokens": tokens,
         "gaps": _collapse_gaps(match_payload),
     }

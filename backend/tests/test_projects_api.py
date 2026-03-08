@@ -453,6 +453,8 @@ def test_sync_export_generates_sync_artifact(client: TestClient) -> None:
     payload = sync_response.json()["inline_payload"]
     assert payload["book_id"] == project_id
     assert payload["audio"][0]["asset_id"] == audio_asset_id
+    assert payload["content_start_ms"] == payload["tokens"][0]["start_ms"]
+    assert payload["content_end_ms"] == payload["tokens"][-1]["end_ms"]
     assert payload["tokens"][0]["text"] == "call"
     assert payload["gaps"] == []
 

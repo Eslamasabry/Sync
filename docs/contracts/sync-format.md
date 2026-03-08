@@ -25,6 +25,8 @@
       "duration_ms": 3542331
     }
   ],
+  "content_start_ms": 13120,
+  "content_end_ms": 3539910,
   "tokens": [
     {
       "id": 0,
@@ -62,6 +64,8 @@
 - `book_id`: project or book identifier
 - `language`: BCP 47 language tag when known
 - `audio`: list of source audio files with offsets for multipart books
+- `content_start_ms`: first matched content token on the playback timeline
+- `content_end_ms`: last matched content token on the playback timeline
 - `tokens`: aligned word tokens
 - `gaps`: known mismatch or skipped ranges on the playback timeline
 
