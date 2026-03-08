@@ -54,6 +54,7 @@ docs/
 ## Source of Truth
 
 - Product scope: [PRD-open-source-word-level-audiobook-epub-sync.md](/home/eslam/Storage/Code/Sync/PRD-open-source-word-level-audiobook-epub-sync.md)
+- Epic backlog: [docs/product/epics.md](/home/eslam/Storage/Code/Sync/docs/product/epics.md)
 - Agent and contribution rules: [AGENTS.md](/home/eslam/Storage/Code/Sync/AGENTS.md)
 - Architecture baseline: [docs/architecture/foundations.md](/home/eslam/Storage/Code/Sync/docs/architecture/foundations.md)
 - API and realtime contracts: [docs/contracts/api.md](/home/eslam/Storage/Code/Sync/docs/contracts/api.md)
