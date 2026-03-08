@@ -48,17 +48,17 @@ class AssetSummary(BaseModel):
     content_type: str
     upload_mode: str
     status: str
-    size_bytes: int | None = None
+    size_bytes: int | None = Field(default=None, ge=0)
     created_at: datetime
 
 
 class JobProgress(BaseModel):
     stage: str | None
-    percent: int
+    percent: int = Field(ge=0, le=100)
 
 
 class JobQuality(BaseModel):
-    match_confidence: float | None
+    match_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     mismatch_ranges: list[dict[str, Any]]
 
 
@@ -119,8 +119,8 @@ class TranscriptArtifactResponse(BaseModel):
     version: str
     status: str
     language: str | None
-    segment_count: int
-    word_count: int
+    segment_count: int = Field(ge=0)
+    word_count: int = Field(ge=0)
     payload: dict[str, Any]
 
 
@@ -129,9 +129,9 @@ class MatchArtifactResponse(BaseModel):
     job_id: UUID
     version: str
     status: str
-    match_count: int
-    gap_count: int
-    average_confidence: float | None
+    match_count: int = Field(ge=0)
+    gap_count: int = Field(ge=0)
+    average_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     payload: dict[str, Any]
 
 

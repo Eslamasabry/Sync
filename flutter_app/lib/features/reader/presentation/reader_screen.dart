@@ -19,6 +19,7 @@ class ReaderScreen extends ConsumerWidget {
     final controller = ref.read(readerPlaybackProvider.notifier);
     final latestEvent = ref.watch(latestProjectEventProvider);
     final palette = ReaderPalette.of(context);
+    final currentPositionMs = playback.displayedPositionMs;
 
     ref.listen(projectEventsProvider, (_, next) {
       final event = next.asData?.value;
@@ -110,113 +111,162 @@ class ReaderScreen extends ConsumerWidget {
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-                    child: Column(
-                      children: [
-                        if (bundle != null)
-                          _SourceBanner(
-                            source: bundle.source,
-                            onRefresh: () =>
-                                ref.invalidate(readerProjectProvider),
-                          ),
-                        if (bundle != null) const SizedBox(height: 12),
-                        if (bundle != null &&
-                            bundle.syncArtifact.hasLeadingMatter &&
-                            playback.positionMs <
-                                bundle.syncArtifact.contentStartMs) ...[
-                          _ContentWindowBanner(
-                            syncArtifact: bundle.syncArtifact,
-                            onStartBook: () => controller.seekTo(
-                              bundle.syncArtifact.contentStartMs,
+              Flexible(
+                fit: FlexFit.loose,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  child: Card(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+                      child: Column(
+                        children: [
+                          if (bundle != null)
+                            _SourceBanner(
+                              source: bundle.source,
+                              onRefresh: () =>
+                                  ref.invalidate(readerProjectProvider),
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                        ],
-                        if (latestEvent != null)
-                          _JobEventBanner(event: latestEvent),
-                        if (latestEvent != null) const SizedBox(height: 12),
-                        if (bundle != null) ...[
-                          _GapStatusBanner(
-                            gap: bundle.syncArtifact.activeGapAt(
-                              playback.positionMs,
+                          if (bundle != null) const SizedBox(height: 12),
+                          if (bundle != null &&
+                              bundle.syncArtifact.hasLeadingMatter &&
+                              currentPositionMs <
+                                  bundle.syncArtifact.contentStartMs) ...[
+                            _ContentWindowBanner(
+                              syncArtifact: bundle.syncArtifact,
+                              currentPositionMs: currentPositionMs,
+                              onStartBook: controller.seekToContentStart,
+                              onJumpToOutro:
+                                  bundle.syncArtifact.hasTrailingMatter
+                                  ? controller.seekToContentEnd
+                                  : null,
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                        ],
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                _formatMs(playback.positionMs),
-                                style: Theme.of(context).textTheme.labelLarge,
+                            const SizedBox(height: 12),
+                          ],
+                          if (latestEvent != null)
+                            _JobEventBanner(event: latestEvent),
+                          if (latestEvent != null) const SizedBox(height: 12),
+                          if (bundle != null) ...[
+                            _GapStatusBanner(
+                              gap: bundle.syncArtifact.activeGapAt(
+                                currentPositionMs,
                               ),
                             ),
-                            Text(
-                              '${playback.speed.toStringAsFixed(2)}x',
-                              style: Theme.of(context).textTheme.labelLarge
-                                  ?.copyWith(color: palette.textMuted),
+                            const SizedBox(height: 12),
+                            _PlaybackStatusBanner(
+                              playback: playback,
+                              currentPositionMs: currentPositionMs,
                             ),
+                            const SizedBox(height: 12),
                           ],
-                        ),
-                        Slider(
-                          value: playback.positionMs
-                              .clamp(
-                                0,
-                                bundle?.syncArtifact.totalDurationMs ?? 0,
-                              )
-                              .toDouble(),
-                          max: (bundle?.syncArtifact.totalDurationMs ?? 0) > 0
-                              ? bundle!.syncArtifact.totalDurationMs.toDouble()
-                              : 1,
-                          onChanged: (value) =>
-                              controller.seekTo(value.round()),
-                        ),
-                        Row(
-                          children: [
-                            IconButton.filledTonal(
-                              onPressed: controller.rewind15Seconds,
-                              icon: const Icon(Icons.replay_10_rounded),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: FilledButton.icon(
-                                onPressed: bundle != null
-                                    ? () => controller.togglePlayback(
-                                        bundle.syncArtifact.totalDurationMs,
-                                      )
-                                    : null,
-                                icon: Icon(
-                                  playback.isPlaying
-                                      ? Icons.pause_rounded
-                                      : Icons.play_arrow_rounded,
-                                ),
-                                label: Text(
-                                  playback.isPlaying ? 'Pause' : 'Play',
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _formatMs(currentPositionMs),
+                                  style: Theme.of(context).textTheme.labelLarge,
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            PopupMenuButton<double>(
-                              initialValue: playback.speed,
-                              onSelected: controller.setSpeed,
-                              itemBuilder: (context) => const [
-                                PopupMenuItem(value: 0.8, child: Text('0.8x')),
-                                PopupMenuItem(value: 1.0, child: Text('1.0x')),
-                                PopupMenuItem(
-                                  value: 1.25,
-                                  child: Text('1.25x'),
+                              if (bundle != null)
+                                Text(
+                                  _formatMs(
+                                    bundle.syncArtifact.totalDurationMs,
+                                  ),
+                                  style: Theme.of(context).textTheme.labelLarge
+                                      ?.copyWith(color: palette.textMuted),
                                 ),
-                                PopupMenuItem(value: 1.5, child: Text('1.5x')),
-                              ],
-                              child: const _SpeedChip(),
+                              if (bundle != null) const SizedBox(width: 12),
+                              Text(
+                                '${playback.speed.toStringAsFixed(2)}x',
+                                style: Theme.of(context).textTheme.labelLarge
+                                    ?.copyWith(color: palette.textMuted),
+                              ),
+                            ],
+                          ),
+                          Slider(
+                            value: currentPositionMs
+                                .clamp(
+                                  0,
+                                  bundle?.syncArtifact.totalDurationMs ?? 0,
+                                )
+                                .toDouble(),
+                            max: (bundle?.syncArtifact.totalDurationMs ?? 0) > 0
+                                ? bundle!.syncArtifact.totalDurationMs
+                                      .toDouble()
+                                : 1,
+                            label: _formatMs(currentPositionMs),
+                            onChangeStart: controller.beginScrub,
+                            onChanged: controller.updateScrub,
+                            onChangeEnd: controller.commitScrub,
+                          ),
+                          if (bundle != null)
+                            _ContentWindowRow(
+                              playback: playback,
+                              currentPositionMs: currentPositionMs,
+                              onJumpToStart: playback.hasLeadingMatter
+                                  ? controller.seekToContentStart
+                                  : null,
+                              onJumpToEnd: playback.hasTrailingMatter
+                                  ? controller.seekToContentEnd
+                                  : null,
                             ),
-                          ],
-                        ),
-                      ],
+                          if (bundle != null) const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              IconButton.filledTonal(
+                                onPressed: controller.rewind15Seconds,
+                                icon: const Icon(Icons.replay_10_rounded),
+                              ),
+                              const SizedBox(width: 12),
+                              IconButton.filledTonal(
+                                onPressed: controller.forward15Seconds,
+                                icon: const Icon(Icons.forward_10_rounded),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: FilledButton.icon(
+                                  onPressed: bundle != null
+                                      ? () => controller.togglePlayback(
+                                          bundle.syncArtifact.totalDurationMs,
+                                        )
+                                      : null,
+                                  icon: Icon(
+                                    playback.isPlaying
+                                        ? Icons.pause_rounded
+                                        : Icons.play_arrow_rounded,
+                                  ),
+                                  label: Text(
+                                    playback.isPlaying ? 'Pause' : 'Play',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              PopupMenuButton<double>(
+                                initialValue: playback.speed,
+                                onSelected: controller.setSpeed,
+                                itemBuilder: (context) => const [
+                                  PopupMenuItem(
+                                    value: 0.8,
+                                    child: Text('0.8x'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 1.0,
+                                    child: Text('1.0x'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 1.25,
+                                    child: Text('1.25x'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 1.5,
+                                    child: Text('1.5x'),
+                                  ),
+                                ],
+                                child: const _SpeedChip(),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -416,15 +466,20 @@ class _JobEventBanner extends StatelessWidget {
 class _ContentWindowBanner extends StatelessWidget {
   const _ContentWindowBanner({
     required this.syncArtifact,
+    required this.currentPositionMs,
     required this.onStartBook,
+    this.onJumpToOutro,
   });
 
   final SyncArtifact syncArtifact;
+  final int currentPositionMs;
   final VoidCallback onStartBook;
+  final VoidCallback? onJumpToOutro;
 
   @override
   Widget build(BuildContext context) {
     final palette = ReaderPalette.of(context);
+    final remainingMs = syncArtifact.contentStartMs - currentPositionMs;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -438,13 +493,158 @@ class _ContentWindowBanner extends StatelessWidget {
           Expanded(
             child: Text(
               'Intro detected before the book starts at '
-              '${ReaderScreen._formatMs(syncArtifact.contentStartMs)}.',
+              '${ReaderScreen._formatMs(syncArtifact.contentStartMs)}'
+              ' (${ReaderScreen._formatMs(remainingMs)} away).',
               style: Theme.of(context).textTheme.labelLarge,
             ),
           ),
           TextButton(onPressed: onStartBook, child: const Text('Start Book')),
+          if (onJumpToOutro != null)
+            TextButton(onPressed: onJumpToOutro, child: const Text('Outro')),
         ],
       ),
+    );
+  }
+}
+
+class _PlaybackStatusBanner extends StatelessWidget {
+  const _PlaybackStatusBanner({
+    required this.playback,
+    required this.currentPositionMs,
+  });
+
+  final ReaderPlaybackState playback;
+  final int currentPositionMs;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final phase = _phaseLabel(playback, currentPositionMs);
+    final positionLabel = playback.isScrubbing ? 'Scrubbing' : 'Playback';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: palette.backgroundBase,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '$positionLabel • $phase',
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+          ),
+          Text(
+            playback.isPlaying ? 'Playing' : 'Paused',
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(color: palette.textMuted),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _phaseLabel(
+    ReaderPlaybackState playback,
+    int currentPositionMs,
+  ) {
+    if (playback.hasLeadingMatter &&
+        currentPositionMs < playback.contentStartMs) {
+      return 'Intro before book';
+    }
+    if (playback.hasTrailingMatter &&
+        currentPositionMs > playback.contentEndMs) {
+      return 'Outro after book';
+    }
+    if (playback.totalDurationMs == 0) {
+      return 'No timeline';
+    }
+    return 'Inside book content';
+  }
+}
+
+class _ContentWindowRow extends StatelessWidget {
+  const _ContentWindowRow({
+    required this.playback,
+    required this.currentPositionMs,
+    required this.onJumpToStart,
+    required this.onJumpToEnd,
+  });
+
+  final ReaderPlaybackState playback;
+  final int currentPositionMs;
+  final VoidCallback? onJumpToStart;
+  final VoidCallback? onJumpToEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = <Widget>[];
+
+    if (onJumpToStart != null) {
+      items.add(
+        _WindowChip(
+          label:
+              'Book Start ${ReaderScreen._formatMs(playback.contentStartMs)}',
+          isActive:
+              currentPositionMs >= playback.contentStartMs &&
+              currentPositionMs <= playback.contentEndMs,
+          onTap: onJumpToStart!,
+        ),
+      );
+    }
+
+    if (onJumpToEnd != null) {
+      items.add(
+        _WindowChip(
+          label: 'Book End ${ReaderScreen._formatMs(playback.contentEndMs)}',
+          isActive:
+              playback.hasTrailingMatter &&
+              currentPositionMs >= playback.contentEndMs,
+          onTap: onJumpToEnd!,
+        ),
+      );
+    }
+
+    if (items.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Wrap(spacing: 8, runSpacing: 8, children: items),
+    );
+  }
+}
+
+class _WindowChip extends StatelessWidget {
+  const _WindowChip({
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    return ActionChip(
+      label: Text(label),
+      avatar: Icon(
+        isActive ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+        size: 18,
+        color: isActive ? palette.accentPrimary : palette.textMuted,
+      ),
+      onPressed: onTap,
+      side: BorderSide(color: palette.borderSubtle),
+      backgroundColor: isActive ? palette.accentSoft : palette.backgroundBase,
     );
   }
 }

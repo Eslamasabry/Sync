@@ -184,6 +184,160 @@ def _local_fuzzy_match(
     return matches, gaps
 
 
+def _append_exact_matches(
+    *,
+    matches: list[dict[str, Any]],
+    transcript_words: list[dict[str, Any]],
+    reader_tokens: list[ReaderTokenRef],
+    transcript_start: int,
+    reader_start: int,
+    window_size: int,
+) -> None:
+    for transcript_index, reader_index in zip(
+        range(transcript_start, transcript_start + window_size),
+        range(reader_start, reader_start + window_size),
+        strict=False,
+    ):
+        transcript_word = transcript_words[transcript_index]
+        token = reader_tokens[reader_index]
+        matches.append(
+            {
+                "transcript_index": transcript_index,
+                "word": transcript_word["text"],
+                "normalized": transcript_word["normalized"],
+                "start_ms": transcript_word["start_ms"],
+                "end_ms": transcript_word["end_ms"],
+                "confidence": 1.0,
+                "location": {
+                    "section_id": token.section_id,
+                    "paragraph_index": token.paragraph_index,
+                    "token_index": token.token_index,
+                    "cfi": token.cfi,
+                },
+            }
+        )
+
+
+def _find_internal_anchor_window(
+    transcript_norms: list[str],
+    reader_norms: list[str],
+    *,
+    transcript_start: int,
+    transcript_end: int,
+    reader_start: int,
+    reader_end: int,
+) -> tuple[int, int, int] | None:
+    max_window_size = min(5, transcript_end - transcript_start, reader_end - reader_start)
+    for window_size in range(max_window_size, 1, -1):
+        transcript_index = _build_unique_window_index(
+            transcript_norms,
+            start=transcript_start,
+            end=transcript_end,
+            window_size=window_size,
+        )
+        if not transcript_index:
+            continue
+
+        reader_index = _build_unique_window_index(
+            reader_norms,
+            start=reader_start,
+            end=reader_end,
+            window_size=window_size,
+        )
+        if not reader_index:
+            continue
+
+        candidates: list[tuple[int, int, int]] = []
+        for key, transcript_offset in transcript_index.items():
+            reader_offset = reader_index.get(key)
+            if reader_offset is None:
+                continue
+            diagonal_distance = abs(
+                (transcript_offset - transcript_start) - (reader_offset - reader_start)
+            )
+            candidates.append((diagonal_distance, transcript_offset, reader_offset))
+
+        if candidates:
+            _, transcript_offset, reader_offset = min(candidates)
+            return transcript_offset, reader_offset, window_size
+
+    return None
+
+
+def _match_replace_region(
+    transcript_words: list[dict[str, Any]],
+    reader_tokens: list[ReaderTokenRef],
+    transcript_norms: list[str],
+    reader_norms: list[str],
+    *,
+    transcript_start: int,
+    transcript_end: int,
+    reader_start: int,
+    reader_end: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if transcript_start >= transcript_end:
+        return [], []
+
+    internal_anchor = _find_internal_anchor_window(
+        transcript_norms,
+        reader_norms,
+        transcript_start=transcript_start,
+        transcript_end=transcript_end,
+        reader_start=reader_start,
+        reader_end=reader_end,
+    )
+    if internal_anchor is None:
+        return _local_fuzzy_match(
+            transcript_words,
+            reader_tokens,
+            transcript_start=transcript_start,
+            transcript_end=transcript_end,
+            reader_start=reader_start,
+            reader_end=reader_end,
+        )
+
+    anchor_transcript_index, anchor_reader_index, anchor_window_size = internal_anchor
+    matches: list[dict[str, Any]] = []
+    gaps: list[dict[str, Any]] = []
+
+    left_matches, left_gaps = _match_replace_region(
+        transcript_words,
+        reader_tokens,
+        transcript_norms,
+        reader_norms,
+        transcript_start=transcript_start,
+        transcript_end=anchor_transcript_index,
+        reader_start=reader_start,
+        reader_end=anchor_reader_index,
+    )
+    matches.extend(left_matches)
+    gaps.extend(left_gaps)
+
+    _append_exact_matches(
+        matches=matches,
+        transcript_words=transcript_words,
+        reader_tokens=reader_tokens,
+        transcript_start=anchor_transcript_index,
+        reader_start=anchor_reader_index,
+        window_size=anchor_window_size,
+    )
+
+    right_matches, right_gaps = _match_replace_region(
+        transcript_words,
+        reader_tokens,
+        transcript_norms,
+        reader_norms,
+        transcript_start=anchor_transcript_index + anchor_window_size,
+        transcript_end=transcript_end,
+        reader_start=anchor_reader_index + anchor_window_size,
+        reader_end=reader_end,
+    )
+    matches.extend(right_matches)
+    gaps.extend(right_gaps)
+
+    return matches, gaps
+
+
 def match_transcript_to_reader_model(
     *,
     transcript_payload: dict[str, Any],
@@ -293,9 +447,11 @@ def match_transcript_to_reader_model(
                     }
                 )
         elif tag == "replace":
-            local_matches, local_gaps = _local_fuzzy_match(
+            local_matches, local_gaps = _match_replace_region(
                 transcript_words,
                 reader_tokens,
+                transcript_norms,
+                reader_norms,
                 transcript_start=i1,
                 transcript_end=i2,
                 reader_start=j1,

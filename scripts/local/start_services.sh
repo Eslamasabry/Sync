@@ -9,14 +9,22 @@ API_PID_FILE="$RUN_DIR/backend-api.pid"
 WORKER_PID_FILE="$RUN_DIR/backend-worker.pid"
 HOST="127.0.0.1"
 PORT="8000"
+READY_URL=""
+TAIL_ON_FAILURE=1
 
 usage() {
   cat <<'EOF'
-Usage: scripts/local/start_services.sh
+Usage: scripts/local/start_services.sh [options]
 
 Starts the backend API and Celery worker in the background and stores:
   - logs under .run/
   - pid files under .run/
+
+Options:
+  --host HOST              Bind host. Default: 127.0.0.1
+  --port PORT              Bind port. Default: 8000
+  --ready-url URL          Readiness URL. Default: http://HOST:PORT/v1/ready
+  --no-tail-on-failure     Do not print log tails when startup fails
 EOF
 }
 
@@ -48,8 +56,32 @@ wait_for_health() {
   return 1
 }
 
-if (($# > 0)); then
+print_log_tail() {
+  local path="$1"
+  if [[ -f "$path" ]]; then
+    echo "--- tail: $path ---" >&2
+    tail -n 40 "$path" >&2 || true
+  fi
+}
+
+while (($# > 0)); do
   case "$1" in
+    --host)
+      HOST="${2:-}"
+      shift 2
+      ;;
+    --port)
+      PORT="${2:-}"
+      shift 2
+      ;;
+    --ready-url)
+      READY_URL="${2:-}"
+      shift 2
+      ;;
+    --no-tail-on-failure)
+      TAIL_ON_FAILURE=0
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -60,7 +92,7 @@ if (($# > 0)); then
       exit 1
       ;;
   esac
-fi
+done
 
 require_cmd curl
 
@@ -70,6 +102,9 @@ if [[ ! -x "$ROOT_DIR/backend/.venv/bin/uvicorn" ]]; then
 fi
 
 mkdir -p "$RUN_DIR"
+if [[ -z "$READY_URL" ]]; then
+  READY_URL="http://$HOST:$PORT/v1/ready"
+fi
 
 if is_running "$API_PID_FILE"; then
   echo "API already running with pid $(cat "$API_PID_FILE")"
@@ -93,8 +128,12 @@ else
   )
 fi
 
-if ! wait_for_health "http://$HOST:$PORT/v1/health"; then
-  echo "API did not become healthy. Check $API_LOG" >&2
+if ! wait_for_health "$READY_URL"; then
+  echo "API did not become ready. Check $API_LOG and $WORKER_LOG" >&2
+  if [[ "$TAIL_ON_FAILURE" -eq 1 ]]; then
+    print_log_tail "$API_LOG"
+    print_log_tail "$WORKER_LOG"
+  fi
   exit 1
 fi
 
@@ -108,4 +147,7 @@ API:
 Worker:
   pid: $(cat "$WORKER_PID_FILE")
   log: $WORKER_LOG
+
+Ready URL:
+  $READY_URL
 EOF

@@ -37,26 +37,36 @@ def transcribe_alignment_job(
     if callable(set_preferred_language):
         set_preferred_language(project.language)
 
+    def persist_progress(*, event_type: str) -> None:
+        session.add(job)
+        session.commit()
+        publish_project_event_sync(
+            project_id=project_id,
+            event_type=event_type,
+            job_id=job_id,
+            payload={"stage": job.progress_stage, "percent": job.progress_percent},
+        )
+
     job.status = "running"
     job.progress_stage = "audio_preprocessing"
-    job.progress_percent = 10
-    session.add(job)
-    session.commit()
-    publish_project_event_sync(
-        project_id=project_id,
-        event_type="job.started",
-        job_id=job_id,
-        payload={"stage": job.progress_stage, "percent": job.progress_percent},
-    )
+    job.progress_percent = 0
+    persist_progress(event_type="job.started")
 
     prepared_assets = []
-    for audio_asset_id in job.audio_asset_ids:
+    total_assets = max(1, len(job.audio_asset_ids))
+    for asset_index, audio_asset_id in enumerate(job.audio_asset_ids, start=1):
         asset = get_asset_or_404(session=session, asset_id=audio_asset_id)
         segments = preprocessor.prepare_asset(project_id=project_id, asset=asset)
         prepared_assets.append((audio_asset_id, segments))
+        job.progress_percent = min(10, int((asset_index / total_assets) * 10))
+        persist_progress(event_type="job.progress")
 
-    total_segments = sum(len(segments) for _, segments in prepared_assets)
-    processed_segments = 0
+    total_duration_ms = sum(
+        segment.duration_ms
+        for _, segments in prepared_assets
+        for segment in segments
+    )
+    processed_duration_ms = 0
     transcript_segments: list[TranscriptSegment] = []
     timeline_offset_ms = 0
     for _audio_asset_id, segments in prepared_assets:
@@ -82,27 +92,21 @@ def transcribe_alignment_job(
                 )
             )
             asset_duration_ms = max(asset_duration_ms, segment.end_ms)
-            processed_segments += 1
+            processed_duration_ms += segment.duration_ms
             job.progress_stage = "transcription"
             job.progress_percent = min(
                 40,
-                10 + int((processed_segments / max(1, total_segments)) * 30),
+                10 + int((processed_duration_ms / max(1, total_duration_ms)) * 30),
             )
-            session.add(job)
-            session.commit()
-            publish_project_event_sync(
-                project_id=project_id,
-                event_type="job.progress",
-                job_id=job_id,
-                payload={"stage": job.progress_stage, "percent": job.progress_percent},
-            )
+            persist_progress(event_type="job.progress")
 
         timeline_offset_ms += asset_duration_ms
 
+    transcript_language = getattr(transcriber, "resolved_language", None) or project.language
     payload = transcript_payload(
         project_id=project_id,
         job_id=job_id,
-        language=project.language,
+        language=transcript_language,
         segments=transcript_segments,
     )
     artifact_id = str(uuid4())
@@ -118,7 +122,7 @@ def transcribe_alignment_job(
         job_id=job_id,
         version="1.0",
         status="generated",
-        language=project.language,
+        language=transcript_language,
         segment_count=len(transcript_segments),
         word_count=word_count,
         storage_path=storage_path,
@@ -128,13 +132,6 @@ def transcribe_alignment_job(
 
     job.progress_stage = "transcription"
     job.progress_percent = 40
-    session.add(job)
-    session.commit()
-    publish_project_event_sync(
-        project_id=project_id,
-        event_type="job.progress",
-        job_id=job_id,
-        payload={"stage": job.progress_stage, "percent": job.progress_percent},
-    )
+    persist_progress(event_type="job.progress")
     session.refresh(artifact)
     return artifact

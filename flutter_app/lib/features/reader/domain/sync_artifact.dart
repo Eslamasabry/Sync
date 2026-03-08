@@ -11,28 +11,30 @@ class SyncArtifact {
   });
 
   factory SyncArtifact.fromJson(Map<String, dynamic> json) {
-    final tokens = (json['tokens'] as List<dynamic>)
-        .map((item) => SyncToken.fromJson(item as Map<String, dynamic>))
-        .toList(growable: false);
+    final tokens = _asObjectList(
+      json['tokens'],
+    ).map(SyncToken.fromJson).toList(growable: false);
+    final contentStartMs =
+        _asInt(json['content_start_ms']) ??
+        (tokens.isNotEmpty ? tokens.first.startMs : 0);
+    final contentEndMs =
+        _asInt(json['content_end_ms']) ??
+        (tokens.isNotEmpty ? tokens.last.endMs : 0);
     return SyncArtifact(
-      version: json['version'] as String,
-      bookId: json['book_id'] as String,
-      language: json['language'] as String?,
-      audio: (json['audio'] as List<dynamic>)
-          .map(
-            (item) => AudioManifestItem.fromJson(item as Map<String, dynamic>),
-          )
-          .toList(growable: false),
-      contentStartMs:
-          json['content_start_ms'] as int? ??
-          (tokens.isNotEmpty ? tokens.first.startMs : 0),
-      contentEndMs:
-          json['content_end_ms'] as int? ??
-          (tokens.isNotEmpty ? tokens.last.endMs : 0),
+      version: _asString(json['version']) ?? '1.0',
+      bookId: _asString(json['book_id']) ?? '',
+      language: _asString(json['language']),
+      audio: _asObjectList(
+        json['audio'],
+      ).map(AudioManifestItem.fromJson).toList(growable: false),
+      contentStartMs: contentStartMs < 0 ? 0 : contentStartMs,
+      contentEndMs: contentEndMs < contentStartMs
+          ? contentStartMs
+          : contentEndMs,
       tokens: tokens,
-      gaps: (json['gaps'] as List<dynamic>)
-          .map((item) => SyncGap.fromJson(item as Map<String, dynamic>))
-          .toList(growable: false),
+      gaps: _asObjectList(
+        json['gaps'],
+      ).map(SyncGap.fromJson).toList(growable: false),
     );
   }
 
@@ -47,7 +49,12 @@ class SyncArtifact {
 
   int get totalDurationMs {
     if (audio.isNotEmpty) {
-      return audio.last.offsetMs + audio.last.durationMs;
+      return audio
+          .map((item) => item.offsetMs + item.durationMs)
+          .fold<int>(
+            0,
+            (maxDuration, value) => value > maxDuration ? value : maxDuration,
+          );
     }
     if (tokens.isNotEmpty) {
       return tokens.last.endMs;
@@ -79,9 +86,9 @@ class AudioManifestItem {
 
   factory AudioManifestItem.fromJson(Map<String, dynamic> json) {
     return AudioManifestItem(
-      assetId: json['asset_id'] as String,
-      offsetMs: json['offset_ms'] as int,
-      durationMs: json['duration_ms'] as int,
+      assetId: _asString(json['asset_id']) ?? '',
+      offsetMs: _asInt(json['offset_ms']) ?? 0,
+      durationMs: _asInt(json['duration_ms']) ?? 0,
     );
   }
 
@@ -102,16 +109,15 @@ class SyncToken {
   });
 
   factory SyncToken.fromJson(Map<String, dynamic> json) {
+    final text = _asString(json['text']) ?? '';
     return SyncToken(
-      id: json['id'] as int,
-      text: json['text'] as String,
-      normalized: json['normalized'] as String,
-      startMs: json['start_ms'] as int,
-      endMs: json['end_ms'] as int,
-      confidence: (json['confidence'] as num?)?.toDouble() ?? 0,
-      location: SyncTokenLocation.fromJson(
-        json['location'] as Map<String, dynamic>,
-      ),
+      id: _asInt(json['id']) ?? 0,
+      text: text,
+      normalized: _asString(json['normalized']) ?? text.toLowerCase(),
+      startMs: _asInt(json['start_ms']) ?? 0,
+      endMs: _asInt(json['end_ms']) ?? 0,
+      confidence: _asDouble(json['confidence']) ?? 0,
+      location: SyncTokenLocation.fromJson(_asObject(json['location'])),
     );
   }
 
@@ -134,10 +140,10 @@ class SyncTokenLocation {
 
   factory SyncTokenLocation.fromJson(Map<String, dynamic> json) {
     return SyncTokenLocation(
-      sectionId: json['section_id'] as String,
-      paragraphIndex: json['paragraph_index'] as int,
-      tokenIndex: json['token_index'] as int,
-      cfi: json['cfi'] as String?,
+      sectionId: _asString(json['section_id']) ?? '',
+      paragraphIndex: _asInt(json['paragraph_index']) ?? 0,
+      tokenIndex: _asInt(json['token_index']) ?? 0,
+      cfi: _asString(json['cfi']),
     );
   }
 
@@ -161,12 +167,12 @@ class SyncGap {
 
   factory SyncGap.fromJson(Map<String, dynamic> json) {
     return SyncGap(
-      startMs: json['start_ms'] as int,
-      endMs: json['end_ms'] as int,
-      reason: json['reason'] as String,
-      transcriptStartIndex: json['transcript_start_index'] as int,
-      transcriptEndIndex: json['transcript_end_index'] as int,
-      wordCount: json['word_count'] as int,
+      startMs: _asInt(json['start_ms']) ?? 0,
+      endMs: _asInt(json['end_ms']) ?? 0,
+      reason: _asString(json['reason']) ?? 'narration_mismatch',
+      transcriptStartIndex: _asInt(json['transcript_start_index']) ?? 0,
+      transcriptEndIndex: _asInt(json['transcript_end_index']) ?? 0,
+      wordCount: _asInt(json['word_count']) ?? 0,
     );
   }
 
@@ -176,4 +182,54 @@ class SyncGap {
   final int transcriptStartIndex;
   final int transcriptEndIndex;
   final int wordCount;
+}
+
+Map<String, dynamic> _asObject(Object? value) {
+  if (value is Map<String, dynamic>) {
+    return value;
+  }
+  if (value is Map) {
+    return Map<String, dynamic>.from(value);
+  }
+  return const <String, dynamic>{};
+}
+
+List<Map<String, dynamic>> _asObjectList(Object? value) {
+  if (value is! List) {
+    return const <Map<String, dynamic>>[];
+  }
+  return value.map((item) => _asObject(item)).toList(growable: false);
+}
+
+String? _asString(Object? value) {
+  if (value == null) {
+    return null;
+  }
+  return value.toString();
+}
+
+int? _asInt(Object? value) {
+  if (value is int) {
+    return value;
+  }
+  if (value is num) {
+    return value.toInt();
+  }
+  if (value is String) {
+    return int.tryParse(value);
+  }
+  return null;
+}
+
+double? _asDouble(Object? value) {
+  if (value is double) {
+    return value;
+  }
+  if (value is num) {
+    return value.toDouble();
+  }
+  if (value is String) {
+    return double.tryParse(value);
+  }
+  return null;
 }

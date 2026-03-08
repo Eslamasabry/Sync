@@ -18,6 +18,93 @@
 
 ## REST Endpoints
 
+### `GET /v1/health`
+
+Pure liveness probe for process-level uptime. This endpoint must stay cheap and should not perform dependency I/O.
+
+Response:
+
+```json
+{
+  "status": "ok",
+  "probe": "liveness",
+  "service": "sync-backend",
+  "environment": "dev",
+  "checked_at": "2026-03-09T00:00:00Z"
+}
+```
+
+### `GET /v1/ready`
+
+Readiness probe for automation and deploy orchestration. Returns dependency-level results with latency and machine-readable failure metadata.
+
+Response when ready:
+
+```json
+{
+  "status": "ready",
+  "probe": "readiness",
+  "service": "sync-backend",
+  "environment": "dev",
+  "checked_at": "2026-03-09T00:00:00Z",
+  "summary": {
+    "ready_checks": 3,
+    "skipped_checks": 0,
+    "failed_checks": 0
+  },
+  "checks": {
+    "database": {
+      "status": "ok",
+      "critical": true,
+      "latency_ms": 4.211
+    },
+    "redis": {
+      "status": "ok",
+      "critical": true,
+      "latency_ms": 1.102
+    },
+    "object_store": {
+      "status": "ok",
+      "critical": true,
+      "latency_ms": 0.321
+    }
+  }
+}
+```
+
+Response when degraded:
+
+```json
+{
+  "status": "degraded",
+  "probe": "readiness",
+  "service": "sync-backend",
+  "environment": "dev",
+  "checked_at": "2026-03-09T00:00:00Z",
+  "summary": {
+    "ready_checks": 2,
+    "skipped_checks": 0,
+    "failed_checks": 1
+  },
+  "checks": {
+    "database": {
+      "status": "error",
+      "critical": true,
+      "latency_ms": 0.882,
+      "error_type": "OperationalError",
+      "detail": "connection refused"
+    }
+  }
+}
+```
+
+Notes:
+
+- `200 OK` means all critical checks passed or were intentionally skipped.
+- `503 Service Unavailable` means at least one critical dependency check failed.
+- `status: skipped` is reserved for environments where a dependency is intentionally not exercised, such as Redis in backend tests.
+- `latency_ms` is rounded and intended for automation/debugging, not billing-grade metrics.
+
 ### `POST /v1/projects`
 
 Creates a project shell.

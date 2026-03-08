@@ -27,6 +27,15 @@
   ],
   "content_start_ms": 13120,
   "content_end_ms": 3539910,
+  "stats": {
+    "matched_word_count": 12234,
+    "unmatched_word_count": 412,
+    "transcript_word_count": 12646,
+    "coverage_ratio": 0.9674,
+    "average_confidence": 0.9412,
+    "low_confidence_token_count": 163,
+    "content_duration_ms": 3526790
+  },
   "tokens": [
     {
       "id": 0,
@@ -66,8 +75,19 @@
 - `audio`: list of source audio files with offsets for multipart books
 - `content_start_ms`: first matched content token on the playback timeline
 - `content_end_ms`: last matched content token on the playback timeline
+- `stats`: quality summary derived from the underlying match artifact
 - `tokens`: aligned word tokens
 - `gaps`: known mismatch or skipped ranges on the playback timeline
+
+### Stats
+
+- `matched_word_count`: number of aligned transcript words exported as tokens
+- `unmatched_word_count`: number of transcript words collapsed into gap ranges
+- `transcript_word_count`: matched plus unmatched transcript words represented in the artifact
+- `coverage_ratio`: `matched_word_count / transcript_word_count` when transcript words exist
+- `average_confidence`: mean token confidence from the match artifact
+- `low_confidence_token_count`: aligned token count with confidence below `0.85`
+- `content_duration_ms`: `content_end_ms - content_start_ms`
 
 ### Token
 

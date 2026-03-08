@@ -4,21 +4,23 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PROVIDER="static"
 SKIP_FLUTTER=0
+INFRA_MODE="auto"
 
 usage() {
   cat <<'EOF'
-Usage: scripts/local/bootstrap.sh [--provider static|whisperx] [--skip-flutter]
+Usage: scripts/local/bootstrap.sh [--provider static|whisperx] [--skip-flutter] [--infra auto|host|docker|none]
 
 Prepares the local development environment for Sync:
   - ensures backend/.env exists
   - sets the transcriber provider
-  - starts docker-compose infrastructure
+  - optionally starts infrastructure
   - installs backend dependencies
   - runs flutter pub get
 
 Examples:
   scripts/local/bootstrap.sh
   scripts/local/bootstrap.sh --provider whisperx
+  scripts/local/bootstrap.sh --infra host
 EOF
 }
 
@@ -56,6 +58,63 @@ path.write_text("\n".join(lines) + "\n")
 PY
 }
 
+have_cmd() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+host_infra_ready() {
+  if ! have_cmd pg_isready || ! have_cmd redis-cli; then
+    return 1
+  fi
+
+  pg_isready -h localhost -p 5432 >/dev/null 2>&1 &&
+    [[ "$(redis-cli ping 2>/dev/null)" == "PONG" ]]
+}
+
+start_infra() {
+  case "$INFRA_MODE" in
+    docker)
+      require_cmd docker
+      (
+        cd "$ROOT_DIR"
+        docker compose up -d
+      )
+      ;;
+    host)
+      if ! host_infra_ready; then
+        cat >&2 <<'EOF'
+Host infrastructure is not ready.
+
+Expected:
+  - PostgreSQL reachable on localhost:5432
+  - Redis reachable on localhost:6379
+
+If you installed them with apt:
+  sudo systemctl start postgresql redis-server
+EOF
+        exit 1
+      fi
+      ;;
+    none)
+      ;;
+    auto)
+      if host_infra_ready; then
+        echo "Using host PostgreSQL and Redis."
+      else
+        require_cmd docker
+        (
+          cd "$ROOT_DIR"
+          docker compose up -d
+        )
+      fi
+      ;;
+    *)
+      echo "Unsupported infra mode: $INFRA_MODE" >&2
+      exit 1
+      ;;
+  esac
+}
+
 while (($# > 0)); do
   case "$1" in
     --provider)
@@ -65,6 +124,10 @@ while (($# > 0)); do
     --skip-flutter)
       SKIP_FLUTTER=1
       shift
+      ;;
+    --infra)
+      INFRA_MODE="${2:-}"
+      shift 2
       ;;
     -h|--help)
       usage
@@ -83,9 +146,10 @@ if [[ "$PROVIDER" != "static" && "$PROVIDER" != "whisperx" ]]; then
   exit 1
 fi
 
-require_cmd docker
 require_cmd python3
-require_cmd flutter
+if [[ "$SKIP_FLUTTER" -eq 0 ]]; then
+  require_cmd flutter
+fi
 
 mkdir -p "$ROOT_DIR/backend"
 if [[ ! -f "$ROOT_DIR/backend/.env" ]]; then
@@ -97,10 +161,7 @@ if [[ "$PROVIDER" == "static" ]]; then
   update_env_value "MOCK_TRANSCRIPT_TEXT" "call me ishmael"
 fi
 
-(
-  cd "$ROOT_DIR"
-  docker compose up -d
-)
+start_infra
 
 (
   cd "$ROOT_DIR/backend"
@@ -124,6 +185,7 @@ cat <<EOF
 Bootstrap complete.
 
 Provider: $PROVIDER
+Infra mode: $INFRA_MODE
 Next:
   scripts/local/start_services.sh
   scripts/local/run_smoke.sh --provider $PROVIDER

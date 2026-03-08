@@ -3,6 +3,7 @@ import struct
 import wave
 import zipfile
 from io import BytesIO
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -192,6 +193,38 @@ def test_uploaded_asset_content_can_be_downloaded(client: TestClient) -> None:
     assert content_response.content == payload
 
 
+def test_upload_rejects_empty_payload(client: TestClient) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Empty Upload Project", "language": "en"},
+    ).json()["project_id"]
+
+    upload_response = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "audio"},
+        files={"file": ("empty.wav", b"", "audio/wav")},
+    )
+
+    assert upload_response.status_code == 400
+    assert upload_response.json()["error"]["code"] == "asset_empty_upload"
+
+
+def test_upload_rejects_filename_that_exceeds_storage_limit(client: TestClient) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Long Filename Project", "language": "en"},
+    ).json()["project_id"]
+
+    upload_response = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "audio"},
+        files={"file": (f"{'a' * 256}.wav", make_test_wav_bytes(), "audio/wav")},
+    )
+
+    assert upload_response.status_code == 400
+    assert upload_response.json()["error"]["code"] == "asset_filename_invalid"
+
+
 def test_transcription_pipeline_generates_transcript_artifact(client: TestClient) -> None:
     project_id = client.post(
         "/v1/projects",
@@ -259,6 +292,20 @@ def test_transcription_pipeline_generates_transcript_artifact(client: TestClient
     assert payload["segments"][0]["words"][0]["text"] == "call"
 
 
+def test_transcript_route_distinguishes_missing_job_from_missing_artifact(
+    client: TestClient,
+) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Missing Transcript Job Project", "language": "en"},
+    ).json()["project_id"]
+
+    response = client.get(f"/v1/projects/{project_id}/jobs/{uuid4()}/transcript")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "job_not_found"
+
+
 def test_matching_pipeline_generates_match_artifact(client: TestClient) -> None:
     project_id = client.post(
         "/v1/projects",
@@ -322,6 +369,20 @@ def test_matching_pipeline_generates_match_artifact(client: TestClient) -> None:
     assert payload["match_count"] >= 5
     assert payload["gap_count"] == 0
     assert payload["matches"][0]["location"]["section_id"] == "s1"
+
+
+def test_match_route_distinguishes_missing_job_from_missing_artifact(
+    client: TestClient,
+) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Missing Match Job Project", "language": "en"},
+    ).json()["project_id"]
+
+    response = client.get(f"/v1/projects/{project_id}/jobs/{uuid4()}/matches")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "job_not_found"
 
 
 def test_matching_pipeline_reports_gaps_for_mismatched_words(client: TestClient) -> None:
@@ -459,6 +520,15 @@ def test_sync_export_generates_sync_artifact(client: TestClient) -> None:
     assert payload["gaps"] == []
 
 
+def test_sync_route_distinguishes_missing_project_from_missing_artifact(
+    client: TestClient,
+) -> None:
+    response = client.get(f"/v1/projects/{uuid4()}/sync")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "project_not_found"
+
+
 def test_alignment_pipeline_completes_job_and_offsets_multiple_audio_assets(
     client: TestClient,
 ) -> None:
@@ -593,3 +663,42 @@ def test_job_events_stream_over_websocket(client: TestClient) -> None:
         cancelled_event = websocket.receive_json()
         assert cancelled_event["type"] == "job.cancelled"
         assert cancelled_event["job_id"] == job_id
+
+
+def test_cancel_job_is_idempotent_for_already_cancelled_job(client: TestClient) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Cancel Idempotency Project"},
+    ).json()["project_id"]
+    epub_asset_id = client.post(
+        f"/v1/projects/{project_id}/assets",
+        json={
+            "kind": "epub",
+            "filename": "book.epub",
+            "content_type": "application/epub+zip",
+        },
+    ).json()["asset_id"]
+    audio_asset_id = client.post(
+        f"/v1/projects/{project_id}/assets",
+        json={
+            "kind": "audio",
+            "filename": "book.mp3",
+            "content_type": "audio/mpeg",
+        },
+    ).json()["asset_id"]
+
+    job_id = client.post(
+        f"/v1/projects/{project_id}/jobs",
+        json={
+            "job_type": "alignment",
+            "book_asset_id": epub_asset_id,
+            "audio_asset_ids": [audio_asset_id],
+        },
+    ).json()["job_id"]
+
+    first_cancel_response = client.post(f"/v1/projects/{project_id}/jobs/{job_id}/cancel")
+    second_cancel_response = client.post(f"/v1/projects/{project_id}/jobs/{job_id}/cancel")
+
+    assert first_cancel_response.status_code == 200
+    assert second_cancel_response.status_code == 200
+    assert second_cancel_response.json()["status"] == "cancelled"

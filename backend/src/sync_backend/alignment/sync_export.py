@@ -68,6 +68,39 @@ def _collapse_gaps(match_payload: dict[str, Any]) -> list[dict[str, int | str]]:
     return collapsed
 
 
+def _build_sync_stats(
+    *,
+    tokens: list[dict[str, Any]],
+    gaps: list[dict[str, int | str]],
+    match_payload: dict[str, Any],
+) -> dict[str, float | int | None]:
+    matched_word_count = len(tokens)
+    unmatched_word_count = sum(int(gap["word_count"]) for gap in gaps)
+    transcript_word_count = matched_word_count + unmatched_word_count
+    content_duration_ms = (
+        int(tokens[-1]["end_ms"]) - int(tokens[0]["start_ms"])
+        if matched_word_count > 0
+        else 0
+    )
+    low_confidence_token_count = sum(
+        1 for token in tokens if float(token["confidence"]) < 0.85
+    )
+
+    return {
+        "matched_word_count": matched_word_count,
+        "unmatched_word_count": unmatched_word_count,
+        "transcript_word_count": transcript_word_count,
+        "coverage_ratio": (
+            round(matched_word_count / transcript_word_count, 4)
+            if transcript_word_count > 0
+            else None
+        ),
+        "average_confidence": match_payload.get("average_confidence"),
+        "low_confidence_token_count": low_confidence_token_count,
+        "content_duration_ms": content_duration_ms,
+    }
+
+
 def build_sync_payload(
     *,
     project_id: str,
@@ -89,6 +122,7 @@ def build_sync_payload(
             sorted(match_payload.get("matches", []), key=lambda item: int(item["start_ms"]))
         )
     ]
+    gaps = _collapse_gaps(match_payload)
 
     return {
         "version": "1.0",
@@ -97,8 +131,9 @@ def build_sync_payload(
         "audio": _build_audio_manifest(transcript_payload),
         "content_start_ms": tokens[0]["start_ms"] if tokens else 0,
         "content_end_ms": tokens[-1]["end_ms"] if tokens else 0,
+        "stats": _build_sync_stats(tokens=tokens, gaps=gaps, match_payload=match_payload),
         "tokens": tokens,
-        "gaps": _collapse_gaps(match_payload),
+        "gaps": gaps,
     }
 
 

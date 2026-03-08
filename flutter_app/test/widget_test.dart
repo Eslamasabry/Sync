@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sync_flutter/app.dart';
@@ -75,18 +76,25 @@ class _FrontMatterReaderRepository extends ReaderRepository {
   }
 }
 
+Future<void> _pumpReaderApp(
+  WidgetTester tester, {
+  required ReaderRepository repository,
+}) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        readerRepositoryProvider.overrideWithValue(repository),
+        projectEventsProvider.overrideWith((ref) => const Stream.empty()),
+      ],
+      child: const SyncApp(),
+    ),
+  );
+  await tester.pump();
+}
+
 void main() {
   testWidgets('renders reader shell and playback controls', (tester) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          readerRepositoryProvider.overrideWithValue(_FakeReaderRepository()),
-          projectEventsProvider.overrideWith((ref) => const Stream.empty()),
-        ],
-        child: const SyncApp(),
-      ),
-    );
-    await tester.pump();
+    await _pumpReaderApp(tester, repository: _FakeReaderRepository());
 
     expect(find.text('Sync'), findsOneWidget);
     expect(find.text('Moby-Dick'), findsOneWidget);
@@ -97,22 +105,58 @@ void main() {
   testWidgets('shows start book affordance when sync has front matter', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          readerRepositoryProvider.overrideWithValue(
-            _FrontMatterReaderRepository(),
-          ),
-          projectEventsProvider.overrideWith((ref) => const Stream.empty()),
-        ],
-        child: const SyncApp(),
-      ),
-    );
-    await tester.pump();
+    await _pumpReaderApp(tester, repository: _FrontMatterReaderRepository());
 
     expect(find.text('Start Book'), findsOneWidget);
     expect(
       find.textContaining('Intro detected before the book starts'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('start book action skips the intro banner', (tester) async {
+    await _pumpReaderApp(tester, repository: _FakeReaderRepository());
+
+    expect(find.text('Start Book'), findsOneWidget);
+
+    await tester.tap(find.text('Start Book'));
+    await tester.pump();
+
+    expect(find.text('Start Book'), findsNothing);
+    expect(
+      find.textContaining('Intro detected before the book starts'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('shows unmatched narration messaging for a mid-book gap', (
+    tester,
+  ) async {
+    await _pumpReaderApp(tester, repository: _FakeReaderRepository());
+
+    final slider = tester.widget<Slider>(find.byType(Slider));
+    slider.onChanged!(1800);
+    await tester.pump();
+
+    expect(
+      find.text('Playback is in an unmatched narration span.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('shows audiobook outro messaging near the end matter window', (
+    tester,
+  ) async {
+    await _pumpReaderApp(tester, repository: _FakeReaderRepository());
+
+    final slider = tester.widget<Slider>(find.byType(Slider));
+    slider.onChanged!(4500);
+    await tester.pump();
+
+    expect(
+      find.text(
+        'This portion is audiobook outro and is outside the EPUB text.',
+      ),
       findsOneWidget,
     );
   });

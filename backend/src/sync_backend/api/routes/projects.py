@@ -105,6 +105,30 @@ def _job_detail(job: AlignmentJob) -> JobDetailResponse:
     )
 
 
+def _validate_upload_metadata(*, filename: str, content_type: str, payload: bytes) -> None:
+    if not payload:
+        raise ApiError(
+            code="asset_empty_upload",
+            message="Uploaded asset content must not be empty",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            details={"filename": filename},
+        )
+    if len(filename) > 255:
+        raise ApiError(
+            code="asset_filename_invalid",
+            message="Uploaded asset filename exceeds the 255 character limit",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            details={"filename_length": len(filename)},
+        )
+    if len(content_type) > 255:
+        raise ApiError(
+            code="asset_content_type_invalid",
+            message="Uploaded asset content type exceeds the 255 character limit",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            details={"content_type_length": len(content_type)},
+        )
+
+
 def _sync_response(project_id: str, artifact: SyncArtifact) -> SyncArtifactResponse:
     return SyncArtifactResponse(
         project_id=UUID(project_id),
@@ -218,13 +242,20 @@ async def upload_asset_route(
     session: DbSession,
 ) -> AssetCreateResponse:
     object_store = get_object_store()
+    filename = file.filename or "upload.bin"
+    content_type = file.content_type or "application/octet-stream"
     payload = await file.read()
+    _validate_upload_metadata(
+        filename=filename,
+        content_type=content_type,
+        payload=payload,
+    )
     asset = store_uploaded_asset(
         session=session,
         project_id=project_id,
         kind=kind,
-        filename=file.filename or "upload.bin",
-        content_type=file.content_type or "application/octet-stream",
+        filename=filename,
+        content_type=content_type,
         payload=payload,
         object_store=object_store,
     )
@@ -332,6 +363,7 @@ async def get_transcript_route(
     job_id: str,
     session: DbSession,
 ) -> TranscriptArtifactResponse:
+    get_job_or_404(session=session, project_id=project_id, job_id=job_id)
     artifact = get_transcript_artifact_or_404(
         session=session,
         project_id=project_id,
@@ -349,6 +381,7 @@ async def get_match_route(
     job_id: str,
     session: DbSession,
 ) -> MatchArtifactResponse:
+    get_job_or_404(session=session, project_id=project_id, job_id=job_id)
     artifact = get_match_artifact_or_404(
         session=session,
         project_id=project_id,
@@ -359,18 +392,23 @@ async def get_match_route(
 
 @router.get("/{project_id}/sync", response_model=SyncArtifactResponse)
 async def get_sync_route(project_id: str, session: DbSession) -> SyncArtifactResponse:
+    get_project_or_404(session=session, project_id=project_id)
     artifact = get_latest_sync_artifact(session=session, project_id=project_id)
     return _sync_response(project_id, artifact)
 
 
 @router.get("/{project_id}/reader-model", response_model=ReaderModelResponse)
 async def get_reader_model_route(project_id: str, session: DbSession) -> ReaderModelResponse:
+    get_project_or_404(session=session, project_id=project_id)
     artifact = get_reader_model_artifact_or_404(session=session, project_id=project_id)
     return _reader_model_response(project_id=project_id, artifact=artifact)
 
 
 @router.post("/{project_id}/jobs/{job_id}/cancel", response_model=JobCreateResponse)
 async def cancel_job_route(project_id: str, job_id: str, session: DbSession) -> JobCreateResponse:
+    existing_job = get_job_or_404(session=session, project_id=project_id, job_id=job_id)
+    if existing_job.status == "cancelled":
+        return JobCreateResponse(job_id=UUID(existing_job.id), status=existing_job.status)
     job = cancel_job(session=session, project_id=project_id, job_id=job_id)
     await broker.broadcast(
         project_id=project_id,
