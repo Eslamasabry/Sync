@@ -4,7 +4,32 @@
 
 Boot the local stack, create a project with an EPUB and audio file, and run the Flutter reader against it.
 
-## 1. Start Infrastructure
+## 1. Scripted Path
+
+Static smoke test:
+
+```bash
+cd /home/eslam/Storage/Code/Sync
+make local-full-smoke
+```
+
+WhisperX-based run:
+
+```bash
+cd /home/eslam/Storage/Code/Sync
+make local-full-smoke-whisperx
+```
+
+The scripted flow uses:
+
+- [bootstrap.sh](/home/eslam/Storage/Code/Sync/scripts/local/bootstrap.sh) to prepare infra and dependencies
+- [start_services.sh](/home/eslam/Storage/Code/Sync/scripts/local/start_services.sh) to launch the API and worker
+- [run_smoke.sh](/home/eslam/Storage/Code/Sync/scripts/local/run_smoke.sh) to create a project, upload generated sample files, and run alignment
+- [stop_services.sh](/home/eslam/Storage/Code/Sync/scripts/local/stop_services.sh) to stop the background API and worker
+
+## 2. Manual Path
+
+### Start Infrastructure
 
 ```bash
 cd /home/eslam/Storage/Code/Sync
@@ -14,7 +39,7 @@ make backend-install-alignment
 make flutter-get
 ```
 
-## 2. Run the Backend
+### Run the Backend
 
 In one terminal:
 
@@ -30,7 +55,7 @@ cd /home/eslam/Storage/Code/Sync
 make worker-run
 ```
 
-## 3. Create a Project
+### Create a Project
 
 ```bash
 curl -X POST http://localhost:8000/v1/projects \
@@ -40,7 +65,7 @@ curl -X POST http://localhost:8000/v1/projects \
 
 Save the returned `project_id`.
 
-## 4. Upload the EPUB
+### Upload the EPUB
 
 ```bash
 curl -X POST http://localhost:8000/v1/projects/<project-id>/assets/upload \
@@ -48,7 +73,7 @@ curl -X POST http://localhost:8000/v1/projects/<project-id>/assets/upload \
   -F file=@/absolute/path/to/book.epub
 ```
 
-## 5. Upload the Audio
+### Upload the Audio
 
 ```bash
 curl -X POST http://localhost:8000/v1/projects/<project-id>/assets/upload \
@@ -58,7 +83,7 @@ curl -X POST http://localhost:8000/v1/projects/<project-id>/assets/upload \
 
 You can use `.wav` during local testing as well.
 
-## 6. Create an Alignment Job
+### Create an Alignment Job
 
 Fetch the project detail first so you can copy the uploaded asset ids:
 
@@ -78,7 +103,7 @@ curl -X POST http://localhost:8000/v1/projects/<project-id>/jobs \
   }'
 ```
 
-## 7. Check Generated Artifacts
+### Check Generated Artifacts
 
 ```bash
 curl http://localhost:8000/v1/projects/<project-id>/reader-model
@@ -92,7 +117,7 @@ Audio files are streamed back to the client from:
 GET /v1/projects/{project_id}/assets/{asset_id}/content
 ```
 
-## 8. Run the Flutter App
+### Run the Flutter App
 
 ```bash
 cd /home/eslam/Storage/Code/Sync
@@ -110,3 +135,4 @@ make flutter-run API_BASE_URL=http://localhost:8000/v1 PROJECT_ID=<project-id>
 - If the backend is unavailable, the Flutter app falls back to the built-in demo content.
 - Real audio playback is used only when the backend project loads and the sync artifact references uploaded audio assets.
 - The current backend keeps artifacts in the local filesystem under `backend/artifacts` unless you override `ALIGNMENT_WORKDIR`.
+- WhisperX is the proper alignment path, but it pulls a large PyTorch stack and runs best on a machine with a supported GPU. The static provider is there for quick smoke validation only.

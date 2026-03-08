@@ -73,3 +73,19 @@ docs/
 3. Produce a first version of `sync.json`.
 4. Render aligned text in Flutter without a WebView.
 5. Stream job progress over WebSockets.
+
+## Local Scripts
+
+The fastest scripted local flows are:
+
+```bash
+make local-full-smoke
+make local-full-smoke-whisperx
+```
+
+Supporting scripts live under [scripts/local](/home/eslam/Storage/Code/Sync/scripts/local):
+
+- [bootstrap.sh](/home/eslam/Storage/Code/Sync/scripts/local/bootstrap.sh)
+- [start_services.sh](/home/eslam/Storage/Code/Sync/scripts/local/start_services.sh)
+- [run_smoke.sh](/home/eslam/Storage/Code/Sync/scripts/local/run_smoke.sh)
+- [full_smoke.sh](/home/eslam/Storage/Code/Sync/scripts/local/full_smoke.sh)

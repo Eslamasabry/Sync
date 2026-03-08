@@ -20,6 +20,15 @@ Planned modules:
 
 ## Local Run
 
+Fastest scripted path from the repo root:
+
+```bash
+make local-full-smoke
+make local-full-smoke-whisperx
+```
+
+Manual path:
+
 ```bash
 cp backend/.env.example backend/.env
 make dev-up
