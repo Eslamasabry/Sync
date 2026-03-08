@@ -61,6 +61,8 @@ class WhisperXTranscriber:
     def __init__(self, *, settings: Settings) -> None:
         self.model_name = settings.whisper_model_name
         self.language = None
+        self.device = "cpu"
+        self.compute_type = "int8"
         self._loaded = False
         self._whisperx: Any | None = None
         self._model: Any | None = None
@@ -77,8 +79,21 @@ class WhisperXTranscriber:
                 "WhisperX is not installed. Install it or set TRANSCRIBER_PROVIDER=static."
             ) from exc
 
+        try:
+            import torch  # type: ignore[import-not-found]
+        except ImportError:
+            torch = None
+
+        if torch is not None and torch.cuda.is_available():
+            self.device = "cuda"
+            self.compute_type = "float16"
+
         self._whisperx = whisperx
-        self._model = whisperx.load_model(self.model_name, device="cpu")
+        self._model = whisperx.load_model(
+            self.model_name,
+            device=self.device,
+            compute_type=self.compute_type,
+        )
         self._loaded = True
 
     def transcribe_segment(self, segment: PreparedAudioSegment) -> list[TranscriptWord]:
@@ -94,7 +109,7 @@ class WhisperXTranscriber:
             self.language = language
             self._align_model, self._metadata = self._whisperx.load_align_model(
                 language_code=language,
-                device="cpu",
+                device=self.device,
             )
 
         aligned = self._whisperx.align(
@@ -102,7 +117,7 @@ class WhisperXTranscriber:
             self._align_model,
             self._metadata,
             audio,
-            device="cpu",
+            device=self.device,
         )
         words: list[TranscriptWord] = []
         for word in aligned.get("word_segments", []):
