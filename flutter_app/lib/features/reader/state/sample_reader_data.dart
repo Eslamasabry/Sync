@@ -74,6 +74,8 @@ final demoSyncArtifact = SyncArtifact.fromJson({
   'audio': [
     {'asset_id': 'audio-demo', 'offset_ms': 0, 'duration_ms': 3520},
   ],
+  'content_start_ms': 0,
+  'content_end_ms': 3520,
   'tokens': [
     {
       'id': 0,

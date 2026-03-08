@@ -124,9 +124,29 @@ class ReaderScreen extends ConsumerWidget {
                                 ref.invalidate(readerProjectProvider),
                           ),
                         if (bundle != null) const SizedBox(height: 12),
+                        if (bundle != null &&
+                            bundle.syncArtifact.hasLeadingMatter &&
+                            playback.positionMs <
+                                bundle.syncArtifact.contentStartMs) ...[
+                          _ContentWindowBanner(
+                            syncArtifact: bundle.syncArtifact,
+                            onStartBook: () => controller.seekTo(
+                              bundle.syncArtifact.contentStartMs,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         if (latestEvent != null)
                           _JobEventBanner(event: latestEvent),
                         if (latestEvent != null) const SizedBox(height: 12),
+                        if (bundle != null) ...[
+                          _GapStatusBanner(
+                            gap: bundle.syncArtifact.activeGapAt(
+                              playback.positionMs,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         Row(
                           children: [
                             Expanded(
@@ -389,6 +409,75 @@ class _JobEventBanner extends StatelessWidget {
         '$type • $stage • $percent%',
         style: Theme.of(context).textTheme.labelLarge,
       ),
+    );
+  }
+}
+
+class _ContentWindowBanner extends StatelessWidget {
+  const _ContentWindowBanner({
+    required this.syncArtifact,
+    required this.onStartBook,
+  });
+
+  final SyncArtifact syncArtifact;
+  final VoidCallback onStartBook;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: palette.accentSoft,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Intro detected before the book starts at '
+              '${ReaderScreen._formatMs(syncArtifact.contentStartMs)}.',
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+          ),
+          TextButton(onPressed: onStartBook, child: const Text('Start Book')),
+        ],
+      ),
+    );
+  }
+}
+
+class _GapStatusBanner extends StatelessWidget {
+  const _GapStatusBanner({required this.gap});
+
+  final SyncGap? gap;
+
+  @override
+  Widget build(BuildContext context) {
+    if (gap == null) {
+      return const SizedBox.shrink();
+    }
+
+    final palette = ReaderPalette.of(context);
+    final message = switch (gap!.reason) {
+      'audiobook_front_matter' =>
+        'This portion is audiobook intro and is outside the EPUB text.',
+      'audiobook_end_matter' =>
+        'This portion is audiobook outro and is outside the EPUB text.',
+      _ => 'Playback is in an unmatched narration span.',
+    };
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: palette.backgroundBase,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Text(message, style: Theme.of(context).textTheme.labelLarge),
     );
   }
 }

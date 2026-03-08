@@ -4,11 +4,16 @@ class SyncArtifact {
     required this.bookId,
     required this.language,
     required this.audio,
+    required this.contentStartMs,
+    required this.contentEndMs,
     required this.tokens,
     required this.gaps,
   });
 
   factory SyncArtifact.fromJson(Map<String, dynamic> json) {
+    final tokens = (json['tokens'] as List<dynamic>)
+        .map((item) => SyncToken.fromJson(item as Map<String, dynamic>))
+        .toList(growable: false);
     return SyncArtifact(
       version: json['version'] as String,
       bookId: json['book_id'] as String,
@@ -18,9 +23,13 @@ class SyncArtifact {
             (item) => AudioManifestItem.fromJson(item as Map<String, dynamic>),
           )
           .toList(growable: false),
-      tokens: (json['tokens'] as List<dynamic>)
-          .map((item) => SyncToken.fromJson(item as Map<String, dynamic>))
-          .toList(growable: false),
+      contentStartMs:
+          json['content_start_ms'] as int? ??
+          (tokens.isNotEmpty ? tokens.first.startMs : 0),
+      contentEndMs:
+          json['content_end_ms'] as int? ??
+          (tokens.isNotEmpty ? tokens.last.endMs : 0),
+      tokens: tokens,
       gaps: (json['gaps'] as List<dynamic>)
           .map((item) => SyncGap.fromJson(item as Map<String, dynamic>))
           .toList(growable: false),
@@ -31,6 +40,8 @@ class SyncArtifact {
   final String bookId;
   final String? language;
   final List<AudioManifestItem> audio;
+  final int contentStartMs;
+  final int contentEndMs;
   final List<SyncToken> tokens;
   final List<SyncGap> gaps;
 
@@ -42,6 +53,20 @@ class SyncArtifact {
       return tokens.last.endMs;
     }
     return 0;
+  }
+
+  bool get hasLeadingMatter => contentStartMs > 0;
+
+  bool get hasTrailingMatter =>
+      contentEndMs > 0 && contentEndMs < totalDurationMs;
+
+  SyncGap? activeGapAt(int positionMs) {
+    for (final gap in gaps) {
+      if (positionMs >= gap.startMs && positionMs < gap.endMs) {
+        return gap;
+      }
+    }
+    return null;
   }
 }
 
