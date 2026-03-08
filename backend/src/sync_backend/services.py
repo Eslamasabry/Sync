@@ -109,6 +109,17 @@ def get_asset_or_404(*, session: Session, asset_id: str) -> Asset:
     return asset
 
 
+def get_project_asset_or_404(*, session: Session, project_id: str, asset_id: str) -> Asset:
+    asset = get_asset_or_404(session=session, asset_id=asset_id)
+    if asset.project_id != project_id:
+        raise not_found(
+            "asset_not_found",
+            "Asset was not found for this project",
+            {"project_id": project_id, "asset_id": asset_id},
+        )
+    return asset
+
+
 def get_reader_model_artifact_or_404(*, session: Session, project_id: str) -> ReaderModelArtifact:
     artifact = session.scalar(
         select(ReaderModelArtifact)

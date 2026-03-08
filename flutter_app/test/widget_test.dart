@@ -17,6 +17,7 @@ class _FakeReaderRepository extends ReaderRepository {
       readerModel: demoReaderModel,
       syncArtifact: demoSyncArtifact,
       source: ReaderContentSource.api,
+      audioUrls: const [],
     );
   }
 }

@@ -91,6 +91,10 @@ Response:
 }
 ```
 
+### `GET /v1/projects/{project_id}/assets/{asset_id}/content`
+
+Streams the raw uploaded asset content for local development and playback.
+
 ### `POST /v1/projects/{project_id}/jobs`
 
 Creates an alignment job after required assets exist.

@@ -165,6 +165,33 @@ def test_epub_upload_generates_reader_model(client: TestClient) -> None:
     assert first_token["normalized"] == "call"
 
 
+def test_uploaded_asset_content_can_be_downloaded(client: TestClient) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Asset Download Project", "language": "en"},
+    ).json()["project_id"]
+
+    payload = make_test_wav_bytes(duration_seconds=0.25)
+    upload_response = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "audio"},
+        files={
+            "file": (
+                "clip.wav",
+                payload,
+                "audio/wav",
+            )
+        },
+    )
+    assert upload_response.status_code == 201
+    asset_id = upload_response.json()["asset_id"]
+
+    content_response = client.get(f"/v1/projects/{project_id}/assets/{asset_id}/content")
+    assert content_response.status_code == 200
+    assert content_response.headers["content-type"] == "audio/wav"
+    assert content_response.content == payload
+
+
 def test_transcription_pipeline_generates_transcript_artifact(client: TestClient) -> None:
     project_id = client.post(
         "/v1/projects",

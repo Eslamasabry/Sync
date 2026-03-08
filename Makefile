@@ -1,6 +1,9 @@
 SHELL := /bin/bash
 
-.PHONY: dev-up dev-down dev-logs backend-install backend-run backend-test backend-lint backend-typecheck worker-run
+API_BASE_URL ?= http://localhost:8000/v1
+PROJECT_ID ?= demo-book
+
+.PHONY: dev-up dev-down dev-logs backend-install backend-install-alignment backend-run backend-test backend-lint backend-typecheck worker-run flutter-get flutter-run flutter-analyze flutter-test
 
 dev-up:
 	docker compose up -d
@@ -13,6 +16,9 @@ dev-logs:
 
 backend-install:
 	cd backend && python3 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install -e '.[dev]'
+
+backend-install-alignment:
+	cd backend && python3 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install -e '.[alignment,dev]'
 
 backend-run:
 	cd backend && .venv/bin/uvicorn sync_backend.main:app --reload
@@ -28,3 +34,15 @@ backend-typecheck:
 
 worker-run:
 	cd backend && .venv/bin/celery -A sync_backend.workers.celery_app:celery_app worker --loglevel=info
+
+flutter-get:
+	cd flutter_app && flutter pub get
+
+flutter-run:
+	cd flutter_app && flutter run --dart-define=SYNC_API_BASE_URL=$(API_BASE_URL) --dart-define=SYNC_PROJECT_ID=$(PROJECT_ID)
+
+flutter-analyze:
+	cd flutter_app && flutter analyze
+
+flutter-test:
+	cd flutter_app && flutter test

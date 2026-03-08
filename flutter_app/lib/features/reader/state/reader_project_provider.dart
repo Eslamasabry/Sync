@@ -18,6 +18,6 @@ final readerProjectProvider = FutureProvider<ReaderProjectBundle>((ref) async {
   final projectId = ref.watch(projectIdProvider);
   final repository = ref.watch(readerRepositoryProvider);
   final bundle = await repository.loadProject(projectId);
-  ref.read(readerPlaybackProvider.notifier).resetForProject();
+  await ref.read(readerPlaybackProvider.notifier).configureProject(bundle);
   return bundle;
 });

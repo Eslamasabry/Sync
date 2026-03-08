@@ -4,11 +4,13 @@ import 'package:just_audio/just_audio.dart';
 
 abstract class PlaybackDriver {
   Stream<Duration> get positionStream;
+  Stream<bool> get playingStream;
 
-  Future<void> setUrl(String url);
+  Future<void> setUrls(List<String> urls);
   Future<void> play();
   Future<void> pause();
   Future<void> seek(Duration position);
+  Future<void> setSpeed(double speed);
   Future<void> dispose();
 }
 
@@ -20,6 +22,9 @@ class JustAudioPlaybackDriver implements PlaybackDriver {
 
   @override
   Stream<Duration> get positionStream => _player.positionStream;
+
+  @override
+  Stream<bool> get playingStream => _player.playingStream;
 
   @override
   Future<void> dispose() => _player.dispose();
@@ -34,5 +39,12 @@ class JustAudioPlaybackDriver implements PlaybackDriver {
   Future<void> seek(Duration position) => _player.seek(position);
 
   @override
-  Future<void> setUrl(String url) => _player.setUrl(url);
+  Future<void> setSpeed(double speed) => _player.setSpeed(speed);
+
+  @override
+  Future<void> setUrls(List<String> urls) async {
+    await _player.setAudioSources([
+      for (final url in urls) AudioSource.uri(Uri.parse(url)),
+    ]);
+  }
 }

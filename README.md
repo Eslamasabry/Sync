@@ -63,6 +63,8 @@ docs/
 - Sync artifact contract: [docs/contracts/sync-format.md](/home/eslam/Storage/Code/Sync/docs/contracts/sync-format.md)
 - UI system: [docs/design/ui-theme.md](/home/eslam/Storage/Code/Sync/docs/design/ui-theme.md)
 - Engineering standards: [docs/engineering/standards.md](/home/eslam/Storage/Code/Sync/docs/engineering/standards.md)
+- Local dev stack: [docs/operations/dev-stack.md](/home/eslam/Storage/Code/Sync/docs/operations/dev-stack.md)
+- Local run guide: [docs/operations/local-run.md](/home/eslam/Storage/Code/Sync/docs/operations/local-run.md)
 
 ## First Build Targets
 

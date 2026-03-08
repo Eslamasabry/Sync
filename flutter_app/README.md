@@ -24,6 +24,29 @@ flutter run \
   --dart-define=SYNC_PROJECT_ID=<project-id>
 ```
 
+Local end-to-end flow:
+
+```bash
+cd /home/eslam/Storage/Code/Sync
+make dev-up
+make backend-install
+make backend-run
+```
+
+In another shell:
+
+```bash
+cd /home/eslam/Storage/Code/Sync/flutter_app
+flutter run \
+  --dart-define=SYNC_API_BASE_URL=http://localhost:8000/v1 \
+  --dart-define=SYNC_PROJECT_ID=<project-id>
+```
+
+Current playback behavior:
+
+- real audio playback is used when the backend project loads and the sync artifact references uploaded audio assets
+- demo fallback stays available when the API is offline, but uses the simulated timeline instead of `just_audio`
+
 Implementation must follow:
 
 - [docs/design/ui-theme.md](/home/eslam/Storage/Code/Sync/docs/design/ui-theme.md)

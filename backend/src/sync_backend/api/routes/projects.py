@@ -4,9 +4,11 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from sync_backend.api.dependencies import get_db_session
+from sync_backend.api.errors import ApiError
 from sync_backend.api.realtime import broker
 from sync_backend.api.schemas import (
     AssetCreateRequest,
@@ -39,10 +41,12 @@ from sync_backend.services import (
     create_alignment_job,
     create_project,
     generate_reader_model_artifact,
+    get_asset_or_404,
     get_job_or_404,
     get_latest_job,
     get_latest_sync_artifact,
     get_match_artifact_or_404,
+    get_project_asset_or_404,
     get_project_or_404,
     get_reader_model_artifact_or_404,
     get_transcript_artifact_or_404,
@@ -233,6 +237,34 @@ async def upload_asset_route(
         asset_id=UUID(asset.id),
         upload_mode=asset.upload_mode,
         status=asset.status,
+    )
+
+
+@router.get("/{project_id}/assets/{asset_id}/content")
+async def get_asset_content_route(
+    project_id: str,
+    asset_id: str,
+    session: DbSession,
+) -> FileResponse:
+    asset = get_project_asset_or_404(
+        session=session,
+        project_id=project_id,
+        asset_id=asset_id,
+    )
+    if asset.storage_path is None:
+        missing_asset = get_asset_or_404(session=session, asset_id=asset_id)
+        raise ApiError(
+            code="asset_content_missing",
+            message="Asset content is not available for download",
+            details={"asset_id": missing_asset.id},
+            status_code=status.HTTP_409_CONFLICT,
+        )
+
+    object_store = get_object_store()
+    return FileResponse(
+        path=object_store.absolute_path(asset.storage_path),
+        media_type=asset.content_type,
+        filename=asset.filename,
     )
 
 
