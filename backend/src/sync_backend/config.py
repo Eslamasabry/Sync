@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     s3_bucket: str = Field(default="sync-dev", alias="S3_BUCKET")
     alignment_workdir: str = Field(default="./artifacts", alias="ALIGNMENT_WORKDIR")
     object_store_mode: str = Field(default="filesystem", alias="OBJECT_STORE_MODE")
+    ffmpeg_bin: str = Field(default="ffmpeg", alias="FFMPEG_BIN")
+    ffprobe_bin: str = Field(default="ffprobe", alias="FFPROBE_BIN")
+    audio_chunk_duration_ms: int = Field(default=300_000, alias="AUDIO_CHUNK_DURATION_MS")
+    transcriber_provider: str = Field(default="whisperx", alias="TRANSCRIBER_PROVIDER")
+    whisper_model_name: str = Field(default="base", alias="WHISPER_MODEL_NAME")
+    mock_transcript_text: str = Field(default="call me ishmael", alias="MOCK_TRANSCRIPT_TEXT")
 
     model_config = SettingsConfigDict(
         env_file=".env",

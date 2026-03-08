@@ -15,6 +15,7 @@ from sync_backend.models import (
     Project,
     ReaderModelArtifact,
     SyncArtifact,
+    TranscriptArtifact,
 )
 from sync_backend.storage import FileObjectStore
 
@@ -260,6 +261,28 @@ def get_latest_sync_artifact(*, session: Session, project_id: str) -> SyncArtifa
     )
     if artifact is None:
         raise not_found("sync_not_found", "Sync artifact was not found", {"project_id": project_id})
+    return artifact
+
+
+def get_transcript_artifact_or_404(
+    *,
+    session: Session,
+    project_id: str,
+    job_id: str,
+) -> TranscriptArtifact:
+    artifact = session.scalar(
+        select(TranscriptArtifact)
+        .where(TranscriptArtifact.project_id == project_id)
+        .where(TranscriptArtifact.job_id == job_id)
+        .order_by(TranscriptArtifact.created_at.desc())
+        .limit(1)
+    )
+    if artifact is None:
+        raise not_found(
+            "transcript_not_found",
+            "Transcript artifact was not found",
+            {"project_id": project_id, "job_id": job_id},
+        )
     return artifact
 
 

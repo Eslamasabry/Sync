@@ -14,6 +14,7 @@ Planned modules:
 - FastAPI entrypoint: `sync_backend.main:app`
 - health endpoint: `GET /v1/health`
 - Celery bootstrap: `sync_backend.workers.celery_app`
+- transcript worker task: `sync_backend.workers.transcription:transcribe_alignment_job_task`
 - tests: `pytest`
 
 ## Local Run

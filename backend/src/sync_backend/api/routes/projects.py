@@ -23,8 +23,15 @@ from sync_backend.api.schemas import (
     ProjectDetailResponse,
     ReaderModelResponse,
     SyncArtifactResponse,
+    TranscriptArtifactResponse,
 )
-from sync_backend.models import AlignmentJob, Asset, ReaderModelArtifact, SyncArtifact
+from sync_backend.models import (
+    AlignmentJob,
+    Asset,
+    ReaderModelArtifact,
+    SyncArtifact,
+    TranscriptArtifact,
+)
 from sync_backend.services import (
     cancel_job,
     create_alignment_job,
@@ -35,6 +42,7 @@ from sync_backend.services import (
     get_latest_sync_artifact,
     get_project_or_404,
     get_reader_model_artifact_or_404,
+    get_transcript_artifact_or_404,
     parse_uuid,
     register_asset,
     store_uploaded_asset,
@@ -113,6 +121,24 @@ def _reader_model_response(
         version=artifact.version,
         status=artifact.status,
         model=object_store.read_json(artifact.storage_path),
+    )
+
+
+def _transcript_response(
+    *,
+    project_id: str,
+    artifact: TranscriptArtifact,
+) -> TranscriptArtifactResponse:
+    object_store = get_object_store()
+    return TranscriptArtifactResponse(
+        project_id=UUID(project_id),
+        job_id=UUID(artifact.job_id),
+        version=artifact.version,
+        status=artifact.status,
+        language=artifact.language,
+        segment_count=artifact.segment_count,
+        word_count=artifact.word_count,
+        payload=object_store.read_json(artifact.storage_path),
     )
 
 
@@ -237,6 +263,23 @@ async def get_project_route(project_id: str, session: DbSession) -> ProjectDetai
 async def get_job_route(project_id: str, job_id: str, session: DbSession) -> JobDetailResponse:
     job = get_job_or_404(session=session, project_id=project_id, job_id=job_id)
     return _job_detail(job)
+
+
+@router.get(
+    "/{project_id}/jobs/{job_id}/transcript",
+    response_model=TranscriptArtifactResponse,
+)
+async def get_transcript_route(
+    project_id: str,
+    job_id: str,
+    session: DbSession,
+) -> TranscriptArtifactResponse:
+    artifact = get_transcript_artifact_or_404(
+        session=session,
+        project_id=project_id,
+        job_id=job_id,
+    )
+    return _transcript_response(project_id=project_id, artifact=artifact)
 
 
 @router.get("/{project_id}/sync", response_model=SyncArtifactResponse)

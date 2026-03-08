@@ -1,7 +1,17 @@
+import math
+import struct
+import wave
 import zipfile
 from io import BytesIO
 
 from fastapi.testclient import TestClient
+
+from sync_backend.alignment.audio import AudioPreprocessor
+from sync_backend.alignment.transcription import StaticTranscriber
+from sync_backend.alignment.transcription_pipeline import transcribe_alignment_job
+from sync_backend.config import get_settings
+from sync_backend.db import get_session_factory
+from sync_backend.storage import get_object_store
 
 
 def make_test_epub_bytes() -> bytes:
@@ -46,6 +56,19 @@ def make_test_epub_bytes() -> bytes:
               </body>
             </html>""",
         )
+    return buffer.getvalue()
+
+
+def make_test_wav_bytes(duration_seconds: float = 1.2, sample_rate: int = 16_000) -> bytes:
+    frame_count = int(duration_seconds * sample_rate)
+    buffer = BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        for frame_index in range(frame_count):
+            sample = int(12000 * math.sin((2 * math.pi * 440 * frame_index) / sample_rate))
+            wav_file.writeframes(struct.pack("<h", sample))
     return buffer.getvalue()
 
 
@@ -137,6 +160,73 @@ def test_epub_upload_generates_reader_model(client: TestClient) -> None:
     first_token = reader_model["sections"][0]["paragraphs"][0]["tokens"][0]
     assert first_token["text"] == "Call"
     assert first_token["normalized"] == "call"
+
+
+def test_transcription_pipeline_generates_transcript_artifact(client: TestClient) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Audio Project", "language": "en"},
+    ).json()["project_id"]
+
+    epub_asset_id = client.post(
+        f"/v1/projects/{project_id}/assets",
+        json={
+            "kind": "epub",
+            "filename": "book.epub",
+            "content_type": "application/epub+zip",
+        },
+    ).json()["asset_id"]
+
+    audio_upload = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "audio"},
+        files={
+            "file": (
+                "narration.wav",
+                make_test_wav_bytes(),
+                "audio/wav",
+            )
+        },
+    )
+    assert audio_upload.status_code == 201
+    audio_asset_id = audio_upload.json()["asset_id"]
+
+    job_id = client.post(
+        f"/v1/projects/{project_id}/jobs",
+        json={
+            "job_type": "alignment",
+            "book_asset_id": epub_asset_id,
+            "audio_asset_ids": [audio_asset_id],
+        },
+    ).json()["job_id"]
+
+    settings = get_settings()
+    session = get_session_factory()()
+    try:
+        artifact = transcribe_alignment_job(
+            session=session,
+            project_id=project_id,
+            job_id=job_id,
+            object_store=get_object_store(),
+            preprocessor=AudioPreprocessor(
+                object_store=get_object_store(),
+                ffmpeg_bin=settings.ffmpeg_bin,
+                ffprobe_bin=settings.ffprobe_bin,
+                chunk_duration_ms=500,
+            ),
+            transcriber=StaticTranscriber("call me ishmael"),
+        )
+        assert artifact.segment_count >= 2
+        assert artifact.word_count >= 6
+    finally:
+        session.close()
+
+    transcript_response = client.get(f"/v1/projects/{project_id}/jobs/{job_id}/transcript")
+    assert transcript_response.status_code == 200
+    payload = transcript_response.json()["payload"]
+    assert payload["job_id"] == job_id
+    assert len(payload["segments"]) >= 2
+    assert payload["segments"][0]["words"][0]["text"] == "call"
 
 
 def test_job_creation_requires_epub_asset(client: TestClient) -> None:

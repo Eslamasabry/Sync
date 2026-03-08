@@ -143,6 +143,10 @@ Response shape:
 
 Returns sync artifact metadata and download URL or direct payload in dev mode.
 
+### `GET /v1/projects/{project_id}/jobs/{job_id}/transcript`
+
+Returns the latest transcript artifact generated for the job.
+
 ### `GET /v1/projects/{project_id}/reader-model`
 
 Returns the canonical backend-generated reader model for the project.

@@ -16,6 +16,11 @@ Run API, worker, and Flutter app directly during development unless containerize
 - Python 3.12 toolchain
 - Flutter SDK
 
+Notes:
+
+- MP3 and other compressed audio preprocessing currently requires both `ffmpeg` and `ffprobe`.
+- WAV segmentation works without `ffmpeg`, which is how the automated tests exercise the transcription pipeline.
+
 ## Standard Local Stack
 
 - `compose.yaml` runs PostgreSQL, Redis, and MinIO
@@ -51,6 +56,12 @@ Backend baseline:
 - `S3_SECRET_ACCESS_KEY`
 - `S3_BUCKET`
 - `ALIGNMENT_WORKDIR`
+- `OBJECT_STORE_MODE`
+- `FFMPEG_BIN`
+- `FFPROBE_BIN`
+- `AUDIO_CHUNK_DURATION_MS`
+- `TRANSCRIBER_PROVIDER`
+- `WHISPER_MODEL_NAME`
 
 Defaults are provided in [backend/.env.example](/home/eslam/Storage/Code/Sync/backend/.env.example).
 

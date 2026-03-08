@@ -119,3 +119,21 @@ class ReaderModelArtifact(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(32), default="generated")
     storage_path: Mapped[str] = mapped_column(Text)
     size_bytes: Mapped[int] = mapped_column(Integer)
+
+
+class TranscriptArtifact(Base, TimestampMixin):
+    __tablename__ = "transcript_artifacts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        index=True,
+    )
+    job_id: Mapped[str] = mapped_column(ForeignKey("alignment_jobs.id", ondelete="CASCADE"))
+    version: Mapped[str] = mapped_column(String(16), default="1.0")
+    status: Mapped[str] = mapped_column(String(32), default="generated")
+    language: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    segment_count: Mapped[int] = mapped_column(Integer, default=0)
+    word_count: Mapped[int] = mapped_column(Integer, default=0)
+    storage_path: Mapped[str] = mapped_column(Text)
+    size_bytes: Mapped[int] = mapped_column(Integer)

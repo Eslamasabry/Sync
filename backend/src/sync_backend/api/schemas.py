@@ -113,6 +113,17 @@ class ReaderModelResponse(BaseModel):
     model: dict[str, Any]
 
 
+class TranscriptArtifactResponse(BaseModel):
+    project_id: UUID
+    job_id: UUID
+    version: str
+    status: str
+    language: str | None
+    segment_count: int
+    word_count: int
+    payload: dict[str, Any]
+
+
 class EventEnvelope(BaseModel):
     type: str
     project_id: UUID
