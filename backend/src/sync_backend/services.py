@@ -12,6 +12,7 @@ from sync_backend.api.errors import ApiError, not_found
 from sync_backend.models import (
     AlignmentJob,
     Asset,
+    MatchArtifact,
     Project,
     ReaderModelArtifact,
     SyncArtifact,
@@ -281,6 +282,28 @@ def get_transcript_artifact_or_404(
         raise not_found(
             "transcript_not_found",
             "Transcript artifact was not found",
+            {"project_id": project_id, "job_id": job_id},
+        )
+    return artifact
+
+
+def get_match_artifact_or_404(
+    *,
+    session: Session,
+    project_id: str,
+    job_id: str,
+) -> MatchArtifact:
+    artifact = session.scalar(
+        select(MatchArtifact)
+        .where(MatchArtifact.project_id == project_id)
+        .where(MatchArtifact.job_id == job_id)
+        .order_by(MatchArtifact.created_at.desc())
+        .limit(1)
+    )
+    if artifact is None:
+        raise not_found(
+            "match_not_found",
+            "Match artifact was not found",
             {"project_id": project_id, "job_id": job_id},
         )
     return artifact

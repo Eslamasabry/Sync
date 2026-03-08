@@ -18,7 +18,9 @@ Run API, worker, and Flutter app directly during development unless containerize
 
 Notes:
 
-- MP3 and other compressed audio preprocessing currently requires both `ffmpeg` and `ffprobe`.
+- MP3 and other compressed audio preprocessing requires `ffmpeg`.
+- If host `ffmpeg` is missing, installing the backend `alignment` extra provides a vendored binary through `imageio-ffmpeg`.
+- If host `ffprobe` is missing, compressed-audio duration can still be read through `mutagen`.
 - WAV segmentation works without `ffmpeg`, which is how the automated tests exercise the transcription pipeline.
 
 ## Standard Local Stack
@@ -36,6 +38,13 @@ cp backend/.env.example backend/.env
 make dev-up
 make backend-install
 make backend-run
+```
+
+Optional alignment dependencies:
+
+```bash
+cd backend
+.venv/bin/pip install -e '.[alignment,dev]'
 ```
 
 Optional worker:

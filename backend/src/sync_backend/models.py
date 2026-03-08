@@ -102,6 +102,8 @@ class SyncArtifact(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(32), default="pending")
     download_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     inline_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    storage_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     project: Mapped[Project] = relationship(back_populates="sync_artifacts")
 
@@ -135,5 +137,23 @@ class TranscriptArtifact(Base, TimestampMixin):
     language: Mapped[str | None] = mapped_column(String(32), nullable=True)
     segment_count: Mapped[int] = mapped_column(Integer, default=0)
     word_count: Mapped[int] = mapped_column(Integer, default=0)
+    storage_path: Mapped[str] = mapped_column(Text)
+    size_bytes: Mapped[int] = mapped_column(Integer)
+
+
+class MatchArtifact(Base, TimestampMixin):
+    __tablename__ = "match_artifacts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        index=True,
+    )
+    job_id: Mapped[str] = mapped_column(ForeignKey("alignment_jobs.id", ondelete="CASCADE"))
+    version: Mapped[str] = mapped_column(String(16), default="1.0")
+    status: Mapped[str] = mapped_column(String(32), default="generated")
+    match_count: Mapped[int] = mapped_column(Integer, default=0)
+    gap_count: Mapped[int] = mapped_column(Integer, default=0)
+    average_confidence: Mapped[float | None] = mapped_column(nullable=True)
     storage_path: Mapped[str] = mapped_column(Text)
     size_bytes: Mapped[int] = mapped_column(Integer)

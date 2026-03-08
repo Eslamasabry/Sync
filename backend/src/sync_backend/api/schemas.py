@@ -124,6 +124,17 @@ class TranscriptArtifactResponse(BaseModel):
     payload: dict[str, Any]
 
 
+class MatchArtifactResponse(BaseModel):
+    project_id: UUID
+    job_id: UUID
+    version: str
+    status: str
+    match_count: int
+    gap_count: int
+    average_confidence: float | None
+    payload: dict[str, Any]
+
+
 class EventEnvelope(BaseModel):
     type: str
     project_id: UUID

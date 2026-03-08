@@ -102,18 +102,37 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["start_token_id", "end_token_id", "reason"],
+        "required": [
+          "start_ms",
+          "end_ms",
+          "reason",
+          "transcript_start_index",
+          "transcript_end_index",
+          "word_count"
+        ],
         "properties": {
-          "start_token_id": {
+          "start_ms": {
             "type": "integer",
             "minimum": 0
           },
-          "end_token_id": {
+          "end_ms": {
             "type": "integer",
             "minimum": 0
           },
           "reason": {
             "type": "string"
+          },
+          "transcript_start_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "transcript_end_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "word_count": {
+            "type": "integer",
+            "minimum": 1
           }
         },
         "additionalProperties": false

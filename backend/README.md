@@ -15,6 +15,7 @@ Planned modules:
 - health endpoint: `GET /v1/health`
 - Celery bootstrap: `sync_backend.workers.celery_app`
 - transcript worker task: `sync_backend.workers.transcription:transcribe_alignment_job_task`
+- end-to-end alignment task: `sync_backend.workers.pipeline:run_alignment_job_task`
 - tests: `pytest`
 
 ## Local Run
@@ -25,6 +26,19 @@ make dev-up
 make backend-install
 make backend-run
 ```
+
+Optional alignment dependencies:
+
+```bash
+cd backend
+.venv/bin/pip install -e '.[alignment,dev]'
+```
+
+Notes:
+
+- `imageio-ffmpeg` provides a vendored `ffmpeg` binary when the host machine does not have one installed.
+- `mutagen` is used as a duration-probe fallback when `ffprobe` is unavailable.
+- `whisperx` stays in the optional `alignment` extra because it pulls a large PyTorch stack.
 
 Useful commands from repo root:
 

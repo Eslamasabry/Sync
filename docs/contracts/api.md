@@ -143,9 +143,31 @@ Response shape:
 
 Returns sync artifact metadata and download URL or direct payload in dev mode.
 
+Response shape in dev mode:
+
+```json
+{
+  "project_id": "uuid",
+  "job_id": "uuid",
+  "version": "1.0",
+  "status": "generated",
+  "download_url": null,
+  "inline_payload": {
+    "book_id": "uuid",
+    "audio": [],
+    "tokens": [],
+    "gaps": []
+  }
+}
+```
+
 ### `GET /v1/projects/{project_id}/jobs/{job_id}/transcript`
 
 Returns the latest transcript artifact generated for the job.
+
+### `GET /v1/projects/{project_id}/jobs/{job_id}/matches`
+
+Returns the latest transcript-to-reader-model match artifact for the job.
 
 ### `GET /v1/projects/{project_id}/reader-model`
 

@@ -18,6 +18,7 @@ from sync_backend.api.schemas import (
     JobProgress,
     JobQuality,
     JobSummary,
+    MatchArtifactResponse,
     ProjectCreateRequest,
     ProjectCreateResponse,
     ProjectDetailResponse,
@@ -28,6 +29,7 @@ from sync_backend.api.schemas import (
 from sync_backend.models import (
     AlignmentJob,
     Asset,
+    MatchArtifact,
     ReaderModelArtifact,
     SyncArtifact,
     TranscriptArtifact,
@@ -40,6 +42,7 @@ from sync_backend.services import (
     get_job_or_404,
     get_latest_job,
     get_latest_sync_artifact,
+    get_match_artifact_or_404,
     get_project_or_404,
     get_reader_model_artifact_or_404,
     get_transcript_artifact_or_404,
@@ -138,6 +141,24 @@ def _transcript_response(
         language=artifact.language,
         segment_count=artifact.segment_count,
         word_count=artifact.word_count,
+        payload=object_store.read_json(artifact.storage_path),
+    )
+
+
+def _match_response(
+    *,
+    project_id: str,
+    artifact: MatchArtifact,
+) -> MatchArtifactResponse:
+    object_store = get_object_store()
+    return MatchArtifactResponse(
+        project_id=UUID(project_id),
+        job_id=UUID(artifact.job_id),
+        version=artifact.version,
+        status=artifact.status,
+        match_count=artifact.match_count,
+        gap_count=artifact.gap_count,
+        average_confidence=artifact.average_confidence,
         payload=object_store.read_json(artifact.storage_path),
     )
 
@@ -280,6 +301,23 @@ async def get_transcript_route(
         job_id=job_id,
     )
     return _transcript_response(project_id=project_id, artifact=artifact)
+
+
+@router.get(
+    "/{project_id}/jobs/{job_id}/matches",
+    response_model=MatchArtifactResponse,
+)
+async def get_match_route(
+    project_id: str,
+    job_id: str,
+    session: DbSession,
+) -> MatchArtifactResponse:
+    artifact = get_match_artifact_or_404(
+        session=session,
+        project_id=project_id,
+        job_id=job_id,
+    )
+    return _match_response(project_id=project_id, artifact=artifact)
 
 
 @router.get("/{project_id}/sync", response_model=SyncArtifactResponse)

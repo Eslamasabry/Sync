@@ -7,6 +7,7 @@ import wave
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
+from typing import cast
 
 from sync_backend.models import Asset
 from sync_backend.storage import FileObjectStore
@@ -116,11 +117,11 @@ class AudioPreprocessor:
         asset: Asset,
         source_path: Path,
     ) -> list[PreparedAudioSegment]:
-        ffmpeg_path = shutil.which(self.ffmpeg_bin)
+        ffmpeg_path = self._resolve_ffmpeg_path()
         ffprobe_path = shutil.which(self.ffprobe_bin)
-        if ffmpeg_path is None or ffprobe_path is None:
+        if ffmpeg_path is None:
             raise AudioProcessingError(
-                "ffmpeg and ffprobe are required for non-WAV audio preprocessing"
+                "ffmpeg is required for non-WAV audio preprocessing"
             )
 
         total_duration_ms = self._probe_duration_ms(
@@ -173,20 +174,47 @@ class AudioPreprocessor:
 
         return segments
 
-    def _probe_duration_ms(self, *, ffprobe_path: str, source_path: Path) -> int:
-        result = subprocess.run(
-            [
-                ffprobe_path,
-                "-v",
-                "error",
-                "-show_entries",
-                "format=duration",
-                "-of",
-                "default=noprint_wrappers=1:nokey=1",
-                str(source_path),
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        return int(float(result.stdout.strip()) * 1000)
+    def _resolve_ffmpeg_path(self) -> str | None:
+        ffmpeg_path = shutil.which(self.ffmpeg_bin)
+        if ffmpeg_path is not None:
+            return ffmpeg_path
+
+        if self.ffmpeg_bin != "ffmpeg":
+            return None
+
+        try:
+            from imageio_ffmpeg import get_ffmpeg_exe  # type: ignore[import-untyped]
+        except ImportError:
+            return None
+        return cast(str, get_ffmpeg_exe())
+
+    def _probe_duration_ms(self, *, ffprobe_path: str | None, source_path: Path) -> int:
+        if ffprobe_path is not None:
+            result = subprocess.run(
+                [
+                    ffprobe_path,
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    str(source_path),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            return int(float(result.stdout.strip()) * 1000)
+
+        try:
+            from mutagen import File as MutagenFile
+        except ImportError as exc:
+            raise AudioProcessingError(
+                "ffprobe is unavailable and mutagen is not installed for duration probing"
+            ) from exc
+
+        metadata = MutagenFile(source_path)
+        if metadata is None or metadata.info is None or not hasattr(metadata.info, "length"):
+            raise AudioProcessingError(f"Could not determine audio duration for {source_path.name}")
+        return int(float(metadata.info.length) * 1000)

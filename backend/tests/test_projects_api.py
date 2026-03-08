@@ -7,6 +7,9 @@ from io import BytesIO
 from fastapi.testclient import TestClient
 
 from sync_backend.alignment.audio import AudioPreprocessor
+from sync_backend.alignment.matching_pipeline import build_match_artifact
+from sync_backend.alignment.pipeline import run_alignment_job
+from sync_backend.alignment.sync_export import build_sync_artifact
 from sync_backend.alignment.transcription import StaticTranscriber
 from sync_backend.alignment.transcription_pipeline import transcribe_alignment_job
 from sync_backend.config import get_settings
@@ -227,6 +230,273 @@ def test_transcription_pipeline_generates_transcript_artifact(client: TestClient
     assert payload["job_id"] == job_id
     assert len(payload["segments"]) >= 2
     assert payload["segments"][0]["words"][0]["text"] == "call"
+
+
+def test_matching_pipeline_generates_match_artifact(client: TestClient) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Matching Project", "language": "en"},
+    ).json()["project_id"]
+
+    client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "epub"},
+        files={"file": ("book.epub", make_test_epub_bytes(), "application/epub+zip")},
+    )
+    audio_asset_id = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "audio"},
+        files={"file": ("narration.wav", make_test_wav_bytes(), "audio/wav")},
+    ).json()["asset_id"]
+
+    project_detail = client.get(f"/v1/projects/{project_id}").json()
+    book_asset_id = next(
+        asset["asset_id"] for asset in project_detail["assets"] if asset["kind"] == "epub"
+    )
+    job_id = client.post(
+        f"/v1/projects/{project_id}/jobs",
+        json={
+            "job_type": "alignment",
+            "book_asset_id": book_asset_id,
+            "audio_asset_ids": [audio_asset_id],
+        },
+    ).json()["job_id"]
+
+    settings = get_settings()
+    session = get_session_factory()()
+    try:
+        transcribe_alignment_job(
+            session=session,
+            project_id=project_id,
+            job_id=job_id,
+            object_store=get_object_store(),
+            preprocessor=AudioPreprocessor(
+                object_store=get_object_store(),
+                ffmpeg_bin=settings.ffmpeg_bin,
+                ffprobe_bin=settings.ffprobe_bin,
+                chunk_duration_ms=5_000,
+            ),
+            transcriber=StaticTranscriber("call me ishmael some years ago"),
+        )
+        artifact = build_match_artifact(
+            session=session,
+            project_id=project_id,
+            job_id=job_id,
+            object_store=get_object_store(),
+        )
+        assert artifact.match_count >= 5
+        assert artifact.gap_count == 0
+    finally:
+        session.close()
+
+    match_response = client.get(f"/v1/projects/{project_id}/jobs/{job_id}/matches")
+    assert match_response.status_code == 200
+    payload = match_response.json()["payload"]
+    assert payload["match_count"] >= 5
+    assert payload["gap_count"] == 0
+    assert payload["matches"][0]["location"]["section_id"] == "s1"
+
+
+def test_matching_pipeline_reports_gaps_for_mismatched_words(client: TestClient) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Mismatch Project", "language": "en"},
+    ).json()["project_id"]
+
+    client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "epub"},
+        files={"file": ("book.epub", make_test_epub_bytes(), "application/epub+zip")},
+    )
+    audio_asset_id = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "audio"},
+        files={"file": ("narration.wav", make_test_wav_bytes(), "audio/wav")},
+    ).json()["asset_id"]
+
+    project_detail = client.get(f"/v1/projects/{project_id}").json()
+    book_asset_id = next(
+        asset["asset_id"] for asset in project_detail["assets"] if asset["kind"] == "epub"
+    )
+    job_id = client.post(
+        f"/v1/projects/{project_id}/jobs",
+        json={
+            "job_type": "alignment",
+            "book_asset_id": book_asset_id,
+            "audio_asset_ids": [audio_asset_id],
+        },
+    ).json()["job_id"]
+
+    settings = get_settings()
+    session = get_session_factory()()
+    try:
+        transcribe_alignment_job(
+            session=session,
+            project_id=project_id,
+            job_id=job_id,
+            object_store=get_object_store(),
+            preprocessor=AudioPreprocessor(
+                object_store=get_object_store(),
+                ffmpeg_bin=settings.ffmpeg_bin,
+                ffprobe_bin=settings.ffprobe_bin,
+                chunk_duration_ms=500,
+            ),
+            transcriber=StaticTranscriber("mysterious sailor unknown phrase"),
+        )
+        artifact = build_match_artifact(
+            session=session,
+            project_id=project_id,
+            job_id=job_id,
+            object_store=get_object_store(),
+        )
+        assert artifact.gap_count >= 1
+    finally:
+        session.close()
+
+    job_response = client.get(f"/v1/projects/{project_id}/jobs/{job_id}")
+    assert job_response.status_code == 200
+    assert job_response.json()["quality"]["mismatch_ranges"]
+
+
+def test_sync_export_generates_sync_artifact(client: TestClient) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Sync Project", "language": "en"},
+    ).json()["project_id"]
+
+    client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "epub"},
+        files={"file": ("book.epub", make_test_epub_bytes(), "application/epub+zip")},
+    )
+    audio_asset_id = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "audio"},
+        files={"file": ("narration.wav", make_test_wav_bytes(), "audio/wav")},
+    ).json()["asset_id"]
+
+    project_detail = client.get(f"/v1/projects/{project_id}").json()
+    book_asset_id = next(
+        asset["asset_id"] for asset in project_detail["assets"] if asset["kind"] == "epub"
+    )
+    job_id = client.post(
+        f"/v1/projects/{project_id}/jobs",
+        json={
+            "job_type": "alignment",
+            "book_asset_id": book_asset_id,
+            "audio_asset_ids": [audio_asset_id],
+        },
+    ).json()["job_id"]
+
+    settings = get_settings()
+    session = get_session_factory()()
+    try:
+        transcribe_alignment_job(
+            session=session,
+            project_id=project_id,
+            job_id=job_id,
+            object_store=get_object_store(),
+            preprocessor=AudioPreprocessor(
+                object_store=get_object_store(),
+                ffmpeg_bin=settings.ffmpeg_bin,
+                ffprobe_bin=settings.ffprobe_bin,
+                chunk_duration_ms=5_000,
+            ),
+            transcriber=StaticTranscriber("call me ishmael some years ago"),
+        )
+        build_match_artifact(
+            session=session,
+            project_id=project_id,
+            job_id=job_id,
+            object_store=get_object_store(),
+        )
+        artifact = build_sync_artifact(
+            session=session,
+            project_id=project_id,
+            job_id=job_id,
+            object_store=get_object_store(),
+        )
+        assert artifact.inline_payload is not None
+        assert len(artifact.inline_payload["tokens"]) >= 5
+    finally:
+        session.close()
+
+    sync_response = client.get(f"/v1/projects/{project_id}/sync")
+    assert sync_response.status_code == 200
+    payload = sync_response.json()["inline_payload"]
+    assert payload["book_id"] == project_id
+    assert payload["audio"][0]["asset_id"] == audio_asset_id
+    assert payload["tokens"][0]["text"] == "call"
+    assert payload["gaps"] == []
+
+
+def test_alignment_pipeline_completes_job_and_offsets_multiple_audio_assets(
+    client: TestClient,
+) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Multipart Project", "language": "en"},
+    ).json()["project_id"]
+
+    client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "epub"},
+        files={"file": ("book.epub", make_test_epub_bytes(), "application/epub+zip")},
+    )
+    first_audio_asset_id = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "audio"},
+        files={"file": ("part1.wav", make_test_wav_bytes(duration_seconds=0.6), "audio/wav")},
+    ).json()["asset_id"]
+    second_audio_asset_id = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "audio"},
+        files={"file": ("part2.wav", make_test_wav_bytes(duration_seconds=0.6), "audio/wav")},
+    ).json()["asset_id"]
+
+    project_detail = client.get(f"/v1/projects/{project_id}").json()
+    book_asset_id = next(
+        asset["asset_id"] for asset in project_detail["assets"] if asset["kind"] == "epub"
+    )
+    job_id = client.post(
+        f"/v1/projects/{project_id}/jobs",
+        json={
+            "job_type": "alignment",
+            "book_asset_id": book_asset_id,
+            "audio_asset_ids": [first_audio_asset_id, second_audio_asset_id],
+        },
+    ).json()["job_id"]
+
+    settings = get_settings()
+    session = get_session_factory()()
+    try:
+        run_alignment_job(
+            session=session,
+            project_id=project_id,
+            job_id=job_id,
+            object_store=get_object_store(),
+            preprocessor=AudioPreprocessor(
+                object_store=get_object_store(),
+                ffmpeg_bin=settings.ffmpeg_bin,
+                ffprobe_bin=settings.ffprobe_bin,
+                chunk_duration_ms=400,
+            ),
+            transcriber=StaticTranscriber("call me ishmael some years ago"),
+        )
+    finally:
+        session.close()
+
+    job_response = client.get(f"/v1/projects/{project_id}/jobs/{job_id}")
+    assert job_response.status_code == 200
+    assert job_response.json()["status"] == "completed"
+    assert job_response.json()["progress"]["percent"] == 100
+
+    sync_payload = client.get(f"/v1/projects/{project_id}/sync").json()["inline_payload"]
+    assert len(sync_payload["audio"]) == 2
+    assert sync_payload["audio"][0]["asset_id"] == first_audio_asset_id
+    assert sync_payload["audio"][1]["asset_id"] == second_audio_asset_id
+    assert sync_payload["audio"][1]["offset_ms"] >= sync_payload["audio"][0]["duration_ms"]
+    assert sync_payload["tokens"][-1]["end_ms"] > sync_payload["tokens"][0]["start_ms"]
 
 
 def test_job_creation_requires_epub_asset(client: TestClient) -> None:

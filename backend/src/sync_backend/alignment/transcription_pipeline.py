@@ -8,6 +8,7 @@ from sync_backend.alignment.audio import AudioPreprocessor
 from sync_backend.alignment.transcription import (
     SegmentTranscriber,
     TranscriptSegment,
+    TranscriptWord,
     transcript_payload,
 )
 from sync_backend.models import TranscriptArtifact
@@ -38,21 +39,32 @@ def transcribe_alignment_job(
     session.commit()
 
     transcript_segments: list[TranscriptSegment] = []
+    timeline_offset_ms = 0
     for asset_index, audio_asset_id in enumerate(job.audio_asset_ids):
         asset = get_asset_or_404(session=session, asset_id=audio_asset_id)
         segments = preprocessor.prepare_asset(project_id=project_id, asset=asset)
+        asset_duration_ms = 0
 
         for segment in segments:
-            words = transcriber.transcribe_segment(segment)
+            words = [
+                TranscriptWord(
+                    text=word.text,
+                    start_ms=timeline_offset_ms + word.start_ms,
+                    end_ms=timeline_offset_ms + word.end_ms,
+                    confidence=word.confidence,
+                )
+                for word in transcriber.transcribe_segment(segment)
+            ]
             transcript_segments.append(
                 TranscriptSegment(
                     asset_id=segment.asset_id,
                     segment_index=segment.segment_index,
-                    start_ms=segment.start_ms,
-                    end_ms=segment.end_ms,
+                    start_ms=timeline_offset_ms + segment.start_ms,
+                    end_ms=timeline_offset_ms + segment.end_ms,
                     words=words,
                 )
             )
+            asset_duration_ms = max(asset_duration_ms, segment.end_ms)
 
         job.progress_stage = "transcription"
         job.progress_percent = min(
@@ -61,6 +73,7 @@ def transcribe_alignment_job(
         )
         session.add(job)
         session.commit()
+        timeline_offset_ms += asset_duration_ms
 
     payload = transcript_payload(
         project_id=project_id,

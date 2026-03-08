@@ -43,9 +43,12 @@
   ],
   "gaps": [
     {
-      "start_token_id": 201,
-      "end_token_id": 224,
-      "reason": "narration_mismatch"
+      "start_ms": 442100,
+      "end_ms": 446900,
+      "reason": "narration_mismatch",
+      "transcript_start_index": 201,
+      "transcript_end_index": 224,
+      "word_count": 6
     }
   ]
 }
@@ -60,7 +63,7 @@
 - `language`: BCP 47 language tag when known
 - `audio`: list of source audio files with offsets for multipart books
 - `tokens`: aligned word tokens
-- `gaps`: known mismatch or skipped ranges
+- `gaps`: known mismatch or skipped ranges on the playback timeline
 
 ### Token
 
@@ -71,6 +74,15 @@
 - `end_ms`: exclusive token end time
 - `confidence`: 0 to 1 match quality indicator
 - `location`: reverse pointer into the canonical reading model
+
+### Gap
+
+- `start_ms`: inclusive playback start of the unmatched span
+- `end_ms`: exclusive playback end of the unmatched span
+- `reason`: stable mismatch reason code
+- `transcript_start_index`: first unmatched transcript token index
+- `transcript_end_index`: last unmatched transcript token index
+- `word_count`: number of unmatched transcript words represented by the span
 
 ## Compatibility Policy
 
