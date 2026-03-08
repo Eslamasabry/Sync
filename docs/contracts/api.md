@@ -118,6 +118,11 @@ Response:
 }
 ```
 
+Notes:
+
+- In the current backend, creating a job also dispatches background processing immediately when `APP_ENV != test`.
+- The backend uses the project `language` as a hint for speech transcription when the underlying transcriber supports it.
+
 ### `GET /v1/projects/{project_id}`
 
 Returns project metadata and latest job summary.

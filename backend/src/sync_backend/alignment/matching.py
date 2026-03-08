@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Any
 
+from sync_backend.alignment.epub import TOKEN_RE, normalize_token
+
 
 @dataclass(slots=True)
 class ReaderTokenRef:
@@ -42,13 +44,20 @@ def flatten_transcript_words(transcript_payload: dict[str, Any]) -> list[dict[st
                     "asset_id": segment["asset_id"],
                     "segment_index": segment["segment_index"],
                     "text": word["text"],
-                    "normalized": str(word["text"]).strip().lower(),
+                    "normalized": normalize_transcript_word(str(word["text"])),
                     "start_ms": word["start_ms"],
                     "end_ms": word["end_ms"],
                     "confidence": word["confidence"],
                 }
             )
     return words
+
+
+def normalize_transcript_word(word: str) -> str:
+    matches = TOKEN_RE.findall(word)
+    if not matches:
+        return normalize_token(word)
+    return " ".join(normalize_token(match) for match in matches)
 
 
 def _ratio(left: str, right: str) -> float:
@@ -179,6 +188,7 @@ def match_transcript_to_reader_model(
 
     matches.sort(key=lambda item: item["start_ms"])
     gaps.sort(key=lambda item: item["start_ms"])
+    _classify_boundary_gaps(matches=matches, gaps=gaps)
     average_confidence = (
         sum(match["confidence"] for match in matches) / len(matches) if matches else None
     )
@@ -193,3 +203,22 @@ def match_transcript_to_reader_model(
         "matches": matches,
         "gaps": gaps,
     }
+
+
+def _classify_boundary_gaps(
+    *,
+    matches: list[dict[str, Any]],
+    gaps: list[dict[str, Any]],
+) -> None:
+    if not matches:
+        return
+
+    first_match_index = min(int(match["transcript_index"]) for match in matches)
+    last_match_index = max(int(match["transcript_index"]) for match in matches)
+
+    for gap in gaps:
+        transcript_index = int(gap["transcript_index"])
+        if transcript_index < first_match_index:
+            gap["reason"] = "audiobook_front_matter"
+        elif transcript_index > last_match_index:
+            gap["reason"] = "audiobook_end_matter"

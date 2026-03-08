@@ -45,7 +45,7 @@
     {
       "start_ms": 442100,
       "end_ms": 446900,
-      "reason": "narration_mismatch",
+      "reason": "audiobook_front_matter",
       "transcript_start_index": 201,
       "transcript_end_index": 224,
       "word_count": 6
@@ -80,6 +80,7 @@
 - `start_ms`: inclusive playback start of the unmatched span
 - `end_ms`: exclusive playback end of the unmatched span
 - `reason`: stable mismatch reason code
+  - supported MVP codes: `audiobook_front_matter`, `narration_mismatch`, `audiobook_end_matter`
 - `transcript_start_index`: first unmatched transcript token index
 - `transcript_end_index`: last unmatched transcript token index
 - `word_count`: number of unmatched transcript words represented by the span

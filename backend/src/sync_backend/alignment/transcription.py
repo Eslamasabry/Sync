@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from dataclasses import asdict, dataclass
 from typing import Any, Protocol
 
@@ -36,6 +37,9 @@ class StaticTranscriber:
     def __init__(self, transcript_text: str) -> None:
         self.transcript_text = transcript_text
 
+    def set_preferred_language(self, language: str | None) -> None:
+        return
+
     def transcribe_segment(self, segment: PreparedAudioSegment) -> list[TranscriptWord]:
         words = [word for word in self.transcript_text.split() if word.strip()]
         if not words:
@@ -60,7 +64,8 @@ class StaticTranscriber:
 class WhisperXTranscriber:
     def __init__(self, *, settings: Settings) -> None:
         self.model_name = settings.whisper_model_name
-        self.language = None
+        self.detected_language = None
+        self.preferred_language: str | None = None
         self.device = "cpu"
         self.compute_type = "int8"
         self._loaded = False
@@ -69,22 +74,24 @@ class WhisperXTranscriber:
         self._align_model: Any | None = None
         self._metadata: Any | None = None
 
+    def set_preferred_language(self, language: str | None) -> None:
+        self.preferred_language = language
+
     def _ensure_loaded(self) -> None:
         if self._loaded:
             return
         try:
-            import whisperx  # type: ignore[import-not-found]
+            import whisperx  # type: ignore[import-untyped]
         except ImportError as exc:  # pragma: no cover
             raise TranscriptionError(
                 "WhisperX is not installed. Install it or set TRANSCRIBER_PROVIDER=static."
             ) from exc
 
-        try:
-            import torch  # type: ignore[import-not-found]
-        except ImportError:
-            torch = None
+        torch_mod: Any | None = None
+        with contextlib.suppress(ImportError):
+            import torch as torch_mod
 
-        if torch is not None and torch.cuda.is_available():
+        if torch_mod is not None and torch_mod.cuda.is_available():
             self.device = "cuda"
             self.compute_type = "float16"
 
@@ -102,11 +109,15 @@ class WhisperXTranscriber:
         assert self._model is not None
 
         audio = self._whisperx.load_audio(str(segment.absolute_path))
-        result = self._model.transcribe(audio, batch_size=1)
-        language = result.get("language", "en")
+        result = self._model.transcribe(
+            audio,
+            batch_size=1,
+            language=self.preferred_language,
+        )
+        language = result.get("language", self.preferred_language or "en")
 
-        if self._align_model is None or self.language != language:
-            self.language = language
+        if self._align_model is None or self.detected_language != language:
+            self.detected_language = language
             self._align_model, self._metadata = self._whisperx.load_align_model(
                 language_code=language,
                 device=self.device,
