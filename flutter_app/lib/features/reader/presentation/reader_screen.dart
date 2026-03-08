@@ -1,22 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sync_flutter/core/theme/sync_theme.dart';
+import 'package:sync_flutter/features/reader/data/reader_repository.dart';
 import 'package:sync_flutter/features/reader/domain/reader_model.dart';
 import 'package:sync_flutter/features/reader/domain/sync_artifact.dart';
-import 'package:sync_flutter/features/reader/state/reader_session_controller.dart';
+import 'package:sync_flutter/features/reader/state/reader_playback_controller.dart';
+import 'package:sync_flutter/features/reader/state/reader_project_provider.dart';
 
 class ReaderScreen extends ConsumerWidget {
   const ReaderScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final session = ref.watch(readerSessionProvider);
-    final controller = ref.read(readerSessionProvider.notifier);
+    final project = ref.watch(readerProjectProvider);
+    final bundle = project.asData?.value;
+    final playback = ref.watch(readerPlaybackProvider);
+    final controller = ref.read(readerPlaybackProvider.notifier);
     final palette = ReaderPalette.of(context);
-    final syncIndex = {
-      for (final token in session.syncArtifact.tokens)
-        token.location.locationKey: token,
-    };
 
     return Scaffold(
       body: DecoratedBox(
@@ -43,10 +43,22 @@ class ReaderScreen extends ConsumerWidget {
                             style: Theme.of(context).textTheme.headlineMedium,
                           ),
                           const SizedBox(height: 4),
-                          Text(
-                            session.readerModel.title,
-                            style: Theme.of(context).textTheme.titleLarge
-                                ?.copyWith(color: palette.textMuted),
+                          project.when(
+                            data: (bundle) => Text(
+                              bundle.readerModel.title,
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(color: palette.textMuted),
+                            ),
+                            loading: () => Text(
+                              'Loading project',
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(color: palette.textMuted),
+                            ),
+                            error: (_, _) => Text(
+                              'Project unavailable',
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(color: palette.error),
+                            ),
                           ),
                         ],
                       ),
@@ -54,12 +66,12 @@ class ReaderScreen extends ConsumerWidget {
                     FilledButton.tonalIcon(
                       onPressed: controller.toggleTheme,
                       icon: Icon(
-                        session.themeMode == ThemeMode.light
+                        playback.themeMode == ThemeMode.light
                             ? Icons.nightlight_round
                             : Icons.wb_sunny_outlined,
                       ),
                       label: Text(
-                        session.themeMode == ThemeMode.light
+                        playback.themeMode == ThemeMode.light
                             ? 'Night'
                             : 'Paper',
                       ),
@@ -68,45 +80,16 @@ class ReaderScreen extends ConsumerWidget {
                 ),
               ),
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          for (final section
-                              in session.readerModel.sections) ...[
-                            if (section.title != null)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 20),
-                                child: Text(
-                                  section.title!,
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.headlineMedium,
-                                ),
-                              ),
-                            for (final paragraph in section.paragraphs)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 18),
-                                child: _ParagraphBlock(
-                                  section: section,
-                                  paragraph: paragraph,
-                                  activeLocationKey: session.activeLocationKey,
-                                  syncIndex: syncIndex,
-                                  onTokenTap: (token) {
-                                    if (token != null) {
-                                      controller.seekToToken(token);
-                                    }
-                                  },
-                                ),
-                              ),
-                          ],
-                        ],
-                      ),
-                    ),
+                child: project.when(
+                  data: (bundle) => _ReaderLoadedView(
+                    bundle: bundle,
+                    playback: playback,
+                    onTokenTap: (token) => controller.seekTo(token.startMs),
+                  ),
+                  loading: () => const _ReaderLoadingView(),
+                  error: (error, _) => _ReaderErrorView(
+                    message: error.toString(),
+                    onRetry: () => ref.invalidate(readerProjectProvider),
                   ),
                 ),
               ),
@@ -117,27 +100,37 @@ class ReaderScreen extends ConsumerWidget {
                     padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
                     child: Column(
                       children: [
+                        if (bundle != null)
+                          _SourceBanner(
+                            source: bundle.source,
+                            onRefresh: () =>
+                                ref.invalidate(readerProjectProvider),
+                          ),
+                        if (bundle != null) const SizedBox(height: 12),
                         Row(
                           children: [
                             Expanded(
                               child: Text(
-                                _formatMs(session.positionMs),
+                                _formatMs(playback.positionMs),
                                 style: Theme.of(context).textTheme.labelLarge,
                               ),
                             ),
                             Text(
-                              '${session.speed.toStringAsFixed(2)}x',
+                              '${playback.speed.toStringAsFixed(2)}x',
                               style: Theme.of(context).textTheme.labelLarge
                                   ?.copyWith(color: palette.textMuted),
                             ),
                           ],
                         ),
                         Slider(
-                          value: session.positionMs
-                              .clamp(0, session.syncArtifact.totalDurationMs)
+                          value: playback.positionMs
+                              .clamp(
+                                0,
+                                bundle?.syncArtifact.totalDurationMs ?? 0,
+                              )
                               .toDouble(),
-                          max: session.syncArtifact.totalDurationMs > 0
-                              ? session.syncArtifact.totalDurationMs.toDouble()
+                          max: (bundle?.syncArtifact.totalDurationMs ?? 0) > 0
+                              ? bundle!.syncArtifact.totalDurationMs.toDouble()
                               : 1,
                           onChanged: (value) =>
                               controller.seekTo(value.round()),
@@ -151,20 +144,24 @@ class ReaderScreen extends ConsumerWidget {
                             const SizedBox(width: 12),
                             Expanded(
                               child: FilledButton.icon(
-                                onPressed: controller.togglePlayback,
+                                onPressed: bundle != null
+                                    ? () => controller.togglePlayback(
+                                        bundle.syncArtifact.totalDurationMs,
+                                      )
+                                    : null,
                                 icon: Icon(
-                                  session.isPlaying
+                                  playback.isPlaying
                                       ? Icons.pause_rounded
                                       : Icons.play_arrow_rounded,
                                 ),
                                 label: Text(
-                                  session.isPlaying ? 'Pause' : 'Play',
+                                  playback.isPlaying ? 'Pause' : 'Play',
                                 ),
                               ),
                             ),
                             const SizedBox(width: 12),
                             PopupMenuButton<double>(
-                              initialValue: session.speed,
+                              initialValue: playback.speed,
                               onSelected: controller.setSpeed,
                               itemBuilder: (context) => const [
                                 PopupMenuItem(value: 0.8, child: Text('0.8x')),
@@ -196,6 +193,154 @@ class ReaderScreen extends ConsumerWidget {
     final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
     final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
+  }
+}
+
+class _ReaderLoadedView extends StatelessWidget {
+  const _ReaderLoadedView({
+    required this.bundle,
+    required this.playback,
+    required this.onTokenTap,
+  });
+
+  final ReaderProjectBundle bundle;
+  final ReaderPlaybackState playback;
+  final ValueChanged<SyncToken> onTokenTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final syncIndex = {
+      for (final token in bundle.syncArtifact.tokens)
+        token.location.locationKey: token,
+    };
+    final activeLocationKey = _activeToken(
+      bundle.syncArtifact,
+      playback.positionMs,
+    )?.location.locationKey;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final section in bundle.readerModel.sections) ...[
+                if (section.title != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 20),
+                    child: Text(
+                      section.title!,
+                      style: Theme.of(context).textTheme.headlineMedium,
+                    ),
+                  ),
+                for (final paragraph in section.paragraphs)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 18),
+                    child: _ParagraphBlock(
+                      section: section,
+                      paragraph: paragraph,
+                      activeLocationKey: activeLocationKey,
+                      syncIndex: syncIndex,
+                      onTokenTap: (token) {
+                        if (token != null) {
+                          onTokenTap(token);
+                        }
+                      },
+                    ),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static SyncToken? _activeToken(SyncArtifact artifact, int positionMs) {
+    for (final token in artifact.tokens) {
+      if (positionMs >= token.startMs && positionMs < token.endMs) {
+        return token;
+      }
+    }
+    if (artifact.tokens.isNotEmpty &&
+        positionMs >= artifact.tokens.last.endMs) {
+      return artifact.tokens.last;
+    }
+    return null;
+  }
+}
+
+class _ReaderLoadingView extends StatelessWidget {
+  const _ReaderLoadingView();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(child: CircularProgressIndicator());
+  }
+}
+
+class _ReaderErrorView extends StatelessWidget {
+  const _ReaderErrorView({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Reader failed to load',
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 12),
+            Text(message, textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            FilledButton(onPressed: onRetry, child: const Text('Retry')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SourceBanner extends StatelessWidget {
+  const _SourceBanner({required this.source, required this.onRefresh});
+
+  final ReaderContentSource source;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final isFallback = source == ReaderContentSource.demoFallback;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: isFallback ? palette.accentSoft : palette.backgroundBase,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              isFallback
+                  ? 'Demo data loaded because the API is unavailable.'
+                  : 'Backend project loaded.',
+            ),
+          ),
+          TextButton(onPressed: onRefresh, child: const Text('Refresh')),
+        ],
+      ),
+    );
   }
 }
 
