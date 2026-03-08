@@ -19,9 +19,19 @@ Planned modules:
 ## Local Run
 
 ```bash
-cd backend
-python -m pip install -e .[dev]
-uvicorn sync_backend.main:app --reload
+cp backend/.env.example backend/.env
+make dev-up
+make backend-install
+make backend-run
+```
+
+Useful commands from repo root:
+
+```bash
+make backend-test
+make backend-lint
+make backend-typecheck
+make worker-run
 ```
 
 Implementation must follow:

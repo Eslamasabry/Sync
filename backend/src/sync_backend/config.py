@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     )
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
     s3_endpoint_url: str = Field(default="http://localhost:9000", alias="S3_ENDPOINT_URL")
+    s3_access_key_id: str = Field(default="minioadmin", alias="S3_ACCESS_KEY_ID")
+    s3_secret_access_key: str = Field(default="minioadmin", alias="S3_SECRET_ACCESS_KEY")
     s3_bucket: str = Field(default="sync-dev", alias="S3_BUCKET")
     alignment_workdir: str = Field(default="./artifacts", alias="ALIGNMENT_WORKDIR")
 

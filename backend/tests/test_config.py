@@ -1,7 +1,9 @@
+from pytest import MonkeyPatch
+
 from sync_backend.config import get_settings
 
 
-def test_settings_read_environment(monkeypatch) -> None:
+def test_settings_read_environment(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("LOG_LEVEL", "debug")
 

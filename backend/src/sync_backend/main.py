@@ -4,8 +4,10 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI
 
+from sync_backend.api.errors import ApiError, api_error_handler
 from sync_backend.api.router import build_api_router
 from sync_backend.config import get_settings
+from sync_backend.db import init_db
 from sync_backend.logging import configure_logging
 
 
@@ -13,6 +15,7 @@ from sync_backend.logging import configure_logging
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.log_level)
+    init_db()
     structlog.get_logger(__name__).info(
         "app.startup",
         environment=settings.app_env,
@@ -30,6 +33,7 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+    app.add_exception_handler(ApiError, api_error_handler)
     app.include_router(build_api_router(), prefix=settings.api_v1_prefix)
     return app
 

@@ -1,0 +1,200 @@
+from __future__ import annotations
+
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, status
+from sqlalchemy.orm import Session
+
+from sync_backend.api.dependencies import get_db_session
+from sync_backend.api.realtime import broker
+from sync_backend.api.schemas import (
+    AssetCreateRequest,
+    AssetCreateResponse,
+    AssetSummary,
+    JobCreateRequest,
+    JobCreateResponse,
+    JobDetailResponse,
+    JobProgress,
+    JobQuality,
+    JobSummary,
+    ProjectCreateRequest,
+    ProjectCreateResponse,
+    ProjectDetailResponse,
+    SyncArtifactResponse,
+)
+from sync_backend.models import AlignmentJob, Asset, SyncArtifact
+from sync_backend.services import (
+    cancel_job,
+    create_alignment_job,
+    create_project,
+    get_job_or_404,
+    get_latest_job,
+    get_latest_sync_artifact,
+    get_project_or_404,
+    parse_uuid,
+    register_asset,
+)
+
+router = APIRouter(prefix="/projects", tags=["projects"])
+DbSession = Annotated[Session, Depends(get_db_session)]
+
+
+def _as_uuid(value: str | None) -> UUID | None:
+    return UUID(value) if value is not None else None
+
+
+def _asset_summary(asset: Asset) -> AssetSummary:
+    return AssetSummary(
+        asset_id=UUID(asset.id),
+        kind=asset.kind,
+        filename=asset.filename,
+        content_type=asset.content_type,
+        upload_mode=asset.upload_mode,
+        status=asset.status,
+        created_at=asset.created_at,
+    )
+
+
+def _job_summary(job: AlignmentJob) -> JobSummary:
+    return JobSummary(
+        job_id=UUID(job.id),
+        job_type=job.job_type,
+        status=job.status,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+    )
+
+
+def _job_detail(job: AlignmentJob) -> JobDetailResponse:
+    return JobDetailResponse(
+        job_id=UUID(job.id),
+        status=job.status,
+        progress=JobProgress(stage=job.progress_stage, percent=job.progress_percent),
+        quality=JobQuality(
+            match_confidence=job.match_confidence,
+            mismatch_ranges=job.mismatch_ranges,
+        ),
+        book_asset_id=UUID(job.book_asset_id),
+        audio_asset_ids=[UUID(asset_id) for asset_id in job.audio_asset_ids],
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+    )
+
+
+def _sync_response(project_id: str, artifact: SyncArtifact) -> SyncArtifactResponse:
+    return SyncArtifactResponse(
+        project_id=UUID(project_id),
+        job_id=_as_uuid(artifact.job_id),
+        version=artifact.version,
+        status=artifact.status,
+        download_url=artifact.download_url,
+        inline_payload=artifact.inline_payload,
+        created_at=artifact.created_at,
+        updated_at=artifact.updated_at,
+    )
+
+
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=ProjectCreateResponse)
+async def create_project_route(
+    payload: ProjectCreateRequest,
+    session: DbSession,
+) -> ProjectCreateResponse:
+    project = create_project(session=session, title=payload.title, language=payload.language)
+    return ProjectCreateResponse(
+        project_id=UUID(project.id),
+        status=project.status,
+        created_at=project.created_at,
+    )
+
+
+@router.post(
+    "/{project_id}/assets",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AssetCreateResponse,
+)
+async def register_asset_route(
+    project_id: str,
+    payload: AssetCreateRequest,
+    session: DbSession,
+) -> AssetCreateResponse:
+    asset = register_asset(
+        session=session,
+        project_id=project_id,
+        kind=payload.kind,
+        filename=payload.filename,
+        content_type=payload.content_type,
+    )
+    return AssetCreateResponse(
+        asset_id=UUID(asset.id),
+        upload_mode=asset.upload_mode,
+        status=asset.status,
+    )
+
+
+@router.post(
+    "/{project_id}/jobs",
+    status_code=status.HTTP_201_CREATED,
+    response_model=JobCreateResponse,
+)
+async def create_job_route(
+    project_id: str,
+    payload: JobCreateRequest,
+    session: DbSession,
+) -> JobCreateResponse:
+    job = create_alignment_job(
+        session=session,
+        project_id=project_id,
+        book_asset_id=parse_uuid(payload.book_asset_id),
+        audio_asset_ids=[parse_uuid(asset_id) for asset_id in payload.audio_asset_ids],
+    )
+    await broker.broadcast(
+        project_id=project_id,
+        event_type="job.queued",
+        job_id=job.id,
+        payload={"stage": job.progress_stage, "percent": job.progress_percent},
+    )
+    return JobCreateResponse(job_id=UUID(job.id), status=job.status)
+
+
+@router.get("/{project_id}", response_model=ProjectDetailResponse)
+async def get_project_route(project_id: str, session: DbSession) -> ProjectDetailResponse:
+    project = get_project_or_404(session=session, project_id=project_id)
+    latest_job = get_latest_job(session=session, project_id=project_id)
+    return ProjectDetailResponse(
+        project_id=UUID(project.id),
+        title=project.title,
+        language=project.language,
+        status=project.status,
+        created_at=project.created_at,
+        updated_at=project.updated_at,
+        assets=[
+            _asset_summary(asset)
+            for asset in sorted(project.assets, key=lambda asset: asset.created_at)
+        ],
+        latest_job=_job_summary(latest_job) if latest_job else None,
+    )
+
+
+@router.get("/{project_id}/jobs/{job_id}", response_model=JobDetailResponse)
+async def get_job_route(project_id: str, job_id: str, session: DbSession) -> JobDetailResponse:
+    job = get_job_or_404(session=session, project_id=project_id, job_id=job_id)
+    return _job_detail(job)
+
+
+@router.get("/{project_id}/sync", response_model=SyncArtifactResponse)
+async def get_sync_route(project_id: str, session: DbSession) -> SyncArtifactResponse:
+    artifact = get_latest_sync_artifact(session=session, project_id=project_id)
+    return _sync_response(project_id, artifact)
+
+
+@router.post("/{project_id}/jobs/{job_id}/cancel", response_model=JobCreateResponse)
+async def cancel_job_route(project_id: str, job_id: str, session: DbSession) -> JobCreateResponse:
+    job = cancel_job(session=session, project_id=project_id, job_id=job_id)
+    await broker.broadcast(
+        project_id=project_id,
+        event_type="job.cancelled",
+        job_id=job.id,
+        payload={"stage": job.progress_stage, "percent": job.progress_percent},
+    )
+    return JobCreateResponse(job_id=UUID(job.id), status=job.status)
