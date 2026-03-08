@@ -1,0 +1,243 @@
+import 'package:sync_flutter/features/reader/domain/reader_model.dart';
+import 'package:sync_flutter/features/reader/domain/sync_artifact.dart';
+
+final demoReaderModel = ReaderModel.fromJson({
+  'book_id': 'demo-book',
+  'title': 'Moby-Dick',
+  'language': 'en',
+  'sections': [
+    {
+      'id': 's1',
+      'title': 'Loomings',
+      'order': 0,
+      'paragraphs': [
+        {
+          'index': 0,
+          'tokens': [
+            {'index': 0, 'text': 'Call', 'normalized': 'call', 'cfi': '/6/2/4'},
+            {'index': 1, 'text': 'me', 'normalized': 'me', 'cfi': '/6/2/6'},
+            {
+              'index': 2,
+              'text': 'Ishmael.',
+              'normalized': 'ishmael',
+              'cfi': '/6/2/8',
+            },
+          ],
+        },
+        {
+          'index': 1,
+          'tokens': [
+            {'index': 0, 'text': 'Some', 'normalized': 'some', 'cfi': '/6/4/2'},
+            {
+              'index': 1,
+              'text': 'years',
+              'normalized': 'years',
+              'cfi': '/6/4/4',
+            },
+            {'index': 2, 'text': 'ago', 'normalized': 'ago', 'cfi': '/6/4/6'},
+            {
+              'index': 3,
+              'text': 'never',
+              'normalized': 'never',
+              'cfi': '/6/4/8',
+            },
+            {
+              'index': 4,
+              'text': 'mind',
+              'normalized': 'mind',
+              'cfi': '/6/4/10',
+            },
+            {'index': 5, 'text': 'how', 'normalized': 'how', 'cfi': '/6/4/12'},
+            {
+              'index': 6,
+              'text': 'long',
+              'normalized': 'long',
+              'cfi': '/6/4/14',
+            },
+            {
+              'index': 7,
+              'text': 'precisely.',
+              'normalized': 'precisely',
+              'cfi': '/6/4/16',
+            },
+          ],
+        },
+      ],
+    },
+  ],
+});
+
+final demoSyncArtifact = SyncArtifact.fromJson({
+  'version': '1.0',
+  'book_id': 'demo-book',
+  'language': 'en',
+  'audio': [
+    {'asset_id': 'audio-demo', 'offset_ms': 0, 'duration_ms': 3520},
+  ],
+  'tokens': [
+    {
+      'id': 0,
+      'text': 'Call',
+      'normalized': 'call',
+      'start_ms': 0,
+      'end_ms': 340,
+      'confidence': 1.0,
+      'location': {
+        'section_id': 's1',
+        'paragraph_index': 0,
+        'token_index': 0,
+        'cfi': '/6/2/4',
+      },
+    },
+    {
+      'id': 1,
+      'text': 'me',
+      'normalized': 'me',
+      'start_ms': 340,
+      'end_ms': 610,
+      'confidence': 1.0,
+      'location': {
+        'section_id': 's1',
+        'paragraph_index': 0,
+        'token_index': 1,
+        'cfi': '/6/2/6',
+      },
+    },
+    {
+      'id': 2,
+      'text': 'Ishmael.',
+      'normalized': 'ishmael',
+      'start_ms': 610,
+      'end_ms': 1100,
+      'confidence': 1.0,
+      'location': {
+        'section_id': 's1',
+        'paragraph_index': 0,
+        'token_index': 2,
+        'cfi': '/6/2/8',
+      },
+    },
+    {
+      'id': 3,
+      'text': 'Some',
+      'normalized': 'some',
+      'start_ms': 1400,
+      'end_ms': 1670,
+      'confidence': 1.0,
+      'location': {
+        'section_id': 's1',
+        'paragraph_index': 1,
+        'token_index': 0,
+        'cfi': '/6/4/2',
+      },
+    },
+    {
+      'id': 4,
+      'text': 'years',
+      'normalized': 'years',
+      'start_ms': 1670,
+      'end_ms': 1950,
+      'confidence': 1.0,
+      'location': {
+        'section_id': 's1',
+        'paragraph_index': 1,
+        'token_index': 1,
+        'cfi': '/6/4/4',
+      },
+    },
+    {
+      'id': 5,
+      'text': 'ago',
+      'normalized': 'ago',
+      'start_ms': 1950,
+      'end_ms': 2200,
+      'confidence': 1.0,
+      'location': {
+        'section_id': 's1',
+        'paragraph_index': 1,
+        'token_index': 2,
+        'cfi': '/6/4/6',
+      },
+    },
+    {
+      'id': 6,
+      'text': 'never',
+      'normalized': 'never',
+      'start_ms': 2200,
+      'end_ms': 2460,
+      'confidence': 1.0,
+      'location': {
+        'section_id': 's1',
+        'paragraph_index': 1,
+        'token_index': 3,
+        'cfi': '/6/4/8',
+      },
+    },
+    {
+      'id': 7,
+      'text': 'mind',
+      'normalized': 'mind',
+      'start_ms': 2460,
+      'end_ms': 2700,
+      'confidence': 1.0,
+      'location': {
+        'section_id': 's1',
+        'paragraph_index': 1,
+        'token_index': 4,
+        'cfi': '/6/4/10',
+      },
+    },
+    {
+      'id': 8,
+      'text': 'how',
+      'normalized': 'how',
+      'start_ms': 2700,
+      'end_ms': 2950,
+      'confidence': 1.0,
+      'location': {
+        'section_id': 's1',
+        'paragraph_index': 1,
+        'token_index': 5,
+        'cfi': '/6/4/12',
+      },
+    },
+    {
+      'id': 9,
+      'text': 'long',
+      'normalized': 'long',
+      'start_ms': 2950,
+      'end_ms': 3220,
+      'confidence': 1.0,
+      'location': {
+        'section_id': 's1',
+        'paragraph_index': 1,
+        'token_index': 6,
+        'cfi': '/6/4/14',
+      },
+    },
+    {
+      'id': 10,
+      'text': 'precisely.',
+      'normalized': 'precisely',
+      'start_ms': 3220,
+      'end_ms': 3520,
+      'confidence': 1.0,
+      'location': {
+        'section_id': 's1',
+        'paragraph_index': 1,
+        'token_index': 7,
+        'cfi': '/6/4/16',
+      },
+    },
+  ],
+  'gaps': [
+    {
+      'start_ms': 1100,
+      'end_ms': 1400,
+      'reason': 'narration_pause',
+      'transcript_start_index': 3,
+      'transcript_end_index': 3,
+      'word_count': 1,
+    },
+  ],
+});
