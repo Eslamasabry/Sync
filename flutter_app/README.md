@@ -15,6 +15,16 @@ Current baseline:
 - local playback/theme controller separated from remote content loading
 - sync-driven token highlighting UI scaffold
 
+## CI Expectations
+
+GitHub Actions validate the Flutter app with:
+
+- `dart format --output=none --set-exit-if-changed lib test`
+- `flutter analyze`
+- `flutter test`
+
+Run those locally before opening a release-facing PR.
+
 ## Runtime Inputs
 
 The app currently reads two compile-time values:
@@ -99,7 +109,7 @@ For a complete smoke run, prefer the repo scripts documented in [local-run.md](/
 
 ## Production-Adjacent Usage Notes
 
-- The current backend does not add CORS middleware, so Flutter web should be treated as unsupported unless you add a same-origin reverse proxy or explicit CORS support.
+- Browser clients require backend CORS configuration through `CORS_ALLOW_ORIGINS` or `CORS_ALLOW_ORIGIN_REGEX`.
 - Reverse proxies must pass both HTTP and WebSocket traffic for `/v1/ws/projects/{project_id}`.
 - Use `https://` in `SYNC_API_BASE_URL` for deployed environments so the client upgrades to `wss://` automatically.
 - The client assumes uploaded audio is streamable from `GET /v1/projects/{project_id}/assets/{asset_id}/content`.

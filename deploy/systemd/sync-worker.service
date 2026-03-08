@@ -1,0 +1,18 @@
+[Unit]
+Description=Sync Celery Worker
+After=network.target postgresql.service redis-server.service
+Wants=postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=sync
+Group=sync
+WorkingDirectory=/opt/sync/backend
+EnvironmentFile=/etc/sync/backend.env
+ExecStart=/opt/sync/backend/.venv/bin/celery -A sync_backend.workers.celery_app:celery_app worker --loglevel=info
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

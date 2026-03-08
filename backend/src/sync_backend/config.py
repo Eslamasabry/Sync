@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     app_env: str = Field(default="development", alias="APP_ENV")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     debug: bool = Field(default=False, alias="DEBUG")
+    enable_gzip: bool = Field(default=True, alias="ENABLE_GZIP")
+    gzip_minimum_size: int = Field(default=500, alias="GZIP_MINIMUM_SIZE")
     api_v1_prefix: str = "/v1"
     health_path: str = "/health"
 
@@ -29,6 +31,18 @@ class Settings(BaseSettings):
     transcriber_provider: str = Field(default="whisperx", alias="TRANSCRIBER_PROVIDER")
     whisper_model_name: str = Field(default="base", alias="WHISPER_MODEL_NAME")
     mock_transcript_text: str = Field(default="call me ishmael", alias="MOCK_TRANSCRIPT_TEXT")
+    cors_allow_origins: str = Field(default="", alias="CORS_ALLOW_ORIGINS")
+    cors_allow_origin_regex: str = Field(default="", alias="CORS_ALLOW_ORIGIN_REGEX")
+    cors_allow_methods: str = Field(
+        default="GET,POST,PUT,PATCH,DELETE,OPTIONS",
+        alias="CORS_ALLOW_METHODS",
+    )
+    cors_allow_headers: str = Field(
+        default="Authorization,Content-Type,Accept,Origin",
+        alias="CORS_ALLOW_HEADERS",
+    )
+    cors_allow_credentials: bool = Field(default=False, alias="CORS_ALLOW_CREDENTIALS")
+    trusted_hosts: str = Field(default="", alias="TRUSTED_HOSTS")
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -37,6 +51,33 @@ class Settings(BaseSettings):
         extra="ignore",
         populate_by_name=True,
     )
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return _parse_csv_env(self.cors_allow_origins)
+
+    @property
+    def cors_methods(self) -> list[str]:
+        values = _parse_csv_env(self.cors_allow_methods)
+        return values or ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+
+    @property
+    def cors_headers(self) -> list[str]:
+        values = _parse_csv_env(self.cors_allow_headers)
+        return values or ["Authorization", "Content-Type", "Accept", "Origin"]
+
+    @property
+    def cors_origin_regex(self) -> str | None:
+        value = self.cors_allow_origin_regex.strip()
+        return value or None
+
+    @property
+    def trusted_host_values(self) -> list[str]:
+        return _parse_csv_env(self.trusted_hosts)
+
+
+def _parse_csv_env(raw_value: str) -> list[str]:
+    return [value.strip() for value in raw_value.split(",") if value.strip()]
 
 
 @lru_cache(maxsize=1)

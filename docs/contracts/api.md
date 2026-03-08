@@ -7,6 +7,20 @@
 - UUIDs for public identifiers
 - Long-running work uses job resources, not blocking endpoints
 
+## Runtime Middleware
+
+The backend runtime supports deployment-facing middleware configuration through environment variables:
+
+- `ENABLE_GZIP` and `GZIP_MINIMUM_SIZE` control response compression.
+- `CORS_ALLOW_ORIGINS`, `CORS_ALLOW_ORIGIN_REGEX`, `CORS_ALLOW_METHODS`, `CORS_ALLOW_HEADERS`, and `CORS_ALLOW_CREDENTIALS` control browser cross-origin access.
+- `TRUSTED_HOSTS` enables host-header allowlisting for reverse-proxied or public deployments.
+
+Safe defaults:
+
+- GZip is enabled by default.
+- CORS is disabled by default until origins are configured.
+- trusted hosts are disabled by default until explicit hostnames or IPs are configured.
+
 ## Resource Model
 
 ### Main resources

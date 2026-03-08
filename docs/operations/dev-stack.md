@@ -90,6 +90,14 @@ make local-start
 Backend baseline:
 
 - `APP_ENV`
+- `ENABLE_GZIP`
+- `GZIP_MINIMUM_SIZE`
+- `CORS_ALLOW_ORIGINS`
+- `CORS_ALLOW_ORIGIN_REGEX`
+- `CORS_ALLOW_METHODS`
+- `CORS_ALLOW_HEADERS`
+- `CORS_ALLOW_CREDENTIALS`
+- `TRUSTED_HOSTS`
 - `DATABASE_URL`
 - `REDIS_URL`
 - `S3_ENDPOINT_URL`
@@ -106,6 +114,14 @@ Backend baseline:
 
 Defaults are provided in [backend/.env.example](/home/eslam/Storage/Code/Sync/backend/.env.example).
 
+Runtime notes:
+
+- `ENABLE_GZIP=true` is safe for most deployments and is enabled by default.
+- `CORS_ALLOW_ORIGINS` accepts a comma-separated list such as `https://reader.example.com,https://app.example.com`.
+- `CORS_ALLOW_ORIGIN_REGEX` is useful for preview or wildcard-style subdomain deployments.
+- If neither CORS variable is set, the backend does not permit browser cross-origin calls.
+- `TRUSTED_HOSTS` accepts a comma-separated list of allowed hostnames or IPs and is recommended behind a reverse proxy.
+
 ## Local Endpoints
 
 - API: `http://localhost:8000`
@@ -117,3 +133,12 @@ Defaults are provided in [backend/.env.example](/home/eslam/Storage/Code/Sync/ba
 ## Dev Rule
 
 Intermediate artifacts should be preserved in local development by default because they are required for debugging alignment quality.
+
+## Self-Hosted Release
+
+For a host-based open-source deployment instead of a local dev stack, use the templates and operator guide in:
+
+- [docs/operations/self-hosted.md](/home/eslam/Storage/Code/Sync/docs/operations/self-hosted.md)
+- [deploy/systemd/sync-api.service](/home/eslam/Storage/Code/Sync/deploy/systemd/sync-api.service)
+- [deploy/systemd/sync-worker.service](/home/eslam/Storage/Code/Sync/deploy/systemd/sync-worker.service)
+- [deploy/nginx/sync.conf](/home/eslam/Storage/Code/Sync/deploy/nginx/sync.conf)

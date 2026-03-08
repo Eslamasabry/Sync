@@ -63,9 +63,11 @@ docs/
 - Sync artifact contract: [docs/contracts/sync-format.md](/home/eslam/Storage/Code/Sync/docs/contracts/sync-format.md)
 - UI system: [docs/design/ui-theme.md](/home/eslam/Storage/Code/Sync/docs/design/ui-theme.md)
 - Engineering standards: [docs/engineering/standards.md](/home/eslam/Storage/Code/Sync/docs/engineering/standards.md)
+- Release readiness: [docs/engineering/release-readiness.md](/home/eslam/Storage/Code/Sync/docs/engineering/release-readiness.md)
 - Local dev stack: [docs/operations/dev-stack.md](/home/eslam/Storage/Code/Sync/docs/operations/dev-stack.md)
 - Local run guide: [docs/operations/local-run.md](/home/eslam/Storage/Code/Sync/docs/operations/local-run.md)
 - Regression runs: [docs/operations/regression.md](/home/eslam/Storage/Code/Sync/docs/operations/regression.md)
+- Self-hosted deployment: [docs/operations/self-hosted.md](/home/eslam/Storage/Code/Sync/docs/operations/self-hosted.md)
 
 ## First Build Targets
 
@@ -112,3 +114,19 @@ Supporting scripts live under [scripts/local](/home/eslam/Storage/Code/Sync/scri
 
 The public-domain regression gate persists machine-readable metrics under `tmp/public-domain-regression/metrics.json` and fails if baseline thresholds regress.
 The real corpus gate persists per-title artifacts under `tmp/regression-corpus/` and aggregates them into `tmp/regression-corpus/summary.json`.
+
+Self-hosted release templates live under [deploy](/home/eslam/Storage/Code/Sync/deploy):
+
+- [deploy/systemd/sync-api.service](/home/eslam/Storage/Code/Sync/deploy/systemd/sync-api.service)
+- [deploy/systemd/sync-worker.service](/home/eslam/Storage/Code/Sync/deploy/systemd/sync-worker.service)
+- [deploy/nginx/sync.conf](/home/eslam/Storage/Code/Sync/deploy/nginx/sync.conf)
+- [deploy/env/backend.env.example](/home/eslam/Storage/Code/Sync/deploy/env/backend.env.example)
+
+## CI And Release Gates
+
+GitHub Actions now enforce:
+
+- backend lint, typecheck, and tests
+- Flutter format, analyze, and widget tests
+
+Before calling a release candidate healthy, run the full checklist in [release-readiness.md](/home/eslam/Storage/Code/Sync/docs/engineering/release-readiness.md), especially `make local-regression-corpus-gate`.

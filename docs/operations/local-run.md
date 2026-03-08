@@ -210,7 +210,8 @@ make flutter-run API_BASE_URL=http://<host-lan-ip>:8000/v1 PROJECT_ID=<project-i
 
 - For real deployments, prefer an `https://` API origin so the Flutter client upgrades its event channel to `wss://`.
 - Your reverse proxy must forward `GET /v1/ws/projects/{project_id}` as a WebSocket upgrade, not plain HTTP only.
-- Flutter web is not a first-class local path yet because the backend does not currently expose CORS middleware.
+- CORS is disabled by default. For Flutter web or other browser-based cross-origin access, set `CORS_ALLOW_ORIGINS` or `CORS_ALLOW_ORIGIN_REGEX` in `backend/.env`.
+- If you expose the API on a LAN IP or real domain, set `TRUSTED_HOSTS` to the hostnames and IPs you expect the backend to serve.
 - Keep `ALIGNMENT_WORKDIR` on persistent storage if you care about artifacts surviving restarts.
 - The scripted smoke run is good for validating the golden path, but the public-domain regression run is the better pre-release check.
 
