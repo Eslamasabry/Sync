@@ -27,6 +27,7 @@ dependencies = [
 alignment = [
   "imageio-ffmpeg>=0.5,<1.0",
   "mutagen>=1.47,<2.0",
+  "torchcodec>=0.7,<0.8",
   "whisperx>=3.7,<4.0"
 ]
 dev = [

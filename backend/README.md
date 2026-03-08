@@ -47,6 +47,7 @@ Notes:
 
 - `imageio-ffmpeg` provides a vendored `ffmpeg` binary when the host machine does not have one installed.
 - `mutagen` is used as a duration-probe fallback when `ffprobe` is unavailable.
+- `torchcodec` is pinned to the `0.7.x` line because `whisperx` currently installs with `torch 2.8.x`, and newer `torchcodec` releases emit runtime loader warnings with that stack.
 - `whisperx` stays in the optional `alignment` extra because it pulls a large PyTorch stack.
 
 Useful commands from repo root:

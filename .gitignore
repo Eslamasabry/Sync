@@ -32,6 +32,7 @@ tmp/
 data/
 storage/
 artifacts/
+.run/
 *.sqlite3
 
 # Model caches

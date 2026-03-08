@@ -44,14 +44,13 @@ EOF
 
 extract_json_field() {
   local field="$1"
-  python3 - "$field" <<'PY'
+  python3 -c '
 import json
 import sys
 
-field = sys.argv[1]
 payload = json.load(sys.stdin)
-print(payload[field])
-PY
+print(payload[sys.argv[1]])
+' "$field"
 }
 
 require_cmd() {
