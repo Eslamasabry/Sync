@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from sqlalchemy.orm import Session
 
 from sync_backend.api.dependencies import get_db_session
@@ -21,20 +21,25 @@ from sync_backend.api.schemas import (
     ProjectCreateRequest,
     ProjectCreateResponse,
     ProjectDetailResponse,
+    ReaderModelResponse,
     SyncArtifactResponse,
 )
-from sync_backend.models import AlignmentJob, Asset, SyncArtifact
+from sync_backend.models import AlignmentJob, Asset, ReaderModelArtifact, SyncArtifact
 from sync_backend.services import (
     cancel_job,
     create_alignment_job,
     create_project,
+    generate_reader_model_artifact,
     get_job_or_404,
     get_latest_job,
     get_latest_sync_artifact,
     get_project_or_404,
+    get_reader_model_artifact_or_404,
     parse_uuid,
     register_asset,
+    store_uploaded_asset,
 )
+from sync_backend.storage import get_object_store
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 DbSession = Annotated[Session, Depends(get_db_session)]
@@ -52,6 +57,7 @@ def _asset_summary(asset: Asset) -> AssetSummary:
         content_type=asset.content_type,
         upload_mode=asset.upload_mode,
         status=asset.status,
+        size_bytes=asset.size_bytes,
         created_at=asset.created_at,
     )
 
@@ -95,6 +101,21 @@ def _sync_response(project_id: str, artifact: SyncArtifact) -> SyncArtifactRespo
     )
 
 
+def _reader_model_response(
+    *,
+    project_id: str,
+    artifact: ReaderModelArtifact,
+) -> ReaderModelResponse:
+    object_store = get_object_store()
+    return ReaderModelResponse(
+        project_id=UUID(project_id),
+        asset_id=UUID(artifact.asset_id),
+        version=artifact.version,
+        status=artifact.status,
+        model=object_store.read_json(artifact.storage_path),
+    )
+
+
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=ProjectCreateResponse)
 async def create_project_route(
     payload: ProjectCreateRequest,
@@ -125,6 +146,42 @@ async def register_asset_route(
         filename=payload.filename,
         content_type=payload.content_type,
     )
+    return AssetCreateResponse(
+        asset_id=UUID(asset.id),
+        upload_mode=asset.upload_mode,
+        status=asset.status,
+    )
+
+
+@router.post(
+    "/{project_id}/assets/upload",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AssetCreateResponse,
+)
+async def upload_asset_route(
+    project_id: str,
+    kind: Annotated[str, Form(pattern="^(epub|audio)$")],
+    file: Annotated[UploadFile, File()],
+    session: DbSession,
+) -> AssetCreateResponse:
+    object_store = get_object_store()
+    payload = await file.read()
+    asset = store_uploaded_asset(
+        session=session,
+        project_id=project_id,
+        kind=kind,
+        filename=file.filename or "upload.bin",
+        content_type=file.content_type or "application/octet-stream",
+        payload=payload,
+        object_store=object_store,
+    )
+    if kind == "epub":
+        generate_reader_model_artifact(
+            session=session,
+            project_id=project_id,
+            asset=asset,
+            object_store=object_store,
+        )
     return AssetCreateResponse(
         asset_id=UUID(asset.id),
         upload_mode=asset.upload_mode,
@@ -186,6 +243,12 @@ async def get_job_route(project_id: str, job_id: str, session: DbSession) -> Job
 async def get_sync_route(project_id: str, session: DbSession) -> SyncArtifactResponse:
     artifact = get_latest_sync_artifact(session=session, project_id=project_id)
     return _sync_response(project_id, artifact)
+
+
+@router.get("/{project_id}/reader-model", response_model=ReaderModelResponse)
+async def get_reader_model_route(project_id: str, session: DbSession) -> ReaderModelResponse:
+    artifact = get_reader_model_artifact_or_404(session=session, project_id=project_id)
+    return _reader_model_response(project_id=project_id, artifact=artifact)
 
 
 @router.post("/{project_id}/jobs/{job_id}/cancel", response_model=JobCreateResponse)

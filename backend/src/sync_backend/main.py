@@ -9,6 +9,7 @@ from sync_backend.api.router import build_api_router
 from sync_backend.config import get_settings
 from sync_backend.db import init_db
 from sync_backend.logging import configure_logging
+from sync_backend.storage import get_object_store
 
 
 @asynccontextmanager
@@ -16,6 +17,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.log_level)
     init_db()
+    get_object_store().ensure_ready()
     structlog.get_logger(__name__).info(
         "app.startup",
         environment=settings.app_env,

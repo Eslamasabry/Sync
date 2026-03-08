@@ -59,6 +59,9 @@ class Asset(Base, TimestampMixin):
     content_type: Mapped[str] = mapped_column(String(255))
     upload_mode: Mapped[str] = mapped_column(String(32), default="multipart")
     status: Mapped[str] = mapped_column(String(32), default="uploading")
+    storage_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    checksum_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     project: Mapped[Project] = relationship(back_populates="assets")
 
@@ -101,3 +104,18 @@ class SyncArtifact(Base, TimestampMixin):
     inline_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     project: Mapped[Project] = relationship(back_populates="sync_artifacts")
+
+
+class ReaderModelArtifact(Base, TimestampMixin):
+    __tablename__ = "reader_model_artifacts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        index=True,
+    )
+    asset_id: Mapped[str] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"))
+    version: Mapped[str] = mapped_column(String(16), default="1.0")
+    status: Mapped[str] = mapped_column(String(32), default="generated")
+    storage_path: Mapped[str] = mapped_column(Text)
+    size_bytes: Mapped[int] = mapped_column(Integer)

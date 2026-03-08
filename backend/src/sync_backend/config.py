@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     s3_secret_access_key: str = Field(default="minioadmin", alias="S3_SECRET_ACCESS_KEY")
     s3_bucket: str = Field(default="sync-dev", alias="S3_BUCKET")
     alignment_workdir: str = Field(default="./artifacts", alias="ALIGNMENT_WORKDIR")
+    object_store_mode: str = Field(default="filesystem", alias="OBJECT_STORE_MODE")
 
     model_config = SettingsConfigDict(
         env_file=".env",

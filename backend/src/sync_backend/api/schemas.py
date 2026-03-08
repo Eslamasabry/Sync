@@ -48,6 +48,7 @@ class AssetSummary(BaseModel):
     content_type: str
     upload_mode: str
     status: str
+    size_bytes: int | None = None
     created_at: datetime
 
 
@@ -102,6 +103,14 @@ class SyncArtifactResponse(BaseModel):
     inline_payload: dict[str, Any] | None
     created_at: datetime
     updated_at: datetime
+
+
+class ReaderModelResponse(BaseModel):
+    project_id: UUID
+    asset_id: UUID
+    version: str
+    status: str
+    model: dict[str, Any]
 
 
 class EventEnvelope(BaseModel):

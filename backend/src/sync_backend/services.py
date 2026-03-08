@@ -1,13 +1,22 @@
 from __future__ import annotations
 
+import hashlib
 from http import HTTPStatus
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from sync_backend.alignment.epub import build_reader_model
 from sync_backend.api.errors import ApiError, not_found
-from sync_backend.models import AlignmentJob, Asset, Project, SyncArtifact
+from sync_backend.models import (
+    AlignmentJob,
+    Asset,
+    Project,
+    ReaderModelArtifact,
+    SyncArtifact,
+)
+from sync_backend.storage import FileObjectStore
 
 
 def create_project(*, session: Session, title: str, language: str | None) -> Project:
@@ -55,11 +64,105 @@ def register_asset(
     return asset
 
 
+def store_uploaded_asset(
+    *,
+    session: Session,
+    project_id: str,
+    kind: str,
+    filename: str,
+    content_type: str,
+    payload: bytes,
+    object_store: FileObjectStore,
+) -> Asset:
+    get_project_or_404(session=session, project_id=project_id)
+    asset_id = str(uuid4())
+    checksum = hashlib.sha256(payload).hexdigest()
+    storage_path, size_bytes = object_store.write_bytes(
+        f"projects/{project_id}/assets/{asset_id}/{filename}",
+        payload,
+    )
+
+    asset = Asset(
+        id=asset_id,
+        project_id=project_id,
+        kind=kind,
+        filename=filename,
+        content_type=content_type,
+        upload_mode="multipart",
+        status="uploaded",
+        storage_path=storage_path,
+        size_bytes=size_bytes,
+        checksum_sha256=checksum,
+    )
+    session.add(asset)
+    session.commit()
+    session.refresh(asset)
+    return asset
+
+
 def get_asset_or_404(*, session: Session, asset_id: str) -> Asset:
     asset = session.get(Asset, asset_id)
     if asset is None:
         raise not_found("asset_not_found", "Asset was not found", {"asset_id": asset_id})
     return asset
+
+
+def get_reader_model_artifact_or_404(*, session: Session, project_id: str) -> ReaderModelArtifact:
+    artifact = session.scalar(
+        select(ReaderModelArtifact)
+        .where(ReaderModelArtifact.project_id == project_id)
+        .order_by(ReaderModelArtifact.created_at.desc())
+        .limit(1)
+    )
+    if artifact is None:
+        raise not_found(
+            "reader_model_not_found",
+            "Reader model artifact was not found",
+            {"project_id": project_id},
+        )
+    return artifact
+
+
+def generate_reader_model_artifact(
+    *,
+    session: Session,
+    project_id: str,
+    asset: Asset,
+    object_store: FileObjectStore,
+) -> ReaderModelArtifact:
+    if asset.kind != "epub" or asset.storage_path is None:
+        raise ApiError(
+            code="invalid_asset_type",
+            message="Reader models can only be generated from uploaded EPUB assets",
+            status_code=HTTPStatus.BAD_REQUEST,
+            details={"asset_id": asset.id, "kind": asset.kind},
+        )
+
+    project = get_project_or_404(session=session, project_id=project_id)
+    reader_model = build_reader_model(
+        object_store.absolute_path(asset.storage_path),
+        book_id=project_id,
+        language=project.language,
+    )
+    artifact_id = str(uuid4())
+    storage_path, size_bytes = object_store.write_json(
+        f"projects/{project_id}/artifacts/reader-model/{artifact_id}.json",
+        reader_model,
+    )
+
+    artifact = ReaderModelArtifact(
+        id=artifact_id,
+        project_id=project_id,
+        asset_id=asset.id,
+        version="1.0",
+        status="generated",
+        storage_path=storage_path,
+        size_bytes=size_bytes,
+    )
+    session.add(artifact)
+    session.commit()
+    session.refresh(artifact)
+    return artifact
 
 
 def create_alignment_job(

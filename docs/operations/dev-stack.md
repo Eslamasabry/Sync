@@ -21,6 +21,8 @@ Run API, worker, and Flutter app directly during development unless containerize
 - `compose.yaml` runs PostgreSQL, Redis, and MinIO
 - `minio-init` creates the default `sync-dev` bucket
 - backend code runs directly from `backend/`
+- current backend implementation stores blobs in the local filesystem under `ALIGNMENT_WORKDIR/object_store`
+- MinIO is provisioned now so a later S3-compatible adapter can switch in without changing local infrastructure
 
 ## Bootstrap
 

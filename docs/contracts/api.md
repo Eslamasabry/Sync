@@ -70,6 +70,27 @@ Notes:
 - MVP can use direct multipart upload through the API.
 - Production can add presigned object-storage uploads later without changing the project model.
 
+### `POST /v1/projects/{project_id}/assets/upload`
+
+Uploads and registers an asset in one request.
+
+Request:
+
+- content type: `multipart/form-data`
+- fields:
+  - `kind`: `epub` or `audio`
+  - `file`: uploaded file blob
+
+Response:
+
+```json
+{
+  "asset_id": "uuid",
+  "upload_mode": "multipart",
+  "status": "uploaded"
+}
+```
+
 ### `POST /v1/projects/{project_id}/jobs`
 
 Creates an alignment job after required assets exist.
@@ -121,6 +142,10 @@ Response shape:
 ### `GET /v1/projects/{project_id}/sync`
 
 Returns sync artifact metadata and download URL or direct payload in dev mode.
+
+### `GET /v1/projects/{project_id}/reader-model`
+
+Returns the canonical backend-generated reader model for the project.
 
 ### `POST /v1/projects/{project_id}/jobs/{job_id}/cancel`
 

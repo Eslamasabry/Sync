@@ -49,3 +49,9 @@ This contract exists because token highlighting needs stable structure and indic
 - The reader model owns visual structure.
 - `sync.json` owns timing.
 - Sync tokens point back into the reader model by section, paragraph, and token index.
+
+## API Access
+
+The current backend serves the reader model through:
+
+- `GET /v1/projects/{project_id}/reader-model`
