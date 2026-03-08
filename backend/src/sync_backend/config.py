@@ -1,0 +1,35 @@
+from functools import lru_cache
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    app_name: str = "Sync Backend"
+    app_env: str = Field(default="development", alias="APP_ENV")
+    log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    debug: bool = Field(default=False, alias="DEBUG")
+    api_v1_prefix: str = "/v1"
+    health_path: str = "/health"
+
+    database_url: str = Field(
+        default="postgresql+psycopg://sync:sync@localhost:5432/sync",
+        alias="DATABASE_URL",
+    )
+    redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
+    s3_endpoint_url: str = Field(default="http://localhost:9000", alias="S3_ENDPOINT_URL")
+    s3_bucket: str = Field(default="sync-dev", alias="S3_BUCKET")
+    alignment_workdir: str = Field(default="./artifacts", alias="ALIGNMENT_WORKDIR")
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+        populate_by_name=True,
+    )
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings()
