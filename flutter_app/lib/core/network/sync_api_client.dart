@@ -82,6 +82,11 @@ class SyncApiClient {
     );
   }
 
+  Future<Map<String, dynamic>> fetchProjectDetail(String projectId) async {
+    final response = await _dio.get<Map<String, dynamic>>('/projects/$projectId');
+    return _asMap(response.data, context: 'project detail response');
+  }
+
   String assetContentUrl({required String projectId, required String assetId}) {
     return '$_baseUrl/projects/$projectId/assets/$assetId/content';
   }

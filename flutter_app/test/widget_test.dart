@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:sync_flutter/app.dart';
 import 'package:sync_flutter/core/network/sync_api_client.dart';
 import 'package:sync_flutter/features/reader/data/reader_repository.dart';
+import 'package:sync_flutter/features/reader/domain/reader_model.dart';
 import 'package:sync_flutter/features/reader/domain/sync_artifact.dart';
 import 'package:sync_flutter/features/reader/state/reader_events_provider.dart';
 import 'package:sync_flutter/features/reader/state/reader_project_provider.dart';
@@ -22,6 +23,8 @@ class _FakeReaderRepository extends ReaderRepository {
       syncArtifact: demoSyncArtifact,
       source: ReaderContentSource.api,
       audioUrls: const [],
+      statusMessage:
+          'Synced text is available, but no playable audio asset was returned by the backend.',
     );
   }
 }
@@ -88,6 +91,38 @@ class _FailingReaderRepository extends ReaderRepository {
       message:
           'Reader model response did not include an inline model or download URL.',
       type: DioExceptionType.badResponse,
+    );
+  }
+}
+
+class _PendingReaderRepository extends ReaderRepository {
+  _PendingReaderRepository()
+    : super(apiClient: SyncApiClient(baseUrl: 'http://localhost'));
+
+  @override
+  Future<ReaderProjectBundle> loadProject(String projectId) async {
+    return ReaderProjectBundle(
+      projectId: 'pending-book',
+      readerModel: ReaderModel(
+        bookId: 'pending-book',
+        title: 'Pending Project',
+        language: 'en',
+        sections: const [],
+      ),
+      syncArtifact: SyncArtifact(
+        version: '1.0',
+        bookId: 'pending-book',
+        language: 'en',
+        audio: const [],
+        contentStartMs: 0,
+        contentEndMs: 0,
+        tokens: const [],
+        gaps: const [],
+      ),
+      source: ReaderContentSource.artifactPending,
+      audioUrls: const [],
+      statusMessage:
+          'Pending Project is still processing. Keep this screen open or refresh after alignment completes.',
     );
   }
 }
@@ -186,5 +221,36 @@ void main() {
     expect(find.text('Reader failed to load'), findsOneWidget);
     expect(find.textContaining('Reader model response'), findsOneWidget);
     expect(find.text('Retry'), findsOneWidget);
+  });
+
+  testWidgets('shows the repository status banner for incomplete backend audio', (
+    tester,
+  ) async {
+    await _pumpReaderApp(tester, repository: _FakeReaderRepository());
+
+    expect(
+      find.textContaining('no playable audio asset was returned'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('shows a backend pending state instead of demo fallback', (
+    tester,
+  ) async {
+    await _pumpReaderApp(tester, repository: _PendingReaderRepository());
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('still processing'),
+      findsAtLeastNWidgets(1),
+    );
+    expect(
+      find.textContaining('there is no normalized reader model to render yet'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Demo data loaded because the API is unavailable.'),
+      findsNothing,
+    );
   });
 }

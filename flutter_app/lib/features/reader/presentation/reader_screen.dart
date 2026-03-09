@@ -123,6 +123,7 @@ class ReaderScreen extends ConsumerWidget {
                           if (bundle != null)
                             _SourceBanner(
                               source: bundle.source,
+                              message: bundle.statusMessage,
                               onRefresh: () =>
                                   ref.invalidate(readerProjectProvider),
                             ),
@@ -224,7 +225,8 @@ class ReaderScreen extends ConsumerWidget {
                               const SizedBox(width: 12),
                               Expanded(
                                 child: FilledButton.icon(
-                                  onPressed: bundle != null
+                                  onPressed: bundle != null &&
+                                          bundle.syncArtifact.totalDurationMs > 0
                                       ? () => controller.togglePlayback(
                                           bundle.syncArtifact.totalDurationMs,
                                         )
@@ -299,6 +301,37 @@ class _ReaderLoadedView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (bundle.readerModel.sections.isEmpty) {
+      final palette = ReaderPalette.of(context);
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    bundle.statusMessage ?? 'Reader content is not available yet.',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'The backend is reachable, but there is no normalized reader model to render yet.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: palette.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     final syncIndex = {
       for (final token in bundle.syncArtifact.tokens)
         token.location.locationKey: token,
@@ -401,20 +434,32 @@ class _ReaderErrorView extends StatelessWidget {
 }
 
 class _SourceBanner extends StatelessWidget {
-  const _SourceBanner({required this.source, required this.onRefresh});
+  const _SourceBanner({
+    required this.source,
+    required this.onRefresh,
+    this.message,
+  });
 
   final ReaderContentSource source;
   final VoidCallback onRefresh;
+  final String? message;
 
   @override
   Widget build(BuildContext context) {
     final palette = ReaderPalette.of(context);
     final isFallback = source == ReaderContentSource.demoFallback;
+    final isProblem =
+        source == ReaderContentSource.artifactPending ||
+        source == ReaderContentSource.projectError;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: isFallback ? palette.accentSoft : palette.backgroundBase,
+        color: isFallback
+            ? palette.accentSoft
+            : isProblem
+            ? palette.backgroundElevated
+            : palette.backgroundBase,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: palette.borderSubtle),
       ),
@@ -422,9 +467,16 @@ class _SourceBanner extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              isFallback
-                  ? 'Demo data loaded because the API is unavailable.'
-                  : 'Backend project loaded.',
+              message ??
+                  switch (source) {
+                    ReaderContentSource.api => 'Backend project loaded.',
+                    ReaderContentSource.artifactPending =>
+                      'Backend project is available, but reader artifacts are still processing.',
+                    ReaderContentSource.projectError =>
+                      'Backend project loaded, but the latest reader artifacts are incomplete.',
+                    ReaderContentSource.demoFallback =>
+                      'Demo data loaded because the API is unavailable.',
+                  },
             ),
           ),
           TextButton(onPressed: onRefresh, child: const Text('Refresh')),

@@ -50,6 +50,7 @@ Notes:
 - `mutagen` is used as a duration-probe fallback when `ffprobe` is unavailable.
 - `torchcodec` is pinned to the `0.7.x` line because `whisperx` currently installs with `torch 2.8.x`, and newer `torchcodec` releases emit runtime loader warnings with that stack.
 - `whisperx` stays in the optional `alignment` extra because it pulls a large PyTorch stack.
+- `OBJECT_STORE_MODE=filesystem` remains the local default. `OBJECT_STORE_MODE=s3` now works for durable S3-compatible storage, including streamed artifact downloads and temporary local materialization for EPUB/audio processing.
 - Runtime middleware is deployment-configurable through env vars:
   - `ENABLE_GZIP` and `GZIP_MINIMUM_SIZE`
   - `CORS_ALLOW_ORIGINS`, `CORS_ALLOW_ORIGIN_REGEX`, `CORS_ALLOW_METHODS`, `CORS_ALLOW_HEADERS`, `CORS_ALLOW_CREDENTIALS`
