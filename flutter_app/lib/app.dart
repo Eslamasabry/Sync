@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sync_flutter/core/config/app_config.dart';
+import 'package:sync_flutter/core/config/runtime_connection_settings.dart';
+import 'package:sync_flutter/core/config/runtime_connection_settings_controller.dart';
 import 'package:sync_flutter/core/navigation/home_shell_controller.dart';
 import 'package:sync_flutter/core/theme/sync_theme.dart';
 import 'package:sync_flutter/features/library/presentation/library_screen.dart';
+import 'package:sync_flutter/features/reader/data/reader_repository.dart';
 import 'package:sync_flutter/features/reader/presentation/reader_screen.dart';
 import 'package:sync_flutter/features/reader/state/reader_playback_controller.dart';
+import 'package:sync_flutter/features/reader/state/reader_project_provider.dart';
 
 class SyncApp extends ConsumerWidget {
   const SyncApp({super.key});
@@ -13,6 +18,8 @@ class SyncApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final playback = ref.watch(readerPlaybackProvider);
     final homeTab = ref.watch(homeTabProvider);
+    final connection = ref.watch(runtimeConnectionSettingsProvider);
+    final project = ref.watch(readerProjectProvider);
     return MaterialApp(
       title: 'Sync',
       debugShowCheckedModeBanner: false,
@@ -73,6 +80,8 @@ class SyncApp extends ConsumerWidget {
                       minimum: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                       child: _ShellDock(
                         selectedIndex: homeTab,
+                        connection: connection,
+                        project: project,
                         onDestinationSelected: (index) {
                           if (index == 0) {
                             ref.read(homeTabProvider.notifier).showLibrary();
@@ -96,10 +105,14 @@ class SyncApp extends ConsumerWidget {
 class _ShellDock extends StatelessWidget {
   const _ShellDock({
     required this.selectedIndex,
+    required this.connection,
+    required this.project,
     required this.onDestinationSelected,
   });
 
   final int selectedIndex;
+  final AsyncValue<RuntimeConnectionSettings> connection;
+  final AsyncValue<ReaderProjectBundle> project;
   final ValueChanged<int> onDestinationSelected;
 
   @override
@@ -129,51 +142,143 @@ class _ShellDock extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: _ShellDestination(
-                icon: Icons.dashboard_customize_outlined,
-                selectedIcon: Icons.dashboard_customize_rounded,
-                label: 'Library',
-                selected: selectedIndex == 0,
-                onTap: () => onDestinationSelected(0),
-              ),
+            _ShellSessionRail(
+              connection: connection,
+              project: project,
+              selectedIndex: selectedIndex,
             ),
-            Container(
-              width: 1,
-              height: 30,
-              color: palette.borderSubtle.withValues(alpha: 0.7),
-            ),
-            Expanded(
-              child: _ShellDestination(
-                icon: Icons.menu_book_outlined,
-                selectedIcon: Icons.menu_book_rounded,
-                label: 'Reader',
-                selected: selectedIndex == 1,
-                onTap: () => onDestinationSelected(1),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: palette.textPrimary,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                'S',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: palette.backgroundElevated,
-                  fontWeight: FontWeight.w700,
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _ShellDestination(
+                    icon: Icons.dashboard_customize_outlined,
+                    selectedIcon: Icons.dashboard_customize_rounded,
+                    label: 'Library',
+                    selected: selectedIndex == 0,
+                    onTap: () => onDestinationSelected(0),
+                  ),
                 ),
-              ),
+                Container(
+                  width: 1,
+                  height: 30,
+                  color: palette.borderSubtle.withValues(alpha: 0.7),
+                ),
+                Expanded(
+                  child: _ShellDestination(
+                    icon: Icons.menu_book_outlined,
+                    selectedIcon: Icons.menu_book_rounded,
+                    label: 'Reader',
+                    selected: selectedIndex == 1,
+                    onTap: () => onDestinationSelected(1),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: palette.textPrimary,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    'S',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: palette.backgroundElevated,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ShellSessionRail extends StatelessWidget {
+  const _ShellSessionRail({
+    required this.connection,
+    required this.project,
+    required this.selectedIndex,
+  });
+
+  final AsyncValue<RuntimeConnectionSettings> connection;
+  final AsyncValue<ReaderProjectBundle> project;
+  final int selectedIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final settings =
+        connection.asData?.value ?? defaultConnectionSettings;
+    final bundle = project.asData?.value;
+    final sourceLabel = switch (bundle?.source) {
+      ReaderContentSource.api => 'Live API',
+      ReaderContentSource.offlineCache => 'Offline cache',
+      ReaderContentSource.artifactPending => 'Pending artifacts',
+      ReaderContentSource.projectError => 'Incomplete artifacts',
+      ReaderContentSource.demoFallback => 'Demo content',
+      null => 'Connecting',
+    };
+    final title = bundle?.readerModel.title ?? settings.normalizedProjectId;
+    final modeLabel = selectedIndex == 0 ? 'Library' : 'Reader';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: palette.backgroundBase.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            'Session',
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: palette.textMuted,
+            ),
+          ),
+          _ShellRailChip(label: modeLabel),
+          _ShellRailChip(label: settings.shortHost),
+          _ShellRailChip(label: sourceLabel),
+          Text(
+            title,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ShellRailChip extends StatelessWidget {
+  const _ShellRailChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: palette.backgroundElevated,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Text(label, style: Theme.of(context).textTheme.labelMedium),
     );
   }
 }

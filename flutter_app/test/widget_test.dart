@@ -566,8 +566,10 @@ void main() {
   testWidgets('renders reader shell and playback controls', (tester) async {
     await _pumpReaderApp(tester, repository: _FakeReaderRepository());
 
+    expect(find.text('Session'), findsOneWidget);
+    expect(find.text('Live API'), findsOneWidget);
     expect(find.text('Sync'), findsAtLeastNWidgets(1));
-    expect(find.text('Moby-Dick'), findsOneWidget);
+    expect(find.text('Moby-Dick'), findsAtLeastNWidgets(1));
     expect(find.text('Speed'), findsOneWidget);
     expect(find.text('Download Audio'), findsOneWidget);
     expect(find.text('Connection'), findsAtLeastNWidgets(1));
