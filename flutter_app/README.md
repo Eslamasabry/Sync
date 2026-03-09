@@ -29,11 +29,13 @@ Run those locally before opening a release-facing PR.
 
 ## Runtime Inputs
 
-The app currently reads two compile-time values:
+The app ships with compile-time defaults, but the release APK no longer depends on them. Users can open the in-app `Connection` sheet and save these values locally on the device:
 
 - `SYNC_API_BASE_URL`: backend API root, default `http://localhost:8000/v1`
 - `SYNC_PROJECT_ID`: project UUID or the fallback `demo-book`
 - `SYNC_API_AUTH_TOKEN`: optional bearer token for protected self-hosted backends
+
+Those saved values are device-local only. They are not written back into the repo, release asset, or GitHub Actions config.
 
 The WebSocket URL is derived automatically from `SYNC_API_BASE_URL`:
 
@@ -41,6 +43,14 @@ The WebSocket URL is derived automatically from `SYNC_API_BASE_URL`:
 - `https://...` -> `wss://...`
 
 ## Run With A Real Backend Project
+
+For release APK usage:
+
+1. Install the APK from GitHub Releases.
+2. Open the app.
+3. Tap `Connection`.
+4. Enter your backend URL, project ID, and optional auth token.
+5. Save and reload.
 
 Local desktop or iOS simulator:
 

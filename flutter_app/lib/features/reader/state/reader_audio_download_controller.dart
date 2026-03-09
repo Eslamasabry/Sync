@@ -53,8 +53,8 @@ class ReaderAudioDownloadController extends Notifier<ReaderAudioDownloadState> {
   }
 
   Future<void> downloadCurrentProject() async {
-    final projectId = ref.read(projectIdProvider);
-    final repository = ref.read(readerRepositoryProvider);
+    final projectId = await ref.read(projectIdProvider.future);
+    final repository = await ref.read(readerRepositoryProvider.future);
     state = const ReaderAudioDownloadState(
       status: ReaderAudioDownloadStatus.downloading,
       progress: 0,
@@ -83,8 +83,8 @@ class ReaderAudioDownloadController extends Notifier<ReaderAudioDownloadState> {
   }
 
   Future<void> removeCurrentProjectAudio() async {
-    final projectId = ref.read(projectIdProvider);
-    final repository = ref.read(readerRepositoryProvider);
+    final projectId = await ref.read(projectIdProvider.future);
+    final repository = await ref.read(readerRepositoryProvider.future);
     state = const ReaderAudioDownloadState(
       status: ReaderAudioDownloadStatus.removing,
       progress: 0,

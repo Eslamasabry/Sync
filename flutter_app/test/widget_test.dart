@@ -5,6 +5,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import 'package:sync_flutter/app.dart';
+import 'package:sync_flutter/core/config/app_config.dart';
+import 'package:sync_flutter/core/config/runtime_connection_settings.dart';
+import 'package:sync_flutter/core/config/runtime_connection_settings_controller.dart';
+import 'package:sync_flutter/core/config/runtime_connection_settings_storage_types.dart';
 import 'package:sync_flutter/core/playback/playback_driver.dart';
 import 'package:sync_flutter/core/network/sync_api_client.dart';
 import 'package:sync_flutter/features/reader/data/reader_repository.dart';
@@ -55,6 +59,26 @@ class _FakePlaybackDriver implements PlaybackDriver {
   Future<void> setUrls(List<String> urls) async {
     _playingController.add(false);
     _positionController.add(Duration.zero);
+  }
+}
+
+class _MemoryRuntimeConnectionSettingsStorage
+    implements RuntimeConnectionSettingsStorage {
+  _MemoryRuntimeConnectionSettingsStorage();
+
+  RuntimeConnectionSettings? _settings = defaultConnectionSettings;
+
+  @override
+  Future<void> clear() async {
+    _settings = null;
+  }
+
+  @override
+  Future<RuntimeConnectionSettings?> load() async => _settings;
+
+  @override
+  Future<void> store(RuntimeConnectionSettings settings) async {
+    _settings = settings;
   }
 }
 
@@ -288,11 +312,19 @@ class _OfflineAudioReaderRepository extends ReaderRepository {
 Future<void> _pumpReaderApp(
   WidgetTester tester, {
   required ReaderRepository repository,
+  _MemoryRuntimeConnectionSettingsStorage? settingsStorage,
 }) async {
+  tester.view.devicePixelRatio = 1.0;
+  tester.view.physicalSize = const Size(1440, 1600);
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        readerRepositoryProvider.overrideWithValue(repository),
+        runtimeConnectionSettingsStorageProvider.overrideWithValue(
+          settingsStorage ?? _MemoryRuntimeConnectionSettingsStorage(),
+        ),
+        readerRepositoryProvider.overrideWith((ref) async => repository),
         projectEventsProvider.overrideWith((ref) => const Stream.empty()),
         playbackDriverProvider.overrideWithValue(_FakePlaybackDriver()),
       ],
@@ -311,6 +343,34 @@ void main() {
     expect(find.text('Play'), findsOneWidget);
     expect(find.text('Speed'), findsOneWidget);
     expect(find.text('Download Audio'), findsOneWidget);
+    expect(find.text('Connection'), findsOneWidget);
+  });
+
+  testWidgets('saves runtime connection settings locally through the UI', (
+    tester,
+  ) async {
+    final settingsStorage = _MemoryRuntimeConnectionSettingsStorage();
+    await _pumpReaderApp(
+      tester,
+      repository: _FakeReaderRepository(),
+      settingsStorage: settingsStorage,
+    );
+
+    await tester.tap(find.text('Connection'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byType(TextFormField).at(0),
+      'https://sync.example.ts.net/v1',
+    );
+    await tester.enterText(find.byType(TextFormField).at(1), 'private-book');
+    await tester.enterText(find.byType(TextFormField).at(2), 'secret-token');
+    await tester.tap(find.text('Save and Reload'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Project private-book'), findsOneWidget);
+    expect(find.text('Server sync.example.ts.net'), findsOneWidget);
+    expect(find.text('Auth enabled'), findsOneWidget);
   });
 
   testWidgets('shows start book affordance when sync has front matter', (

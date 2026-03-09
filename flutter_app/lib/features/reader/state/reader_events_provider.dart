@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:sync_flutter/core/config/app_config.dart';
+import 'package:sync_flutter/core/config/runtime_connection_settings_controller.dart';
 import 'package:sync_flutter/core/realtime/project_events_client.dart';
 import 'package:sync_flutter/features/reader/state/reader_project_provider.dart';
 
@@ -15,19 +15,22 @@ String _wsBaseUrlFromApiBaseUrl(String apiBaseUrl) {
   return apiBaseUrl;
 }
 
-final projectEventsClientProvider = Provider<ProjectEventsClient>(
-  (ref) => ProjectEventsClient(
-    baseWsUrl: _wsBaseUrlFromApiBaseUrl(defaultApiBaseUrl),
-    authToken: defaultApiAuthToken,
-  ),
-);
+final projectEventsClientProvider = FutureProvider<ProjectEventsClient>((
+  ref,
+) async {
+  final settings = await ref.watch(runtimeConnectionSettingsProvider.future);
+  return ProjectEventsClient(
+    baseWsUrl: _wsBaseUrlFromApiBaseUrl(settings.apiBaseUrl),
+    authToken: settings.authToken,
+  );
+});
 
 final projectEventsProvider = StreamProvider.autoDispose<Map<String, dynamic>>((
   ref,
-) {
-  final projectId = ref.watch(projectIdProvider);
-  final client = ref.watch(projectEventsClientProvider);
-  return _sanitizeProjectEvents(client.connect(projectId));
+) async* {
+  final projectId = await ref.watch(projectIdProvider.future);
+  final client = await ref.watch(projectEventsClientProvider.future);
+  yield* _sanitizeProjectEvents(client.connect(projectId));
 });
 
 final latestProjectEventProvider =

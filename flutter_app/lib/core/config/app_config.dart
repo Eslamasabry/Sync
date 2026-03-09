@@ -1,3 +1,5 @@
+import 'package:sync_flutter/core/config/runtime_connection_settings.dart';
+
 const defaultProjectId = String.fromEnvironment(
   'SYNC_PROJECT_ID',
   defaultValue: 'demo-book',
@@ -11,4 +13,10 @@ const defaultApiBaseUrl = String.fromEnvironment(
 const defaultApiAuthToken = String.fromEnvironment(
   'SYNC_API_AUTH_TOKEN',
   defaultValue: '',
+);
+
+const defaultConnectionSettings = RuntimeConnectionSettings(
+  apiBaseUrl: defaultApiBaseUrl,
+  projectId: defaultProjectId,
+  authToken: defaultApiAuthToken,
 );
