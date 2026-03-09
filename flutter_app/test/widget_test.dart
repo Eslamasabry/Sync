@@ -28,6 +28,9 @@ class _FakePlaybackDriver implements PlaybackDriver {
       StreamController<Duration>.broadcast();
   final StreamController<bool> _playingController =
       StreamController<bool>.broadcast();
+  Duration? lastSeek;
+  double? lastSpeed;
+  List<String> urls = const [];
 
   @override
   Stream<Duration> get positionStream => _positionController.stream;
@@ -53,14 +56,18 @@ class _FakePlaybackDriver implements PlaybackDriver {
 
   @override
   Future<void> seek(Duration position) async {
+    lastSeek = position;
     _positionController.add(position);
   }
 
   @override
-  Future<void> setSpeed(double speed) async {}
+  Future<void> setSpeed(double speed) async {
+    lastSpeed = speed;
+  }
 
   @override
   Future<void> setUrls(List<String> urls) async {
+    this.urls = List<String>.from(urls);
     _playingController.add(false);
     _positionController.add(Duration.zero);
   }
@@ -406,7 +413,156 @@ Future<ProviderContainer> _pumpReaderApp(
   return container;
 }
 
+ProviderContainer _playbackContainer({
+  _FakePlaybackDriver? driver,
+  ReaderLocationStore? locationStore,
+}) {
+  final fakeDriver = driver ?? _FakePlaybackDriver();
+  return ProviderContainer(
+    overrides: [
+      readerLocationStoreProvider.overrideWithValue(
+        locationStore ?? _MemoryReaderLocationStore(),
+      ),
+      playbackDriverProvider.overrideWithValue(fakeDriver),
+    ],
+  );
+}
+
+ReaderProjectBundle _playbackBundle({
+  SyncArtifact? syncArtifact,
+  List<String> audioUrls = const [],
+}) {
+  final artifact = syncArtifact ?? demoSyncArtifact;
+  return ReaderProjectBundle(
+    projectId: artifact.bookId,
+    readerModel: demoReaderModel,
+    syncArtifact: artifact,
+    source: ReaderContentSource.api,
+    audioUrls: audioUrls,
+    totalAudioAssets: artifact.audio.length,
+    cachedAudioAssets: 0,
+    hasCompleteOfflineAudio: false,
+  );
+}
+
+SyncArtifact _extendedSyncArtifact() {
+  return SyncArtifact.fromJson({
+    'version': '1.0',
+    'book_id': 'timeline-book',
+    'language': 'en',
+    'audio': [
+      {'asset_id': 'audio-demo', 'offset_ms': 0, 'duration_ms': 32000},
+    ],
+    'content_start_ms': 1000,
+    'content_end_ms': 30000,
+    'tokens': [
+      for (var index = 0; index < 10; index += 1)
+        {
+          'id': index,
+          'text': 'word$index',
+          'normalized': 'word$index',
+          'start_ms': 1000 + (index * 3000),
+          'end_ms': 1800 + (index * 3000),
+          'confidence': 1.0,
+          'location': {
+            'section_id': 's1',
+            'paragraph_index': 0,
+            'token_index': index,
+            'cfi': '/6/2/${4 + index}',
+          },
+        },
+    ],
+    'gaps': const [],
+  });
+}
+
 void main() {
+  test(
+    'controller starts native playback from loop A when outside the loop',
+    () async {
+      final driver = _FakePlaybackDriver();
+      final container = _playbackContainer(driver: driver);
+      addTearDown(container.dispose);
+
+      final controller = container.read(readerPlaybackProvider.notifier);
+      await controller.configureProject(
+        _playbackBundle(audioUrls: const ['file:///tmp/audio-demo.mp3']),
+      );
+      await controller.seekTo(1200);
+      controller.markLoopStart();
+      await controller.seekTo(2500);
+      controller.markLoopEnd();
+      await controller.seekTo(4100);
+
+      await controller.togglePlayback(demoSyncArtifact.totalDurationMs);
+      await Future<void>.delayed(Duration.zero);
+
+      final state = container.read(readerPlaybackProvider);
+      expect(state.isPlaying, isTrue);
+      expect(state.positionMs, 1200);
+      expect(driver.lastSeek, const Duration(milliseconds: 1200));
+    },
+  );
+
+  test(
+    'controller uses sync-aware skip anchors and respects loop boundaries',
+    () async {
+      final container = _playbackContainer();
+      addTearDown(container.dispose);
+
+      final controller = container.read(readerPlaybackProvider.notifier);
+      await controller.configureProject(
+        _playbackBundle(syncArtifact: _extendedSyncArtifact()),
+      );
+      await controller.seekTo(14000);
+
+      controller.forward15Seconds();
+      await Future<void>.delayed(Duration.zero);
+      expect(container.read(readerPlaybackProvider).positionMs, 28000);
+
+      await controller.seekTo(22000);
+      controller.markLoopStart();
+      await controller.seekTo(26000);
+      controller.markLoopEnd();
+      await controller.seekTo(24000);
+
+      controller.forward15Seconds();
+      await Future<void>.delayed(Duration.zero);
+      expect(container.read(readerPlaybackProvider).positionMs, 26000);
+
+      controller.rewind15Seconds();
+      await Future<void>.delayed(Duration.zero);
+      expect(container.read(readerPlaybackProvider).positionMs, 22000);
+    },
+  );
+
+  test('controller presets tune playback speed and focus defaults', () async {
+    final driver = _FakePlaybackDriver();
+    final container = _playbackContainer(driver: driver);
+    addTearDown(container.dispose);
+
+    final controller = container.read(readerPlaybackProvider.notifier);
+    await controller.configureProject(
+      _playbackBundle(audioUrls: const ['file:///tmp/audio-demo.mp3']),
+    );
+
+    await controller.applyPreset(ReaderPlaybackPreset.bedtime);
+    var state = container.read(readerPlaybackProvider);
+    expect(state.playbackPreset, ReaderPlaybackPreset.bedtime);
+    expect(state.distractionFreeMode, isTrue);
+    expect(state.followPlayback, isFalse);
+    expect(state.speed, 0.85);
+    expect(driver.lastSpeed, 0.85);
+
+    await controller.applyPreset(ReaderPlaybackPreset.study);
+    state = container.read(readerPlaybackProvider);
+    expect(state.playbackPreset, ReaderPlaybackPreset.study);
+    expect(state.distractionFreeMode, isFalse);
+    expect(state.followPlayback, isTrue);
+    expect(state.speed, 0.9);
+    expect(driver.lastSpeed, 0.9);
+  });
+
   testWidgets('renders reader shell and playback controls', (tester) async {
     await _pumpReaderApp(tester, repository: _FakeReaderRepository());
 
