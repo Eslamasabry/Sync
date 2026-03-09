@@ -104,7 +104,7 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
 
   Future<void> configureProject(ReaderProjectBundle bundle) async {
     resetForProject();
-    if (bundle.source != ReaderContentSource.api || bundle.audioUrls.isEmpty) {
+    if (bundle.audioUrls.isEmpty) {
       state = state.copyWith(
         usesNativeAudio: false,
         totalDurationMs: bundle.syncArtifact.totalDurationMs,

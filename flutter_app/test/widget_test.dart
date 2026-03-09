@@ -23,6 +23,9 @@ class _FakeReaderRepository extends ReaderRepository {
       syncArtifact: demoSyncArtifact,
       source: ReaderContentSource.api,
       audioUrls: const [],
+      totalAudioAssets: demoSyncArtifact.audio.length,
+      cachedAudioAssets: 0,
+      hasCompleteOfflineAudio: false,
       statusMessage:
           'Synced text is available, but no playable audio asset was returned by the backend.',
     );
@@ -76,6 +79,9 @@ class _FrontMatterReaderRepository extends ReaderRepository {
       }),
       source: ReaderContentSource.api,
       audioUrls: const [],
+      totalAudioAssets: 1,
+      cachedAudioAssets: 0,
+      hasCompleteOfflineAudio: false,
     );
   }
 }
@@ -121,6 +127,9 @@ class _PendingReaderRepository extends ReaderRepository {
       ),
       source: ReaderContentSource.artifactPending,
       audioUrls: const [],
+      totalAudioAssets: 0,
+      cachedAudioAssets: 0,
+      hasCompleteOfflineAudio: false,
       statusMessage:
           'Pending Project is still processing. Keep this screen open or refresh after alignment completes.',
     );
@@ -139,6 +148,9 @@ class _CachedReaderRepository extends ReaderRepository {
       syncArtifact: demoSyncArtifact,
       source: ReaderContentSource.offlineCache,
       audioUrls: const [],
+      totalAudioAssets: 1,
+      cachedAudioAssets: 0,
+      hasCompleteOfflineAudio: false,
       statusMessage:
           'Cached reader artifacts loaded from this device. Audio streaming stays disabled until the backend is reachable again. Cached at 2026-03-09T12:00:00.',
     );
@@ -169,6 +181,7 @@ void main() {
     expect(find.text('Moby-Dick'), findsOneWidget);
     expect(find.text('Play'), findsOneWidget);
     expect(find.text('Speed'), findsOneWidget);
+    expect(find.text('Download Audio'), findsOneWidget);
   });
 
   testWidgets('shows start book affordance when sync has front matter', (
@@ -188,6 +201,8 @@ void main() {
 
     expect(find.text('Start Book'), findsOneWidget);
 
+    await tester.ensureVisible(find.text('Start Book'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Start Book'));
     await tester.pump();
 
@@ -290,5 +305,6 @@ void main() {
       find.text('Demo data loaded because the API is unavailable.'),
       findsNothing,
     );
+    expect(find.text('Download Audio'), findsOneWidget);
   });
 }

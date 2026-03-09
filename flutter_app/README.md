@@ -13,6 +13,7 @@ Current baseline:
 - typed API client for reader model and sync artifact
 - Riverpod async project loading with demo fallback only for the default `demo-book` project
 - on-device caching for reader-model and sync artifact JSON after successful real-project loads
+- on-device audio download and cache management for real projects
 - local playback/theme controller separated from remote content loading
 - sync-driven token highlighting UI scaffold
 
@@ -109,7 +110,10 @@ For a complete smoke run, prefer the repo scripts documented in [local-run.md](/
 - demo fallback stays available when the API is offline, but uses the simulated timeline instead of `just_audio`
 - real projects now respect backend artifact `download_url` values for both reader-model and sync payload loading
 - after a successful real-project load, the app caches the normalized reader-model and sync artifact locally and reuses them when the backend is unreachable
-- cached offline mode currently restores text and timing metadata only; audio files are still streamed from the backend and are not downloaded for offline playback yet
+- the reader can download project audio for offline playback and will prefer local cached files when they exist
+- cached offline mode now supports two states:
+  - full offline: cached reader artifacts plus cached audio
+  - partial offline: cached reader artifacts without fully downloaded audio
 - real backend project ids no longer silently fall back to demo content for HTTP artifact errors; the app now shows a reader-state message for processing, missing, or failed backend artifacts
 
 ## Production-Adjacent Usage Notes

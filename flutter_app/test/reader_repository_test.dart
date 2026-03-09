@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sync_flutter/core/network/sync_api_client.dart';
 import 'package:sync_flutter/features/reader/data/reader_artifact_cache.dart';
+import 'package:sync_flutter/features/reader/data/reader_audio_cache.dart';
 import 'package:sync_flutter/features/reader/data/reader_repository.dart';
 import 'package:sync_flutter/features/reader/domain/reader_model.dart';
 import 'package:sync_flutter/features/reader/domain/sync_artifact.dart';
@@ -29,6 +30,35 @@ class _FakeReaderArtifactCache implements ReaderArtifactCache {
   }
 }
 
+class _FakeReaderAudioCache implements ReaderAudioCache {
+  CachedProjectAudio cached = const CachedProjectAudio(
+    assetsById: {},
+    updatedAt: null,
+  );
+
+  @override
+  Future<CachedProjectAudio> inspectProject(
+    String projectId, {
+    Iterable<String>? expectedAssetIds,
+  }) async => cached;
+
+  @override
+  Future<CachedProjectAudio> cacheProjectAudio({
+    required String projectId,
+    required List<AudioDownloadDescriptor> assets,
+    required Future<void> Function(
+      AudioDownloadDescriptor asset,
+      String destinationPath,
+      void Function(int received, int total) reportProgress,
+    )
+    downloadAsset,
+    void Function(AudioDownloadProgress progress)? onProgress,
+  }) async => cached;
+
+  @override
+  Future<void> removeProject(String projectId) async {}
+}
+
 class _SuccessfulSyncApiClient extends SyncApiClient {
   _SuccessfulSyncApiClient() : super(baseUrl: 'http://localhost');
 
@@ -40,6 +70,32 @@ class _SuccessfulSyncApiClient extends SyncApiClient {
   @override
   Future<SyncArtifact> fetchSyncArtifact(String projectId) async {
     return demoSyncArtifact;
+  }
+
+  @override
+  Future<Map<String, dynamic>> fetchProjectDetail(String projectId) async {
+    return {
+      'project_id': projectId,
+      'title': demoReaderModel.title,
+      'language': 'en',
+      'status': 'created',
+      'assets': [
+        {
+          'asset_id': 'audio-demo',
+          'kind': 'audio',
+          'filename': 'audio-demo.wav',
+          'content_type': 'audio/wav',
+          'upload_mode': 'multipart',
+          'status': 'uploaded',
+          'size_bytes': 1024,
+          'checksum_sha256': 'a' * 64,
+          'duration_ms': 4900,
+          'download_url': 'http://localhost/audio-demo.wav',
+          'created_at': '2026-03-09T00:00:00Z',
+        },
+      ],
+      'latest_job': null,
+    };
   }
 }
 
@@ -78,6 +134,9 @@ void main() {
       final bundle = await repository.loadProject('demo-book');
 
       expect(bundle.source, ReaderContentSource.api);
+      expect(bundle.totalAudioAssets, 1);
+      expect(bundle.cachedAudioAssets, 0);
+      expect(bundle.audioUrls, isNotEmpty);
       expect(cache.storeCount, 1);
       expect(cache.cached, isNotNull);
       expect(cache.cached!.readerModel.title, demoReaderModel.title);
@@ -103,5 +162,35 @@ void main() {
     expect(bundle.audioUrls, isEmpty);
     expect(bundle.readerModel.title, demoReaderModel.title);
     expect(bundle.statusMessage, contains('Cached reader artifacts loaded'));
+  });
+
+  test('prefers cached local audio when a project has downloaded files', () async {
+    final audioCache = _FakeReaderAudioCache()
+      ..cached = CachedProjectAudio(
+        assetsById: {
+          'audio-demo': CachedAudioAsset(
+            assetId: 'audio-demo',
+            filePath: '/tmp/audio-demo.wav',
+            cachedAt: DateTime.utc(2026, 3, 9, 12),
+            sizeBytes: 1024,
+            checksumSha256: 'a' * 64,
+            durationMs: 4900,
+          ),
+        },
+        updatedAt: DateTime.utc(2026, 3, 9, 12),
+      );
+
+    final repository = ReaderRepository(
+      apiClient: _SuccessfulSyncApiClient(),
+      artifactCache: _FakeReaderArtifactCache(),
+      audioCache: audioCache,
+    );
+
+    final bundle = await repository.loadProject('demo-book');
+
+    expect(bundle.hasCompleteOfflineAudio, isTrue);
+    expect(bundle.cachedAudioAssets, 1);
+    expect(bundle.audioUrls.single, startsWith('file:///tmp/audio-demo.wav'));
+    expect(bundle.statusMessage, contains('offline playback'));
   });
 }

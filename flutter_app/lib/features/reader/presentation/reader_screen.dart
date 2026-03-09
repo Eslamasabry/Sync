@@ -4,6 +4,7 @@ import 'package:sync_flutter/core/theme/sync_theme.dart';
 import 'package:sync_flutter/features/reader/data/reader_repository.dart';
 import 'package:sync_flutter/features/reader/domain/reader_model.dart';
 import 'package:sync_flutter/features/reader/domain/sync_artifact.dart';
+import 'package:sync_flutter/features/reader/state/reader_audio_download_controller.dart';
 import 'package:sync_flutter/features/reader/state/reader_playback_controller.dart';
 import 'package:sync_flutter/features/reader/state/reader_events_provider.dart';
 import 'package:sync_flutter/features/reader/state/reader_project_provider.dart';
@@ -18,6 +19,8 @@ class ReaderScreen extends ConsumerWidget {
     final playback = ref.watch(readerPlaybackProvider);
     final controller = ref.read(readerPlaybackProvider.notifier);
     final latestEvent = ref.watch(latestProjectEventProvider);
+    final audioDownload = ref.watch(readerAudioDownloadProvider);
+    final audioActions = ref.read(readerAudioDownloadProvider.notifier);
     final palette = ReaderPalette.of(context);
     final currentPositionMs = playback.displayedPositionMs;
 
@@ -128,6 +131,16 @@ class ReaderScreen extends ConsumerWidget {
                                   ref.invalidate(readerProjectProvider),
                             ),
                           if (bundle != null) const SizedBox(height: 12),
+                          if (bundle != null &&
+                              bundle.totalAudioAssets > 0) ...[
+                            _AudioDownloadBanner(
+                              bundle: bundle,
+                              downloadState: audioDownload,
+                              onDownload: audioActions.downloadCurrentProject,
+                              onRemove: audioActions.removeCurrentProjectAudio,
+                            ),
+                            const SizedBox(height: 12),
+                          ],
                           if (bundle != null &&
                               bundle.syncArtifact.hasLeadingMatter &&
                               currentPositionMs <
@@ -517,6 +530,102 @@ class _JobEventBanner extends StatelessWidget {
       child: Text(
         '$type • $stage • $percent%',
         style: Theme.of(context).textTheme.labelLarge,
+      ),
+    );
+  }
+}
+
+class _AudioDownloadBanner extends StatelessWidget {
+  const _AudioDownloadBanner({
+    required this.bundle,
+    required this.downloadState,
+    required this.onDownload,
+    required this.onRemove,
+  });
+
+  final ReaderProjectBundle bundle;
+  final ReaderAudioDownloadState downloadState;
+  final Future<void> Function() onDownload;
+  final Future<void> Function() onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final theme = Theme.of(context);
+    final message = switch (downloadState.status) {
+      ReaderAudioDownloadStatus.downloading =>
+        'Downloading audio for offline playback...',
+      ReaderAudioDownloadStatus.removing =>
+        'Removing downloaded audio from this device...',
+      ReaderAudioDownloadStatus.failed =>
+        downloadState.message ?? 'Audio download failed.',
+      _ when bundle.hasCompleteOfflineAudio =>
+        'Offline audio is ready on this device.',
+      _ when bundle.cachedAudioAssets > 0 =>
+        'Partial offline audio: ${bundle.cachedAudioAssets} of ${bundle.totalAudioAssets} files downloaded.',
+      _ =>
+        'Audio will stream from the backend until you download it for offline playback.',
+    };
+
+    final trailingMessage = switch (downloadState.status) {
+      ReaderAudioDownloadStatus.succeeded => downloadState.message,
+      ReaderAudioDownloadStatus.failed => null,
+      ReaderAudioDownloadStatus.downloading =>
+        '${(downloadState.progress * 100).round()}%',
+      _ => null,
+    };
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: palette.backgroundBase,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(message, style: theme.textTheme.bodyMedium),
+          if (trailingMessage != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              trailingMessage,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: palette.textMuted,
+              ),
+            ),
+          ],
+          if (downloadState.status ==
+              ReaderAudioDownloadStatus.downloading) ...[
+            const SizedBox(height: 10),
+            LinearProgressIndicator(value: downloadState.progress),
+          ],
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              FilledButton.tonal(
+                onPressed: downloadState.isBusy ? null : onDownload,
+                child: Text(
+                  bundle.cachedAudioAssets > 0 &&
+                          !bundle.hasCompleteOfflineAudio
+                      ? 'Download Remaining'
+                      : bundle.hasCompleteOfflineAudio
+                      ? 'Re-download Audio'
+                      : 'Download Audio',
+                ),
+              ),
+              if (bundle.cachedAudioAssets > 0 ||
+                  bundle.hasCompleteOfflineAudio)
+                TextButton(
+                  onPressed: downloadState.isBusy ? null : onRemove,
+                  child: const Text('Remove Local Copy'),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }

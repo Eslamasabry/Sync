@@ -89,6 +89,19 @@ class SyncApiClient {
     return _asMap(response.data, context: 'project detail response');
   }
 
+  Future<void> downloadFile({
+    required String url,
+    required String savePath,
+    ProgressCallback? onReceiveProgress,
+  }) {
+    return _dio.download(
+      url,
+      savePath,
+      onReceiveProgress: onReceiveProgress,
+      deleteOnError: true,
+    );
+  }
+
   String assetContentUrl({required String projectId, required String assetId}) {
     return '$_baseUrl/projects/$projectId/assets/$assetId/content';
   }
