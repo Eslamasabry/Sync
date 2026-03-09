@@ -724,6 +724,8 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
           ),
         ),
         const SizedBox(height: 16),
+        _ImportWorkflowRail(state: widget.state),
+        const SizedBox(height: 16),
         TextField(
           controller: _titleController,
           decoration: const InputDecoration(labelText: 'Book Title'),
@@ -849,7 +851,167 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
   }
 }
 
-class _ImportCompletionBanner extends StatelessWidget {
+class _ImportWorkflowRail extends StatelessWidget {
+  const _ImportWorkflowRail({required this.state});
+
+  final LibraryImportState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final steps = <({
+      String label,
+      String description,
+      bool complete,
+      bool active,
+    })>[
+      (
+        label: 'Draft',
+        description: 'Attach EPUB and audio',
+        complete: state.epubFile != null && state.audioFiles.isNotEmpty,
+        active:
+            state.status == LibraryImportStatus.idle ||
+            state.status == LibraryImportStatus.picking ||
+            state.status == LibraryImportStatus.ready ||
+            state.status == LibraryImportStatus.failed,
+      ),
+      (
+        label: 'Project',
+        description: 'Create the project shell',
+        complete:
+            state.projectId != null &&
+            state.status.index > LibraryImportStatus.creatingProject.index,
+        active: state.status == LibraryImportStatus.creatingProject,
+      ),
+      (
+        label: 'Upload',
+        description: 'Send EPUB and audio assets',
+        complete: state.status.index > LibraryImportStatus.uploadingAudio.index,
+        active:
+            state.status == LibraryImportStatus.uploadingEpub ||
+            state.status == LibraryImportStatus.uploadingAudio,
+      ),
+      (
+        label: 'Align',
+        description: 'Start the sync job',
+        complete: state.status == LibraryImportStatus.completed,
+        active: state.status == LibraryImportStatus.startingJob,
+      ),
+    ];
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        color: palette.backgroundBase,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Workflow', style: Theme.of(context).textTheme.labelLarge),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final step in steps)
+                SizedBox(
+                  width: 180,
+                  child: _ImportWorkflowStep(
+                    label: step.label,
+                    description: step.description,
+                    isComplete: step.complete,
+                    isActive: step.active,
+                  ),
+                ),
+            ],
+          ),
+          if (state.message != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              state.message!,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ImportWorkflowStep extends StatelessWidget {
+  const _ImportWorkflowStep({
+    required this.label,
+    required this.description,
+    required this.isComplete,
+    required this.isActive,
+  });
+
+  final String label;
+  final String description;
+  final bool isComplete;
+  final bool isActive;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final tone = isComplete
+        ? palette.success
+        : isActive
+        ? palette.accentPrimary
+        : palette.textMuted;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: palette.backgroundElevated,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isActive ? palette.accentPrimary : palette.borderSubtle,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isComplete
+                    ? Icons.check_circle_rounded
+                    : isActive
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                size: 18,
+                color: tone,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelLarge?.copyWith(color: tone),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            description,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ImportCompletionBanner extends ConsumerWidget {
   const _ImportCompletionBanner({
     required this.state,
     required this.onOpenReader,
@@ -859,8 +1021,19 @@ class _ImportCompletionBanner extends StatelessWidget {
   final VoidCallback onOpenReader;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final palette = ReaderPalette.of(context);
+    final connection = ref.watch(runtimeConnectionSettingsProvider);
+    final importedSettings = connection.asData?.value == null || state.projectId == null
+        ? null
+        : RuntimeConnectionSettings(
+            apiBaseUrl: connection.asData!.value.apiBaseUrl,
+            projectId: state.projectId!,
+            authToken: connection.asData!.value.authToken,
+          );
+    final importedSnapshot = importedSettings == null
+        ? null
+        : ref.watch(libraryProjectSnapshotProvider(importedSettings));
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -886,11 +1059,53 @@ class _ImportCompletionBanner extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'Project ${state.projectId} is ready and job ${state.jobId} is running. Stay in the library to watch queue state or jump into the reader workspace when you want to inspect progress there.',
+            'Project ${state.projectId} is ready and job ${state.jobId} has been handed off. Stay here to monitor progress or jump into the reader workspace when you want to inspect it there.',
             style: Theme.of(
               context,
             ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
           ),
+          if (importedSnapshot != null) ...[
+            const SizedBox(height: 14),
+            importedSnapshot.when(
+              data: (snapshot) => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    snapshot.statusHeadline,
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    snapshot.statusNarrative,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+                  ),
+                  if (snapshot.latestJobPercent != null) ...[
+                    const SizedBox(height: 12),
+                    _LibraryProgressMeter(
+                      label: snapshot.latestJobStage == null
+                          ? 'Alignment progress'
+                          : _capitalizeLabel(
+                              snapshot.latestJobStage!.replaceAll('_', ' '),
+                            ),
+                      percent: snapshot.latestJobPercent!,
+                    ),
+                  ],
+                ],
+              ),
+              loading: () => const Padding(
+                padding: EdgeInsets.symmetric(vertical: 6),
+                child: LinearProgressIndicator(),
+              ),
+              error: (error, _) => Text(
+                'Live status unavailable right now. $error',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
@@ -1049,6 +1264,13 @@ class _ProjectTargetSummary extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('${settings.shortHost} • ${settings.normalizedProjectId}'),
+          const SizedBox(height: 8),
+          Text(
+            value.statusNarrative,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: ReaderPalette.of(context).textMuted),
+          ),
           if (value.latestJobPercent != null) ...[
             const SizedBox(height: 12),
             _LibraryProgressMeter(
@@ -1176,6 +1398,13 @@ class _QueueSnapshotTile extends ConsumerWidget {
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: palette.textMuted,
                       ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      value.statusHeadline,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.labelLarge?.copyWith(color: palette.textPrimary),
                     ),
                     if (value.latestJobPercent != null) ...[
                       const SizedBox(height: 10),
@@ -1309,6 +1538,18 @@ class _ProjectSnapshotCard extends StatelessWidget {
                         color: palette.textMuted,
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    Text(
+                      value.statusHeadline,
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      value.statusNarrative,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+                    ),
                   ],
                 ),
               ),
@@ -1348,7 +1589,7 @@ class _ProjectSnapshotCard extends StatelessWidget {
             children: [
               TextButton(
                 onPressed: () => _showProjectDetailsSheet(context, value),
-                child: const Text('Details'),
+                child: const Text('Workspace'),
               ),
               const Spacer(),
               FilledButton.tonal(onPressed: onOpen, child: const Text('Open')),
@@ -1430,6 +1671,7 @@ Future<void> _showProjectDetailsSheet(
 ) {
   return showModalBottomSheet<void>(
     context: context,
+    isScrollControlled: true,
     showDragHandle: true,
     backgroundColor: Theme.of(context).colorScheme.surface,
     builder: (context) => _ProjectDetailsSheet(snapshot: snapshot),
@@ -1445,137 +1687,414 @@ class _ProjectDetailsSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer(
       builder: (context, ref, child) {
+        final palette = ReaderPalette.of(context);
         final offline = ref.watch(
           libraryOfflineSnapshotProvider(snapshot.settings),
         );
         final jobs = ref.watch(libraryProjectJobsProvider(snapshot.settings));
         final theme = Theme.of(context);
         final homeTab = ref.read(homeTabProvider.notifier);
-        return Padding(
-          padding: EdgeInsets.fromLTRB(
-            20,
-            0,
-            20,
-            20 + MediaQuery.viewInsetsOf(context).bottom,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(snapshot.title, style: theme.textTheme.headlineSmall),
-              const SizedBox(height: 8),
-              Text(
-                '${snapshot.settings.shortHost} • ${snapshot.settings.normalizedProjectId}',
-                style: theme.textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  _LibraryStatusChip(label: snapshot.projectStatusLabel),
-                  if (snapshot.latestJobLabel case final jobLabel?)
-                    _LibraryStatusChip(label: jobLabel),
-                  _LibraryStatusChip(label: '${snapshot.assetCount} assets'),
-                  _LibraryStatusChip(
-                    label: _formatBytes(snapshot.totalSizeBytes),
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.84,
+          maxChildSize: 0.96,
+          minChildSize: 0.56,
+          builder: (context, scrollController) => SingleChildScrollView(
+            controller: scrollController,
+            padding: EdgeInsets.fromLTRB(
+              20,
+              8,
+              20,
+              20 + MediaQuery.viewInsetsOf(context).bottom,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(snapshot.title, style: theme.textTheme.headlineSmall),
+                const SizedBox(height: 8),
+                Text(
+                  '${snapshot.settings.shortHost} • ${snapshot.settings.normalizedProjectId}',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: palette.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                _ProjectDetailHero(snapshot: snapshot),
+                const SizedBox(height: 14),
+                _ProjectDetailSection(
+                  title: 'Overview',
+                  child: _ProjectMetadataGrid(
+                    snapshot: snapshot,
+                    offline: offline,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _ProjectDetailSection(
+                  title: 'Sync State',
+                  child: _ProjectStatusStory(snapshot: snapshot),
+                ),
+                if (offline case AsyncData<LibraryOfflineSnapshot>(
+                  value: final value,
+                )) ...[
+                  const SizedBox(height: 14),
+                  _ProjectDetailSection(
+                    title: 'Offline Readiness',
+                    child: _ProjectOfflineStory(
+                      snapshot: snapshot,
+                      offline: value,
+                    ),
                   ),
                 ],
-              ),
-              if (offline case AsyncData<LibraryOfflineSnapshot>(
-                value: final value,
-              )) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
+                _ProjectDetailSection(
+                  title: 'Recent Attempts',
+                  child: jobs.when(
+                    data: (value) {
+                      if (value.jobs.isEmpty) {
+                        return const Text(
+                          'No alignment attempts recorded yet.',
+                        );
+                      }
+                      return Column(
+                        children: [
+                          for (final job in value.jobs.take(6))
+                            _JobHistoryTile(job: job),
+                        ],
+                      );
+                    },
+                    loading: () => const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: LinearProgressIndicator(),
+                    ),
+                    error: (error, _) => Text(
+                      'Could not load job history. $error',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
                 Wrap(
                   spacing: 10,
                   runSpacing: 10,
-                  children: _offlineStatusChips(
-                    value,
-                    snapshot.audioAssetCount,
-                  ),
+                  children: [
+                    FilledButton.tonalIcon(
+                      onPressed: () async {
+                        await ref
+                            .read(runtimeConnectionSettingsProvider.notifier)
+                            .save(snapshot.settings);
+                        ref.invalidate(projectIdProvider);
+                        ref.invalidate(syncApiClientProvider);
+                        ref.invalidate(projectEventsClientProvider);
+                        ref.invalidate(readerRepositoryProvider);
+                        ref.invalidate(readerProjectProvider);
+                        ref.invalidate(projectEventsProvider);
+                        ref.invalidate(latestProjectEventProvider);
+                        ref.read(readerPlaybackProvider.notifier).resetForProject();
+                        homeTab.showReader();
+                        if (context.mounted) {
+                          Navigator.of(context).pop();
+                        }
+                      },
+                      icon: const Icon(Icons.chrome_reader_mode_rounded),
+                      label: const Text('Open In Reader'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                      label: const Text('Close'),
+                    ),
+                  ],
                 ),
               ],
-              const SizedBox(height: 16),
-              Text(
-                'Language: ${snapshot.language ?? 'Unknown'}',
-                style: theme.textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Assets: ${snapshot.epubAssetCount} EPUB • ${snapshot.audioAssetCount} audio',
-                style: theme.textTheme.bodyMedium,
-              ),
-              if (offline case AsyncData<LibraryOfflineSnapshot>(
-                value: final value,
-              )) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Offline footprint: ${_formatBytes(value.cachedAudioBytes)} audio cached',
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ],
-              if (snapshot.updatedAt != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Updated: ${snapshot.updatedAt!.toLocal().toIso8601String().substring(0, 16).replaceFirst('T', ' ')}',
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ],
-              if (snapshot.latestJobTerminalReason case final terminalReason?)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Text(
-                    'Latest issue: $terminalReason',
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                ),
-              const SizedBox(height: 16),
-              Text('Recent attempts', style: theme.textTheme.titleMedium),
-              const SizedBox(height: 10),
-              jobs.when(
-                data: (value) {
-                  if (value.jobs.isEmpty) {
-                    return const Text('No alignment attempts recorded yet.');
-                  }
-                  return Column(
-                    children: [
-                      for (final job in value.jobs.take(5))
-                        _JobHistoryTile(job: job),
-                    ],
-                  );
-                },
-                loading: () => const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: LinearProgressIndicator(),
-                ),
-                error: (error, _) => Text('Could not load job history. $error'),
-              ),
-              const SizedBox(height: 16),
-              FilledButton.tonalIcon(
-                onPressed: () async {
-                  await ref
-                      .read(runtimeConnectionSettingsProvider.notifier)
-                      .save(snapshot.settings);
-                  ref.invalidate(projectIdProvider);
-                  ref.invalidate(syncApiClientProvider);
-                  ref.invalidate(projectEventsClientProvider);
-                  ref.invalidate(readerRepositoryProvider);
-                  ref.invalidate(readerProjectProvider);
-                  ref.invalidate(projectEventsProvider);
-                  ref.invalidate(latestProjectEventProvider);
-                  ref.read(readerPlaybackProvider.notifier).resetForProject();
-                  homeTab.showReader();
-                  if (context.mounted) {
-                    Navigator.of(context).pop();
-                  }
-                },
-                icon: const Icon(Icons.chrome_reader_mode_rounded),
-                label: const Text('Open In Reader'),
-              ),
-            ],
+            ),
           ),
         );
       },
+    );
+  }
+}
+
+class _ProjectDetailHero extends StatelessWidget {
+  const _ProjectDetailHero({required this.snapshot});
+
+  final LibraryProjectSnapshot snapshot;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(26),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            palette.backgroundElevated,
+            palette.backgroundBase,
+          ],
+        ),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _LibraryStatusChip(label: snapshot.projectStatusLabel),
+              if (snapshot.latestJobLabel case final jobLabel?)
+                _LibraryStatusChip(label: jobLabel),
+              _LibraryStatusChip(label: '${snapshot.assetCount} assets'),
+              if (snapshot.latestJobAttempt != null)
+                _LibraryStatusChip(label: 'Attempt ${snapshot.latestJobAttempt}'),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            snapshot.statusHeadline,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            snapshot.statusNarrative,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+          ),
+          if (snapshot.latestJobPercent != null) ...[
+            const SizedBox(height: 14),
+            _LibraryProgressMeter(
+              label: snapshot.latestJobStage == null
+                  ? 'Current alignment pass'
+                  : _capitalizeLabel(
+                      snapshot.latestJobStage!.replaceAll('_', ' '),
+                    ),
+              percent: snapshot.latestJobPercent!,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ProjectDetailSection extends StatelessWidget {
+  const _ProjectDetailSection({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      decoration: BoxDecoration(
+        color: palette.backgroundBase,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _ProjectMetadataGrid extends StatelessWidget {
+  const _ProjectMetadataGrid({required this.snapshot, required this.offline});
+
+  final LibraryProjectSnapshot snapshot;
+  final AsyncValue<LibraryOfflineSnapshot> offline;
+
+  @override
+  Widget build(BuildContext context) {
+    final cards = <Widget>[
+      _ProjectMetaCard(
+        label: 'Language',
+        value: (snapshot.language ?? 'Unknown').toUpperCase(),
+        hint: 'Reader and alignment language',
+      ),
+      _ProjectMetaCard(
+        label: 'Assets',
+        value: '${snapshot.epubAssetCount} EPUB / ${snapshot.audioAssetCount} audio',
+        hint: _formatBytes(snapshot.totalSizeBytes),
+      ),
+      _ProjectMetaCard(
+        label: 'Project State',
+        value: snapshot.projectStatusLabel.replaceFirst('Project ', ''),
+        hint: snapshot.updatedAt == null
+            ? 'No recent update time'
+            : 'Updated ${_formatTimestamp(snapshot.updatedAt!)}',
+      ),
+    ];
+
+    offline.whenData((value) {
+      cards.add(
+        _ProjectMetaCard(
+          label: 'Offline Footprint',
+          value: value.cachedAudioBytes > 0
+              ? _formatBytes(value.cachedAudioBytes)
+              : 'Not downloaded',
+          hint: value.hasTextCache
+              ? 'Text and sync cached locally'
+              : 'Text and sync still live',
+        ),
+      );
+    });
+
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: cards
+          .map(
+            (card) => SizedBox(
+              width: 240,
+              child: card,
+            ),
+          )
+          .toList(growable: false),
+    );
+  }
+}
+
+class _ProjectMetaCard extends StatelessWidget {
+  const _ProjectMetaCard({
+    required this.label,
+    required this.value,
+    required this.hint,
+  });
+
+  final String label;
+  final String value;
+  final String hint;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: palette.backgroundElevated,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.labelMedium?.copyWith(color: palette.textMuted),
+          ),
+          const SizedBox(height: 6),
+          Text(value, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 6),
+          Text(
+            hint,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProjectStatusStory extends StatelessWidget {
+  const _ProjectStatusStory({required this.snapshot});
+
+  final LibraryProjectSnapshot snapshot;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          snapshot.statusNarrative,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+        ),
+        if (snapshot.latestJobTerminalReason case final terminalReason?) ...[
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            decoration: BoxDecoration(
+              color: palette.accentSoft.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: palette.borderSubtle),
+            ),
+            child: Text(
+              'Latest issue: $terminalReason',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ProjectOfflineStory extends StatelessWidget {
+  const _ProjectOfflineStory({
+    required this.snapshot,
+    required this.offline,
+  });
+
+  final LibraryProjectSnapshot snapshot;
+  final LibraryOfflineSnapshot offline;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final lines = <String>[
+      offline.hasTextCache
+          ? 'Reader model and sync are saved on this device.'
+          : 'Reader model and sync will still come from the backend.',
+      if (snapshot.audioAssetCount > 0)
+        offline.cachedAudioAssets >= snapshot.audioAssetCount
+            ? 'All audiobook files are available offline.'
+            : offline.cachedAudioAssets > 0
+            ? '${offline.cachedAudioAssets} of ${snapshot.audioAssetCount} audio files are cached.'
+            : 'Audio is still streaming only.',
+      if (offline.audioCachedAt != null)
+        'Last audio cache update: ${_formatTimestamp(offline.audioCachedAt!)}',
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _offlineStatusChips(offline, snapshot.audioAssetCount),
+        ),
+        const SizedBox(height: 12),
+        for (final line in lines)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              line,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -1629,6 +2148,13 @@ class _JobHistoryTile extends StatelessWidget {
               style: Theme.of(
                 context,
               ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+            ),
+          ],
+          if (job.percent != null) ...[
+            const SizedBox(height: 10),
+            _LibraryProgressMeter(
+              label: stage ?? 'Attempt progress',
+              percent: job.percent!,
             ),
           ],
         ],
@@ -1715,6 +2241,48 @@ List<Map<String, dynamic>> _asObjectList(Object? value) {
 }
 
 extension on LibraryProjectSnapshot {
+  String get statusHeadline {
+    switch (latestJobStatus) {
+      case 'running':
+        return 'Alignment is actively building the reading timeline.';
+      case 'queued':
+        return 'This project is waiting for the next alignment worker slot.';
+      case 'failed':
+        return 'The latest alignment attempt stopped before export.';
+      case 'completed':
+        return 'Sync is ready for playback-driven reading.';
+    }
+    if (projectStatus == 'ready') {
+      return 'This book is ready to read.';
+    }
+    return 'Project state is available, but not fully synced yet.';
+  }
+
+  String get statusNarrative {
+    if (latestJobStatus == 'running') {
+      final stage = latestJobStage == null
+          ? 'the current stage'
+          : _capitalizeLabel(latestJobStage!.replaceAll('_', ' '));
+      final percent = latestJobPercent == null ? '' : ' at $latestJobPercent%';
+      return 'The latest attempt is moving through $stage$percent. You can stay in the library to monitor progress or open the reader and inspect the live project state.';
+    }
+    if (latestJobStatus == 'queued') {
+      return 'Assets are attached and the job is queued. Nothing is wrong here yet; the project is simply waiting for execution.';
+    }
+    if (latestJobStatus == 'failed') {
+      return latestJobTerminalReason == null
+          ? 'The last attempt failed. Open the project workspace and recent attempts to inspect where it stopped.'
+          : 'The last attempt failed because "$latestJobTerminalReason". Retry or inspect the recent attempt timeline before reopening the reader.';
+    }
+    if (latestJobStatus == 'completed') {
+      return 'The latest attempt finished successfully. Reader content, sync data, and cached assets can now be reopened with minimal friction.';
+    }
+    if (projectStatus == 'ready') {
+      return 'This project is structurally ready, but there is no recent alignment attempt to summarize yet.';
+    }
+    return 'This project exists on the backend, but it still needs a successful alignment pass before it becomes a polished reading target.';
+  }
+
   String get projectStatusLabel {
     final normalized = projectStatus.replaceAll('_', ' ').trim();
     if (normalized.isEmpty) {

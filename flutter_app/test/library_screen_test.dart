@@ -205,6 +205,14 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Processing Queue'), findsOneWidget);
       await tester.scrollUntilVisible(
+        find.text('Recent Books'),
+        260,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Recent Books'), findsOneWidget);
+      expect(find.textContaining('Loomings'), findsOneWidget);
+      await tester.scrollUntilVisible(
         find.text('Recent Server Projects'),
         220,
         scrollable: find.byType(Scrollable).first,
@@ -214,15 +222,16 @@ void main() {
       expect(find.textContaining('Running'), findsWidgets);
       expect(find.text('Text cached'), findsWidgets);
       expect(find.text('Audio offline'), findsWidgets);
-      expect(find.text('Details'), findsOneWidget);
-      await tester.scrollUntilVisible(
-        find.text('Recent Books'),
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
+      expect(find.text('Workspace'), findsOneWidget);
+
+      await tester.tap(find.text('Workspace').first);
       await tester.pumpAndSettle();
-      expect(find.text('Recent Books'), findsOneWidget);
-      expect(find.textContaining('Loomings'), findsOneWidget);
+
+      expect(find.text('Overview'), findsOneWidget);
+      expect(find.text('Sync State'), findsOneWidget);
+      expect(find.text('Offline Readiness'), findsOneWidget);
+      expect(find.text('Recent Attempts'), findsOneWidget);
+      expect(find.text('Open In Reader'), findsOneWidget);
     },
   );
 }
