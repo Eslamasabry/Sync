@@ -137,6 +137,82 @@ def test_project_asset_job_flow(client: TestClient) -> None:
     assert job_detail_response.json()["retry_of_job_id"] is None
 
 
+def test_project_job_history_is_empty_for_new_project(client: TestClient) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Empty History Project", "language": "en"},
+    ).json()["project_id"]
+
+    response = client.get(f"/v1/projects/{project_id}/jobs")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["project_id"] == project_id
+    assert payload["jobs"] == []
+
+
+def test_project_job_history_returns_reverse_chronological_jobs(client: TestClient) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "History Project", "language": "en"},
+    ).json()["project_id"]
+
+    epub_asset_id = client.post(
+        f"/v1/projects/{project_id}/assets",
+        json={
+            "kind": "epub",
+            "filename": "history.epub",
+            "content_type": "application/epub+zip",
+        },
+    ).json()["asset_id"]
+
+    first_audio_asset_id = client.post(
+        f"/v1/projects/{project_id}/assets",
+        json={
+            "kind": "audio",
+            "filename": "history-1.mp3",
+            "content_type": "audio/mpeg",
+        },
+    ).json()["asset_id"]
+    second_audio_asset_id = client.post(
+        f"/v1/projects/{project_id}/assets",
+        json={
+            "kind": "audio",
+            "filename": "history-2.mp3",
+            "content_type": "audio/mpeg",
+        },
+    ).json()["asset_id"]
+
+    first_job_id = client.post(
+        f"/v1/projects/{project_id}/jobs",
+        json={
+            "job_type": "alignment",
+            "book_asset_id": epub_asset_id,
+            "audio_asset_ids": [first_audio_asset_id],
+        },
+    ).json()["job_id"]
+    second_job_id = client.post(
+        f"/v1/projects/{project_id}/jobs",
+        json={
+            "job_type": "alignment",
+            "book_asset_id": epub_asset_id,
+            "audio_asset_ids": [second_audio_asset_id],
+        },
+    ).json()["job_id"]
+
+    response = client.get(f"/v1/projects/{project_id}/jobs")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["project_id"] == project_id
+    assert [job["job_id"] for job in payload["jobs"]] == [second_job_id, first_job_id]
+    assert payload["jobs"][0]["status"] == "queued"
+    assert payload["jobs"][0]["progress"] == {"stage": "queued", "percent": 0}
+    assert payload["jobs"][0]["request_fingerprint"]
+    assert payload["jobs"][0]["attempt_number"] == 1
+    assert payload["jobs"][0]["retry_of_job_id"] is None
+
+
 def test_epub_upload_generates_reader_model(client: TestClient) -> None:
     project_id = client.post(
         "/v1/projects",

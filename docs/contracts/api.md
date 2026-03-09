@@ -276,6 +276,40 @@ Notes:
 - `checksum_sha256` and `size_bytes` are intended for client-side cache validation.
 - `duration_ms` is populated for uploaded audio assets when the backend can determine duration safely at ingest time.
 
+### `GET /v1/projects/{project_id}/jobs`
+
+Returns reverse-chronological job history for a project.
+
+Response shape:
+
+```json
+{
+  "project_id": "uuid",
+  "jobs": [
+    {
+      "job_id": "uuid",
+      "job_type": "alignment",
+      "status": "running",
+      "progress": {
+        "stage": "matching",
+        "percent": 78
+      },
+      "request_fingerprint": "sha256",
+      "attempt_number": 1,
+      "retry_of_job_id": null,
+      "terminal_reason": null,
+      "created_at": "2026-03-09T00:00:00Z",
+      "updated_at": "2026-03-09T00:02:00Z"
+    }
+  ]
+}
+```
+
+Notes:
+
+- Jobs are sorted by most recently updated first, then by creation time.
+- This is the main history surface the Flutter library/queue UI should use instead of overloading `latest_job`.
+
 ### `GET /v1/projects/{project_id}/jobs/{job_id}`
 
 Returns detailed job status, progress, and artifact pointers.

@@ -92,6 +92,24 @@ class ProjectDetailResponse(BaseModel):
     latest_job: JobSummary | None
 
 
+class JobHistoryEntryResponse(BaseModel):
+    job_id: UUID
+    job_type: str
+    status: str
+    progress: JobProgress
+    request_fingerprint: str
+    attempt_number: int = Field(ge=1)
+    retry_of_job_id: UUID | None = None
+    terminal_reason: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProjectJobHistoryResponse(BaseModel):
+    project_id: UUID
+    jobs: list[JobHistoryEntryResponse]
+
+
 class JobDetailResponse(BaseModel):
     job_id: UUID
     status: str

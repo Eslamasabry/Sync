@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from sync_backend.api.dependencies import get_db_session
@@ -18,6 +19,7 @@ from sync_backend.api.schemas import (
     JobCreateRequest,
     JobCreateResponse,
     JobDetailResponse,
+    JobHistoryEntryResponse,
     JobProgress,
     JobQuality,
     JobSummary,
@@ -25,6 +27,7 @@ from sync_backend.api.schemas import (
     ProjectCreateRequest,
     ProjectCreateResponse,
     ProjectDetailResponse,
+    ProjectJobHistoryResponse,
     ReaderModelResponse,
     SyncArtifactResponse,
     TranscriptArtifactResponse,
@@ -111,6 +114,21 @@ def _job_detail(job: AlignmentJob) -> JobDetailResponse:
         terminal_reason=job.terminal_reason,
         book_asset_id=UUID(job.book_asset_id),
         audio_asset_ids=[UUID(asset_id) for asset_id in job.audio_asset_ids],
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+    )
+
+
+def _job_history_entry(job: AlignmentJob) -> JobHistoryEntryResponse:
+    return JobHistoryEntryResponse(
+        job_id=UUID(job.id),
+        job_type=job.job_type,
+        status=job.status,
+        progress=JobProgress(stage=job.progress_stage, percent=job.progress_percent),
+        request_fingerprint=job.request_fingerprint,
+        attempt_number=job.attempt_number,
+        retry_of_job_id=_as_uuid(job.retry_of_job_id),
+        terminal_reason=job.terminal_reason,
         created_at=job.created_at,
         updated_at=job.updated_at,
     )
@@ -508,6 +526,22 @@ async def create_job_route(
         reused_existing=result.reused_existing,
         attempt_number=job.attempt_number,
         retry_of_job_id=_as_uuid(job.retry_of_job_id),
+    )
+
+
+@router.get("/{project_id}/jobs", response_model=ProjectJobHistoryResponse)
+async def list_jobs_route(project_id: str, session: DbSession) -> ProjectJobHistoryResponse:
+    get_project_or_404(session=session, project_id=project_id)
+    jobs = list(
+        session.scalars(
+            select(AlignmentJob)
+            .where(AlignmentJob.project_id == project_id)
+            .order_by(AlignmentJob.updated_at.desc(), AlignmentJob.created_at.desc())
+        )
+    )
+    return ProjectJobHistoryResponse(
+        project_id=UUID(project_id),
+        jobs=[_job_history_entry(job) for job in jobs],
     )
 
 
