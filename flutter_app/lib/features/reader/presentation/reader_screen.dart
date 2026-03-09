@@ -2001,7 +2001,8 @@ class _AudioDownloadBanner extends StatelessWidget {
     final theme = Theme.of(context);
     final message = switch (downloadState.status) {
       ReaderAudioDownloadStatus.downloading =>
-        'Downloading audio for offline playback...',
+        'Downloading audio ${downloadState.completedAssets + 1} of '
+            '${downloadState.totalAssets > 0 ? downloadState.totalAssets : bundle.totalAudioAssets} for offline playback...',
       ReaderAudioDownloadStatus.removing =>
         'Removing downloaded audio from this device...',
       ReaderAudioDownloadStatus.failed =>
@@ -2018,7 +2019,7 @@ class _AudioDownloadBanner extends StatelessWidget {
       ReaderAudioDownloadStatus.succeeded => downloadState.message,
       ReaderAudioDownloadStatus.failed => null,
       ReaderAudioDownloadStatus.downloading =>
-        '${(downloadState.progress * 100).round()}%',
+        '${downloadState.activeAssetId ?? 'current file'} • ${(downloadState.progress * 100).round()}%',
       _ => null,
     };
 
