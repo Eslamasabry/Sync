@@ -623,6 +623,10 @@ void main() {
     );
     final beforeDecoration = beforeContainer.decoration! as BoxDecoration;
 
+    await tester.ensureVisible(find.text('Reading surface'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reading surface'));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Enhanced contrast'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Enhanced contrast'));
@@ -646,6 +650,10 @@ void main() {
   ) async {
     await _pumpReaderApp(tester, repository: _FakeReaderRepository());
 
+    await tester.ensureVisible(find.text('Reading surface'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reading surface'));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Left-handed HUD'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Left-handed HUD'));
@@ -675,6 +683,10 @@ void main() {
     final before = tester.widget<Text>(find.text('Call').first);
     final beforeSize = before.style?.fontSize ?? 0;
 
+    await tester.ensureVisible(find.text('Reading surface'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reading surface'));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Large').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Large').first);
@@ -714,7 +726,7 @@ void main() {
       settingsStorage: settingsStorage,
     );
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Connection').first);
+    await tester.tap(find.text('Connection').first);
     await tester.pumpAndSettle();
 
     await tester.enterText(
@@ -757,7 +769,7 @@ void main() {
       settingsStorage: settingsStorage,
     );
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Connection').first);
+    await tester.tap(find.text('Connection').first);
     await tester.pumpAndSettle();
 
     expect(find.text('Recent Connections'), findsOneWidget);
@@ -811,6 +823,10 @@ void main() {
     final slider = tester.widget<Slider>(find.byType(Slider));
     slider.onChanged!(1800);
     await tester.pump();
+    await tester.ensureVisible(find.text('Current gap'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Current gap'));
+    await tester.pumpAndSettle();
 
     expect(
       find.text('Playback is in an unmatched narration span.'),
@@ -826,6 +842,10 @@ void main() {
     final slider = tester.widget<Slider>(find.byType(Slider));
     slider.onChanged!(4500);
     await tester.pump();
+    await tester.ensureVisible(find.text('Current gap'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Current gap'));
+    await tester.pumpAndSettle();
 
     expect(
       find.text(
@@ -858,6 +878,10 @@ void main() {
 
     final playback = container.read(readerPlaybackProvider);
     expect(playback.positionMs, 2600);
+    await tester.ensureVisible(find.text('Progress'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Progress'));
+    await tester.pumpAndSettle();
     expect(find.textContaining('Book 54% complete'), findsOneWidget);
   });
 
@@ -881,13 +905,30 @@ void main() {
       studyStore: studyStore,
     );
 
-    await tester.ensureVisible(find.text('Save Bookmark'));
+    final studySection = find.widgetWithText(ExpansionTile, 'Study').first;
+    await tester.ensureVisible(studySection);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Save Bookmark'));
+    await tester.tapAt(tester.getCenter(studySection));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Review Tray'));
+    final saveBookmarkButton = find.widgetWithText(
+      FilledButton,
+      'Save Bookmark',
+    );
+    await tester.ensureVisible(saveBookmarkButton);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Review Tray'));
+    await tester.tap(saveBookmarkButton);
+    await tester.pumpAndSettle();
+    var reviewTrayButton = find.widgetWithText(TextButton, 'Review Tray');
+    if (reviewTrayButton.evaluate().isEmpty) {
+      await tester.ensureVisible(studySection);
+      await tester.pumpAndSettle();
+      await tester.tapAt(tester.getCenter(studySection));
+      await tester.pumpAndSettle();
+      reviewTrayButton = find.widgetWithText(TextButton, 'Review Tray');
+    }
+    await tester.ensureVisible(reviewTrayButton);
+    await tester.pumpAndSettle();
+    await tester.tap(reviewTrayButton);
     await tester.pumpAndSettle();
 
     expect(find.text('Review Tray'), findsAtLeastNWidgets(1));
@@ -964,6 +1005,10 @@ void main() {
     tester,
   ) async {
     await _pumpReaderApp(tester, repository: _FakeReaderRepository());
+    await tester.ensureVisible(find.text('Diagnostics'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Diagnostics'));
+    await tester.pumpAndSettle();
 
     expect(find.text('Playback source: text timeline only.'), findsOneWidget);
     expect(find.text('Text timeline mode'), findsOneWidget);
@@ -978,6 +1023,10 @@ void main() {
   ) async {
     await _pumpReaderApp(tester, repository: _StreamingAudioReaderRepository());
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Diagnostics'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Diagnostics'));
+    await tester.pumpAndSettle();
 
     expect(
       find.text('Playback source: streaming from the backend.'),
@@ -991,6 +1040,10 @@ void main() {
 
   testWidgets('shows mixed local and streaming diagnostics', (tester) async {
     await _pumpReaderApp(tester, repository: _MixedAudioReaderRepository());
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Diagnostics'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Diagnostics'));
     await tester.pumpAndSettle();
 
     expect(
@@ -1011,6 +1064,10 @@ void main() {
     tester,
   ) async {
     await _pumpReaderApp(tester, repository: _OfflineAudioReaderRepository());
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Diagnostics'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Diagnostics'));
     await tester.pumpAndSettle();
 
     expect(find.text('Playback source: local cached audio.'), findsOneWidget);

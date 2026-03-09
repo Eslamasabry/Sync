@@ -564,14 +564,7 @@ class _ReaderStateStrip extends StatelessWidget {
 
   static _ReaderStateSummary? _stateSummary(ReaderProjectBundle bundle) {
     final fallback = switch (bundle.source) {
-      ReaderContentSource.offlineCache => _ReaderStateSummary(
-        title: 'Offline cache in control',
-        message:
-            bundle.statusMessage ??
-            'This reader session is coming from cached artifacts on the device.',
-        canRefresh: true,
-        isProblem: false,
-      ),
+      ReaderContentSource.offlineCache => null,
       ReaderContentSource.artifactPending => _ReaderStateSummary(
         title: 'Artifacts still processing',
         message:
@@ -588,27 +581,12 @@ class _ReaderStateStrip extends StatelessWidget {
         canRefresh: true,
         isProblem: true,
       ),
-      ReaderContentSource.demoFallback => _ReaderStateSummary(
-        title: 'Demo content is standing in',
-        message:
-            bundle.statusMessage ??
-            'The backend is unavailable, so the app opened with demo data.',
-        canRefresh: true,
-        isProblem: true,
-      ),
+      ReaderContentSource.demoFallback => null,
       ReaderContentSource.api => null,
     };
 
     if (fallback != null) {
       return fallback;
-    }
-    if (bundle.statusMessage != null && bundle.statusMessage!.isNotEmpty) {
-      return _ReaderStateSummary(
-        title: 'Project state update',
-        message: bundle.statusMessage!,
-        canRefresh: true,
-        isProblem: false,
-      );
     }
     return null;
   }
@@ -765,8 +743,6 @@ class _ReaderHeroBar extends StatelessWidget {
                     runSpacing: 8,
                     children: [
                       _DiagnosticsChip(label: audioState),
-                      _DiagnosticsChip(label: 'Coverage $coverage'),
-                      _DiagnosticsChip(label: 'Confidence $confidence'),
                       _DiagnosticsChip(label: settings.shortHost),
                     ],
                   ),
@@ -784,6 +760,13 @@ class _ReaderHeroBar extends StatelessWidget {
                     style: theme.textTheme.bodyLarge?.copyWith(
                       color: palette.textMuted,
                       height: 1.42,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Coverage $coverage  •  Confidence $confidence',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: palette.textMuted,
                     ),
                   ),
                 ],
@@ -1036,7 +1019,7 @@ class _ControlDock extends StatelessWidget {
               const SizedBox(height: 12),
             ],
             if (bundle != null) ...[
-              _DockSection(
+              _DockExpansionSection(
                 title: 'Diagnostics',
                 icon: Icons.podcasts_rounded,
                 child: _ReaderDiagnosticsBanner(
@@ -1045,7 +1028,7 @@ class _ControlDock extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              _DockSection(
+              _DockExpansionSection(
                 title: 'Progress',
                 icon: Icons.timeline_rounded,
                 child: _ReadingProgressBanner(
@@ -1054,9 +1037,10 @@ class _ControlDock extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              _DockSection(
+              _DockExpansionSection(
                 title: 'Listen',
                 icon: Icons.play_circle_outline_rounded,
+                initiallyExpanded: true,
                 child: _PlaybackPowerCard(
                   playback: playback,
                   onApplyPreset: onApplyPreset,
@@ -1066,7 +1050,7 @@ class _ControlDock extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              _DockSection(
+              _DockExpansionSection(
                 title: 'Reading surface',
                 icon: Icons.format_size_rounded,
                 child: _ReaderPreferencesCard(
@@ -1081,9 +1065,10 @@ class _ControlDock extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              _DockSection(
+              _DockExpansionSection(
                 title: 'Study',
                 icon: Icons.edit_note_rounded,
+                initiallyExpanded: true,
                 child: _StudyWorkflowCard(
                   entries: studyEntries,
                   onAddBookmark: onAddBookmark,
@@ -1125,7 +1110,7 @@ class _ControlDock extends StatelessWidget {
               const SizedBox(height: 12),
             ],
             if (latestEvent != null) ...[
-              _DockSection(
+              _DockExpansionSection(
                 title: 'Live job state',
                 icon: Icons.sync_rounded,
                 child: _JobEventBanner(event: latestEvent!),
@@ -1133,7 +1118,7 @@ class _ControlDock extends StatelessWidget {
               const SizedBox(height: 12),
             ],
             if (bundle != null) ...[
-              _DockSection(
+              _DockExpansionSection(
                 title: 'Current gap',
                 icon: Icons.linear_scale_rounded,
                 child: _GapStatusBanner(
@@ -1141,7 +1126,7 @@ class _ControlDock extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              _DockSection(
+              _DockExpansionSection(
                 title: 'Playback state',
                 icon: Icons.equalizer_rounded,
                 child: _PlaybackStatusBanner(
@@ -1392,6 +1377,49 @@ class _DockSection extends StatelessWidget {
           const SizedBox(height: 12),
           child,
         ],
+      ),
+    );
+  }
+}
+
+class _DockExpansionSection extends StatelessWidget {
+  const _DockExpansionSection({
+    required this.title,
+    required this.icon,
+    required this.child,
+    this.initiallyExpanded = false,
+  });
+
+  final String title;
+  final IconData icon;
+  final Widget child;
+  final bool initiallyExpanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: palette.backgroundBase.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: initiallyExpanded,
+          tilePadding: const EdgeInsets.fromLTRB(14, 6, 14, 6),
+          childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+          leading: Icon(icon, size: 18, color: palette.accentPrimary),
+          title: Text(
+            title,
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(color: palette.textPrimary),
+          ),
+          children: [child],
+        ),
       ),
     );
   }
