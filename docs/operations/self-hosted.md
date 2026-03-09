@@ -29,6 +29,13 @@ sudo mkdir -p /opt/sync /var/lib/sync /etc/sync
 sudo chown -R sync:sync /opt/sync /var/lib/sync
 ```
 
+Optional token generation:
+
+```bash
+cd /opt/sync
+./deploy/scripts/generate_api_auth_token.sh
+```
+
 ## 3. Backend Install
 
 ```bash
@@ -88,6 +95,19 @@ sudo systemctl enable --now sync-api sync-worker
 If `JOB_EXECUTION_MODE=inline`, install and enable only `sync-api`. The worker service is not required in that mode.
 If `OBJECT_STORE_MODE=s3`, keep `ALIGNMENT_WORKDIR` on local disk for temporary processing files while uploaded assets and generated artifacts persist in the configured bucket.
 
+You can also copy the committed templates with:
+
+```bash
+cd /opt/sync
+sudo ./deploy/scripts/install_self_hosted.sh
+```
+
+For SQLite + inline mode:
+
+```bash
+sudo ./deploy/scripts/install_self_hosted.sh --inline
+```
+
 ## 7. nginx Reverse Proxy
 
 Install:
@@ -108,6 +128,13 @@ curl -f http://127.0.0.1:8000/v1/health
 curl -f http://127.0.0.1:8000/v1/ready
 systemctl status sync-api --no-pager
 systemctl status sync-worker --no-pager
+```
+
+Scripted check:
+
+```bash
+cd /opt/sync
+./deploy/scripts/post_deploy_check.sh --api-base-url http://127.0.0.1:8000/v1 --auth-token <token>
 ```
 
 After the first successful alignment job on the host, verify artifact delivery directly:

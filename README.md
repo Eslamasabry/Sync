@@ -144,6 +144,9 @@ Self-hosted release templates live under [deploy](/home/eslam/Storage/Code/Sync/
 - [deploy/systemd/sync-worker.service](/home/eslam/Storage/Code/Sync/deploy/systemd/sync-worker.service)
 - [deploy/nginx/sync.conf](/home/eslam/Storage/Code/Sync/deploy/nginx/sync.conf)
 - [deploy/env/backend.env.example](/home/eslam/Storage/Code/Sync/deploy/env/backend.env.example)
+- [deploy/scripts/generate_api_auth_token.sh](/home/eslam/Storage/Code/Sync/deploy/scripts/generate_api_auth_token.sh)
+- [deploy/scripts/install_self_hosted.sh](/home/eslam/Storage/Code/Sync/deploy/scripts/install_self_hosted.sh)
+- [deploy/scripts/post_deploy_check.sh](/home/eslam/Storage/Code/Sync/deploy/scripts/post_deploy_check.sh)
 
 ## CI And Release Gates
 
@@ -151,5 +154,6 @@ GitHub Actions now enforce:
 
 - backend lint, typecheck, and tests
 - Flutter format, analyze, and widget tests
+- Android APK build and GitHub release publishing on `v*` tags
 
 Before calling a release candidate healthy, run the full checklist in [release-readiness.md](/home/eslam/Storage/Code/Sync/docs/engineering/release-readiness.md), especially `make local-regression-corpus-gate`.
