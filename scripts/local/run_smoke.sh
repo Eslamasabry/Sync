@@ -166,6 +166,21 @@ fi
 curl -fsS "$API_BASE_URL/projects/$PROJECT_ID/reader-model" >"$OUTPUT_DIR/reader-model.json"
 curl -fsS "$API_BASE_URL/projects/$PROJECT_ID/sync" >"$OUTPUT_DIR/sync.json"
 
+READER_DOWNLOAD_URL="$(
+  extract_json_field download_url <"$OUTPUT_DIR/reader-model.json"
+)"
+SYNC_DOWNLOAD_URL="$(
+  extract_json_field download_url <"$OUTPUT_DIR/sync.json"
+)"
+
+if [[ -n "$READER_DOWNLOAD_URL" && "$READER_DOWNLOAD_URL" != "None" && "$READER_DOWNLOAD_URL" != "null" ]]; then
+  curl -fsS "$READER_DOWNLOAD_URL" >"$OUTPUT_DIR/reader-model.content.json"
+fi
+
+if [[ -n "$SYNC_DOWNLOAD_URL" && "$SYNC_DOWNLOAD_URL" != "None" && "$SYNC_DOWNLOAD_URL" != "null" ]]; then
+  curl -fsS "$SYNC_DOWNLOAD_URL" >"$OUTPUT_DIR/sync.content.json"
+fi
+
 python3 - "$OUTPUT_DIR" "$PROJECT_ID" "$JOB_ID" "$JOB_STATUS" "$PROVIDER" <<'PY'
 import json
 import sys
@@ -179,6 +194,8 @@ provider = sys.argv[5]
 
 sync_payload = json.loads((output_dir / "sync.json").read_text())["inline_payload"]
 job_payload = json.loads((output_dir / "job-status.json").read_text())
+reader_content_exists = (output_dir / "reader-model.content.json").exists()
+sync_content_exists = (output_dir / "sync.content.json").exists()
 
 summary = {
     "project_id": project_id,
@@ -190,6 +207,8 @@ summary = {
     "content_start_ms": sync_payload.get("content_start_ms"),
     "content_end_ms": sync_payload.get("content_end_ms"),
     "match_confidence": job_payload.get("quality", {}).get("match_confidence"),
+    "reader_model_download_verified": reader_content_exists,
+    "sync_download_verified": sync_content_exists,
 }
 
 (output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
@@ -208,6 +227,8 @@ Artifacts:
   $OUTPUT_DIR/sync.json
   $OUTPUT_DIR/job-status.json
   $OUTPUT_DIR/summary.json
+  $OUTPUT_DIR/reader-model.content.json (if download_url available)
+  $OUTPUT_DIR/sync.content.json (if download_url available)
 
 Flutter:
   make flutter-run PROJECT_ID=$PROJECT_ID API_BASE_URL=$API_BASE_URL

@@ -84,6 +84,7 @@ The fastest scripted local flows are:
 ```bash
 make local-full-smoke
 make local-full-smoke-host
+make local-full-smoke-s3
 make local-full-smoke-whisperx
 make local-regression
 make local-regression-gate
@@ -95,6 +96,16 @@ Recommended for host-installed PostgreSQL and Redis:
 
 ```bash
 make local-bootstrap-host
+make local-start
+make local-smoke
+make local-status
+make local-stop
+```
+
+Recommended for S3-backed blob validation with MinIO or another local-compatible endpoint:
+
+```bash
+make local-bootstrap-s3
 make local-start
 make local-smoke
 make local-status
@@ -124,6 +135,7 @@ Supporting scripts live under [scripts/local](/home/eslam/Storage/Code/Sync/scri
 
 The public-domain regression gate persists machine-readable metrics under `tmp/public-domain-regression/metrics.json` and fails if baseline thresholds regress.
 The real corpus gate persists per-title artifacts under `tmp/regression-corpus/` and aggregates them into `tmp/regression-corpus/summary.json`.
+The S3 smoke path also verifies the reader-model and sync `download_url` content routes, so object-store backed artifact streaming is part of the local contract.
 
 Self-hosted release templates live under [deploy](/home/eslam/Storage/Code/Sync/deploy):
 

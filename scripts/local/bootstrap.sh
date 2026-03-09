@@ -7,10 +7,11 @@ SKIP_FLUTTER=0
 INFRA_MODE="auto"
 EXECUTION_MODE="celery"
 DATABASE_MODE="postgres"
+OBJECT_STORE_MODE="filesystem"
 
 usage() {
   cat <<'EOF'
-Usage: scripts/local/bootstrap.sh [--provider static|whisperx] [--skip-flutter] [--infra auto|host|docker|none] [--execution-mode celery|inline] [--database postgres|sqlite] [--lite]
+Usage: scripts/local/bootstrap.sh [--provider static|whisperx] [--skip-flutter] [--infra auto|host|docker|none] [--execution-mode celery|inline] [--database postgres|sqlite] [--object-store filesystem|s3] [--lite]
 
 Prepares the local development environment for Sync:
   - ensures backend/.env exists
@@ -23,6 +24,7 @@ Examples:
   scripts/local/bootstrap.sh
   scripts/local/bootstrap.sh --provider whisperx
   scripts/local/bootstrap.sh --infra host
+  scripts/local/bootstrap.sh --object-store s3
   scripts/local/bootstrap.sh --lite
 EOF
 }
@@ -74,14 +76,45 @@ host_infra_ready() {
     [[ "$(redis-cli ping 2>/dev/null)" == "PONG" ]]
 }
 
+host_object_store_ready() {
+  case "$OBJECT_STORE_MODE" in
+    filesystem)
+      return 0
+      ;;
+    s3)
+      command -v curl >/dev/null 2>&1 || return 1
+      curl -fsS "http://localhost:9000/minio/health/live" >/dev/null 2>&1
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+start_docker_services() {
+  local include_data_services="${1:-yes}"
+  local services=()
+
+  if [[ "$include_data_services" == "yes" ]]; then
+    services+=(postgres redis)
+  fi
+  if [[ "$OBJECT_STORE_MODE" == "s3" ]]; then
+    services+=(minio minio-init)
+  fi
+  if [[ "${#services[@]}" -eq 0 ]]; then
+    return 0
+  fi
+  (
+    cd "$ROOT_DIR"
+    docker compose up -d "${services[@]}"
+  )
+}
+
 start_infra() {
   case "$INFRA_MODE" in
     docker)
       require_cmd docker
-      (
-        cd "$ROOT_DIR"
-        docker compose up -d
-      )
+      start_docker_services
       ;;
     host)
       if ! host_infra_ready; then
@@ -97,18 +130,31 @@ If you installed them with apt:
 EOF
         exit 1
       fi
+      if ! host_object_store_ready; then
+        cat >&2 <<'EOF'
+Requested OBJECT_STORE_MODE=s3, but no local S3-compatible endpoint is reachable.
+
+Expected:
+  - MinIO or another S3-compatible API on http://localhost:9000
+  - bucket credentials matching backend/.env
+
+If you want the repo-managed MinIO only:
+  docker compose up -d minio minio-init
+EOF
+        exit 1
+      fi
       ;;
     none)
       ;;
     auto)
-      if host_infra_ready; then
-        echo "Using host PostgreSQL and Redis."
+      if host_infra_ready && host_object_store_ready; then
+        echo "Using host infrastructure."
+      elif host_infra_ready; then
+        require_cmd docker
+        start_docker_services no
       else
         require_cmd docker
-        (
-          cd "$ROOT_DIR"
-          docker compose up -d
-        )
+        start_docker_services yes
       fi
       ;;
     *)
@@ -140,10 +186,15 @@ while (($# > 0)); do
       DATABASE_MODE="${2:-}"
       shift 2
       ;;
+    --object-store)
+      OBJECT_STORE_MODE="${2:-}"
+      shift 2
+      ;;
     --lite)
       EXECUTION_MODE="inline"
       DATABASE_MODE="sqlite"
       INFRA_MODE="none"
+      OBJECT_STORE_MODE="filesystem"
       shift
       ;;
     -h|--help)
@@ -170,6 +221,10 @@ if [[ "$DATABASE_MODE" != "postgres" && "$DATABASE_MODE" != "sqlite" ]]; then
   echo "Unsupported database mode: $DATABASE_MODE" >&2
   exit 1
 fi
+if [[ "$OBJECT_STORE_MODE" != "filesystem" && "$OBJECT_STORE_MODE" != "s3" ]]; then
+  echo "Unsupported object store mode: $OBJECT_STORE_MODE" >&2
+  exit 1
+fi
 
 require_cmd python3
 if [[ "$SKIP_FLUTTER" -eq 0 ]]; then
@@ -183,6 +238,7 @@ fi
 
 update_env_value "TRANSCRIBER_PROVIDER" "$PROVIDER"
 update_env_value "JOB_EXECUTION_MODE" "$EXECUTION_MODE"
+update_env_value "OBJECT_STORE_MODE" "$OBJECT_STORE_MODE"
 if [[ "$DATABASE_MODE" == "sqlite" ]]; then
   mkdir -p "$ROOT_DIR/backend/artifacts"
   update_env_value "DATABASE_URL" "sqlite+pysqlite:///$ROOT_DIR/backend/artifacts/sync-lite.db"
@@ -220,6 +276,7 @@ Provider: $PROVIDER
 Infra mode: $INFRA_MODE
 Execution mode: $EXECUTION_MODE
 Database mode: $DATABASE_MODE
+Object store mode: $OBJECT_STORE_MODE
 Next:
   scripts/local/start_services.sh
   scripts/local/run_smoke.sh --provider $PROVIDER

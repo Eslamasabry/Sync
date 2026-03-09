@@ -6,6 +6,7 @@ PROVIDER="static"
 INFRA_MODE="auto"
 KEEP_RUNNING=0
 EXECUTION_MODE="celery"
+OBJECT_STORE_MODE="filesystem"
 START_MODE_ARGS=()
 BOOTSTRAP_MODE_ARGS=()
 
@@ -24,6 +25,8 @@ Options:
                                Infrastructure mode passed to bootstrap.
   --execution-mode celery|inline
                                Job execution mode passed to bootstrap.
+  --object-store filesystem|s3
+                               Blob store mode passed to bootstrap.
   --lite                       Shortcut for --execution-mode inline --infra none
   --keep-running               Leave API and worker running after the smoke run
 EOF
@@ -49,9 +52,14 @@ while (($# > 0)); do
       EXECUTION_MODE="${2:-}"
       shift 2
       ;;
+    --object-store)
+      OBJECT_STORE_MODE="${2:-}"
+      shift 2
+      ;;
     --lite)
       EXECUTION_MODE="inline"
       INFRA_MODE="none"
+      OBJECT_STORE_MODE="filesystem"
       shift
       ;;
     --keep-running)
@@ -79,6 +87,6 @@ if [[ "$EXECUTION_MODE" == "inline" ]]; then
   fi
 fi
 
-"$ROOT_DIR/scripts/local/bootstrap.sh" --provider "$PROVIDER" --infra "$INFRA_MODE" --execution-mode "$EXECUTION_MODE" "${BOOTSTRAP_MODE_ARGS[@]}"
+"$ROOT_DIR/scripts/local/bootstrap.sh" --provider "$PROVIDER" --infra "$INFRA_MODE" --execution-mode "$EXECUTION_MODE" --object-store "$OBJECT_STORE_MODE" "${BOOTSTRAP_MODE_ARGS[@]}"
 "$ROOT_DIR/scripts/local/start_services.sh" "${START_MODE_ARGS[@]}"
 "$ROOT_DIR/scripts/local/run_smoke.sh" --provider "$PROVIDER"

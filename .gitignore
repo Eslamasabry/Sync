@@ -30,6 +30,8 @@ Thumbs.db
 .env.*
 tmp/
 data/
+!flutter_app/lib/features/reader/data/
+!flutter_app/lib/features/reader/data/**
 storage/
 artifacts/
 .run/

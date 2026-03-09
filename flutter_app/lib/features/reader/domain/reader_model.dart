@@ -24,6 +24,15 @@ class ReaderModel {
   final String title;
   final String? language;
   final List<ReaderSection> sections;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'book_id': bookId,
+      'title': title,
+      'language': language,
+      'sections': sections.map((section) => section.toJson()).toList(),
+    };
+  }
 }
 
 class ReaderSection {
@@ -52,6 +61,15 @@ class ReaderSection {
   final String? title;
   final int order;
   final List<ReaderParagraph> paragraphs;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'order': order,
+      'paragraphs': paragraphs.map((paragraph) => paragraph.toJson()).toList(),
+    };
+  }
 }
 
 class ReaderParagraph {
@@ -68,6 +86,13 @@ class ReaderParagraph {
 
   final int index;
   final List<ReaderToken> tokens;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'index': index,
+      'tokens': tokens.map((token) => token.toJson()).toList(),
+    };
+  }
 }
 
 class ReaderToken {
@@ -91,4 +116,8 @@ class ReaderToken {
   final String text;
   final String normalized;
   final String? cfi;
+
+  Map<String, dynamic> toJson() {
+    return {'index': index, 'text': text, 'normalized': normalized, 'cfi': cfi};
+  }
 }

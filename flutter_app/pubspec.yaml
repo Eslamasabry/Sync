@@ -14,6 +14,7 @@ dependencies:
   flutter_riverpod: ^3.0.3
   google_fonts: ^6.3.2
   just_audio: ^0.10.5
+  path_provider: ^2.1.5
   web_socket_channel: ^3.0.3
 
 dev_dependencies:

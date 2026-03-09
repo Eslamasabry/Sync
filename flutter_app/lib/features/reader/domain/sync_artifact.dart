@@ -47,6 +47,19 @@ class SyncArtifact {
   final List<SyncToken> tokens;
   final List<SyncGap> gaps;
 
+  Map<String, dynamic> toJson() {
+    return {
+      'version': version,
+      'book_id': bookId,
+      'language': language,
+      'audio': audio.map((item) => item.toJson()).toList(),
+      'content_start_ms': contentStartMs,
+      'content_end_ms': contentEndMs,
+      'tokens': tokens.map((token) => token.toJson()).toList(),
+      'gaps': gaps.map((gap) => gap.toJson()).toList(),
+    };
+  }
+
   int get totalDurationMs {
     if (audio.isNotEmpty) {
       return audio
@@ -95,6 +108,14 @@ class AudioManifestItem {
   final String assetId;
   final int offsetMs;
   final int durationMs;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'asset_id': assetId,
+      'offset_ms': offsetMs,
+      'duration_ms': durationMs,
+    };
+  }
 }
 
 class SyncToken {
@@ -128,6 +149,18 @@ class SyncToken {
   final int endMs;
   final double confidence;
   final SyncTokenLocation location;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'text': text,
+      'normalized': normalized,
+      'start_ms': startMs,
+      'end_ms': endMs,
+      'confidence': confidence,
+      'location': location.toJson(),
+    };
+  }
 }
 
 class SyncTokenLocation {
@@ -153,6 +186,15 @@ class SyncTokenLocation {
   final String? cfi;
 
   String get locationKey => '$sectionId:$paragraphIndex:$tokenIndex';
+
+  Map<String, dynamic> toJson() {
+    return {
+      'section_id': sectionId,
+      'paragraph_index': paragraphIndex,
+      'token_index': tokenIndex,
+      'cfi': cfi,
+    };
+  }
 }
 
 class SyncGap {
@@ -182,6 +224,17 @@ class SyncGap {
   final int transcriptStartIndex;
   final int transcriptEndIndex;
   final int wordCount;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'start_ms': startMs,
+      'end_ms': endMs,
+      'reason': reason,
+      'transcript_start_index': transcriptStartIndex,
+      'transcript_end_index': transcriptEndIndex,
+      'word_count': wordCount,
+    };
+  }
 }
 
 Map<String, dynamic> _asObject(Object? value) {

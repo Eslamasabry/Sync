@@ -450,7 +450,9 @@ class _SourceBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = ReaderPalette.of(context);
-    final isFallback = source == ReaderContentSource.demoFallback;
+    final isFallback =
+        source == ReaderContentSource.demoFallback ||
+        source == ReaderContentSource.offlineCache;
     final isProblem =
         source == ReaderContentSource.artifactPending ||
         source == ReaderContentSource.projectError;
@@ -473,6 +475,8 @@ class _SourceBanner extends StatelessWidget {
               message ??
                   switch (source) {
                     ReaderContentSource.api => 'Backend project loaded.',
+                    ReaderContentSource.offlineCache =>
+                      'Cached reader artifacts loaded from this device.',
                     ReaderContentSource.artifactPending =>
                       'Backend project is available, but reader artifacts are still processing.',
                     ReaderContentSource.projectError =>

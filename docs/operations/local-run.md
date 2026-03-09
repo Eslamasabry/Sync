@@ -37,6 +37,13 @@ cd /home/eslam/Storage/Code/Sync
 make local-full-smoke-host
 ```
 
+S3-backed smoke test:
+
+```bash
+cd /home/eslam/Storage/Code/Sync
+make local-full-smoke-s3
+```
+
 WhisperX-based run:
 
 ```bash
@@ -56,6 +63,7 @@ For a real public-domain quality pass instead of a synthetic smoke test, use [do
 
 The scripted path starts the backend on `127.0.0.1:8000`. That is fine for desktop and simulators, but not for a physical device on your LAN.
 In lite mode, the API executes jobs in-process and the scripted path intentionally does not start a Celery worker.
+In S3 mode, the smoke script also fetches the `download_url` content routes for the reader-model and sync artifact to verify streamed artifact retrieval.
 
 ## 3. Manual Path
 
@@ -90,6 +98,14 @@ Then prepare the repo:
 cd /home/eslam/Storage/Code/Sync
 cp backend/.env.example backend/.env
 make local-bootstrap-host
+```
+
+If you also want the local smoke path to use S3-compatible blob storage, run MinIO or another compatible endpoint on `localhost:9000` and use:
+
+```bash
+cd /home/eslam/Storage/Code/Sync
+cp backend/.env.example backend/.env
+make local-bootstrap-s3
 ```
 
 ### Option C: Lite SQLite + Inline Mode

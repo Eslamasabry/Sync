@@ -8,6 +8,7 @@ The repo supports two local infrastructure modes:
 - Docker Compose: PostgreSQL, Redis, and MinIO in containers
 
 Use host services when you want a lighter loop and do not need MinIO locally.
+Use `OBJECT_STORE_MODE=s3` when you want the smoke path to exercise MinIO or another S3-compatible blob store instead of the default filesystem-backed blobs.
 
 Use local containers for:
 
@@ -52,6 +53,14 @@ The local scripts can target host services directly:
 
 ```bash
 make local-bootstrap-host
+make local-start
+make local-smoke
+```
+
+If PostgreSQL and Redis run on the host but you still want object-store coverage, start MinIO separately on `localhost:9000` and use:
+
+```bash
+make local-bootstrap-s3
 make local-start
 make local-smoke
 ```
@@ -136,6 +145,7 @@ Runtime notes:
 - `JOB_EXECUTION_MODE=celery` keeps the default worker-based path. `JOB_EXECUTION_MODE=inline` lets the API execute jobs in-process and allows Redis readiness to be skipped.
 - `DATABASE_URL=sqlite+pysqlite:///...` is supported for single-host or lightweight local runs.
 - `OBJECT_STORE_MODE=filesystem` keeps local blobs under `ALIGNMENT_WORKDIR/object_store`. `OBJECT_STORE_MODE=s3` uses `S3_ENDPOINT_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, and `S3_BUCKET` for durable blob storage.
+- `make local-full-smoke-s3` validates the reader-model and sync `download_url` routes in addition to the metadata routes, so the S3-backed artifact path is exercised end to end.
 
 ## Local Endpoints
 

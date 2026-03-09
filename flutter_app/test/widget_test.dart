@@ -127,6 +127,24 @@ class _PendingReaderRepository extends ReaderRepository {
   }
 }
 
+class _CachedReaderRepository extends ReaderRepository {
+  _CachedReaderRepository()
+    : super(apiClient: SyncApiClient(baseUrl: 'http://localhost'));
+
+  @override
+  Future<ReaderProjectBundle> loadProject(String projectId) async {
+    return ReaderProjectBundle(
+      projectId: 'cached-book',
+      readerModel: demoReaderModel,
+      syncArtifact: demoSyncArtifact,
+      source: ReaderContentSource.offlineCache,
+      audioUrls: const [],
+      statusMessage:
+          'Cached reader artifacts loaded from this device. Audio streaming stays disabled until the backend is reachable again. Cached at 2026-03-09T12:00:00.',
+    );
+  }
+}
+
 Future<void> _pumpReaderApp(
   WidgetTester tester, {
   required ReaderRepository repository,
@@ -244,6 +262,28 @@ void main() {
     expect(find.textContaining('still processing'), findsAtLeastNWidgets(1));
     expect(
       find.textContaining('there is no normalized reader model to render yet'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Demo data loaded because the API is unavailable.'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('shows cached offline source messaging distinctly', (
+    tester,
+  ) async {
+    await _pumpReaderApp(tester, repository: _CachedReaderRepository());
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Cached reader artifacts loaded from this device'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining(
+        'Audio streaming stays disabled until the backend is reachable again',
+      ),
       findsOneWidget,
     );
     expect(
