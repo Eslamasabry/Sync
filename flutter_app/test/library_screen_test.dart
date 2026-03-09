@@ -188,7 +188,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Import Book'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Choose EPUB'),
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Import Book'), findsAtLeastNWidgets(1));
       expect(find.text('Choose EPUB'), findsOneWidget);
       await tester.scrollUntilVisible(
         find.text('Processing Queue'),
