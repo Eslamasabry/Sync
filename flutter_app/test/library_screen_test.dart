@@ -248,6 +248,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Overview'), findsOneWidget);
+      expect(find.text('Next Move'), findsOneWidget);
       expect(find.text('Sync State'), findsOneWidget);
       expect(find.text('Offline Readiness'), findsOneWidget);
       expect(find.text('Recent Attempts'), findsOneWidget);

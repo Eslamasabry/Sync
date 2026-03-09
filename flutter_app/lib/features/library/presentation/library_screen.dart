@@ -2298,6 +2298,15 @@ class _ProjectDetailsSheet extends StatelessWidget {
                 _ProjectDetailHero(snapshot: snapshot),
                 const SizedBox(height: 14),
                 _ProjectDetailSection(
+                  title: 'Next Move',
+                  child: _ProjectActionPlan(
+                    snapshot: snapshot,
+                    offline: offline.asData?.value,
+                    isCurrentTarget: isCurrentTarget,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _ProjectDetailSection(
                   title: 'Overview',
                   child: _ProjectMetadataGrid(
                     snapshot: snapshot,
@@ -2450,6 +2459,58 @@ class _ProjectDetailHero extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+class _ProjectActionPlan extends StatelessWidget {
+  const _ProjectActionPlan({
+    required this.snapshot,
+    required this.offline,
+    required this.isCurrentTarget,
+  });
+
+  final LibraryProjectSnapshot snapshot;
+  final LibraryOfflineSnapshot? offline;
+  final bool isCurrentTarget;
+
+  @override
+  Widget build(BuildContext context) {
+    final cards = <Widget>[
+      _ProjectMetaCard(
+        label: 'Current Route',
+        value: isCurrentTarget ? 'Active target' : 'Saved target',
+        hint: isCurrentTarget
+            ? 'This project is already wired into the reader shell.'
+            : 'Set it as the current target if you want the library and reader to pivot here.',
+      ),
+      _ProjectMetaCard(
+        label: 'Recommended Next Step',
+        value: snapshot.recommendedActionTitle(
+          offline: offline,
+          isCurrentTarget: isCurrentTarget,
+        ),
+        hint: snapshot.recommendedActionHint(
+          offline: offline,
+          isCurrentTarget: isCurrentTarget,
+        ),
+      ),
+      _ProjectMetaCard(
+        label: 'Offline Route',
+        value:
+            offline?.offlineActionLabel(snapshot.audioAssetCount) ?? 'Checking',
+        hint: offline == null
+            ? 'Inspecting local cache state for this device.'
+            : offline!.offlineNarrative(snapshot.audioAssetCount),
+      ),
+    ];
+
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: cards
+          .map((card) => SizedBox(width: 240, child: card))
+          .toList(growable: false),
     );
   }
 }
@@ -2874,6 +2935,62 @@ extension on LibraryProjectSnapshot {
     }
     return normalizedStatus;
   }
+
+  String recommendedActionTitle({
+    required LibraryOfflineSnapshot? offline,
+    required bool isCurrentTarget,
+  }) {
+    if (!isCurrentTarget) {
+      return 'Set target';
+    }
+    switch (latestJobStatus) {
+      case 'running':
+        return 'Monitor alignment';
+      case 'queued':
+        return 'Hold in queue';
+      case 'failed':
+        return 'Inspect failure';
+      case 'completed':
+        if (audioAssetCount > 0 &&
+            (offline == null || offline.cachedAudioAssets < audioAssetCount)) {
+          return 'Download audio';
+        }
+        return 'Open reader';
+    }
+    if (projectStatus == 'ready') {
+      return 'Open reader';
+    }
+    return 'Review workspace';
+  }
+
+  String recommendedActionHint({
+    required LibraryOfflineSnapshot? offline,
+    required bool isCurrentTarget,
+  }) {
+    if (!isCurrentTarget) {
+      return 'Make this the active project first, then reopen Reader or manage offline state from the library.';
+    }
+    switch (latestJobStatus) {
+      case 'running':
+        return 'Stay in the library if you want job visibility, or jump into Reader to inspect the live state while the timeline builds.';
+      case 'queued':
+        return 'No intervention yet. The job is waiting for execution, so keep the project parked here.';
+      case 'failed':
+        return latestJobTerminalReason == null
+            ? 'Read the recent attempt history before trying again.'
+            : 'The latest attempt stopped with "$latestJobTerminalReason". Check attempts before reopening the reader.';
+      case 'completed':
+        if (audioAssetCount > 0 &&
+            (offline == null || offline.cachedAudioAssets < audioAssetCount)) {
+          return 'The sync is ready. Pull the audiobook onto the device next if you want a resilient offline reading target.';
+        }
+        return 'Everything needed for a polished reading session is available. Jump straight into Reader.';
+    }
+    if (projectStatus == 'ready') {
+      return 'The structure exists, but there is no recent attempt summary to display. Open the reader or inspect the workspace.';
+    }
+    return 'This project still needs a successful alignment pass before it becomes a clean reading target.';
+  }
 }
 
 extension on LibraryOfflineSnapshot {
@@ -2893,6 +3010,22 @@ extension on LibraryOfflineSnapshot {
     return hasTextCache
         ? 'Text saved, audio still streaming'
         : 'Audio still streaming';
+  }
+
+  String offlineActionLabel(int expectedAudioAssets) {
+    if (!hasTextCache && cachedAudioAssets == 0) {
+      return 'Live only';
+    }
+    if (expectedAudioAssets <= 0) {
+      return hasTextCache ? 'Text offline' : 'No audio';
+    }
+    if (cachedAudioAssets >= expectedAudioAssets) {
+      return 'Full offline';
+    }
+    if (cachedAudioAssets > 0) {
+      return 'Mixed offline';
+    }
+    return hasTextCache ? 'Text offline' : 'Streaming audio';
   }
 }
 
