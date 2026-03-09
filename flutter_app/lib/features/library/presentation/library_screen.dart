@@ -380,6 +380,11 @@ class LibraryScreen extends ConsumerWidget {
                             settings: item,
                             currentIdentityKey:
                                 currentSettings.asData?.value.identityKey,
+                            audioDownloadState: audioDownload,
+                            onDownloadAudio: () =>
+                                _downloadProjectAudio(context, ref, item),
+                            onRemoveAudio: () =>
+                                _removeProjectAudio(context, ref, item),
                             onSetTarget: () =>
                                 _setConnectionTarget(context, ref, item),
                             onOpen: () => _openConnection(context, ref, item),
@@ -485,6 +490,34 @@ class LibraryScreen extends ConsumerWidget {
           ),
         ),
       );
+    }
+  }
+
+  Future<void> _downloadProjectAudio(
+    BuildContext context,
+    WidgetRef ref,
+    RuntimeConnectionSettings settings,
+  ) async {
+    await ref
+        .read(readerAudioDownloadProvider.notifier)
+        .downloadProject(settings);
+    ref.invalidate(libraryOfflineSnapshotProvider(settings));
+    if (context.mounted) {
+      ref.invalidate(libraryProjectSnapshotProvider(settings));
+    }
+  }
+
+  Future<void> _removeProjectAudio(
+    BuildContext context,
+    WidgetRef ref,
+    RuntimeConnectionSettings settings,
+  ) async {
+    await ref
+        .read(readerAudioDownloadProvider.notifier)
+        .removeProjectAudio(settings);
+    ref.invalidate(libraryOfflineSnapshotProvider(settings));
+    if (context.mounted) {
+      ref.invalidate(libraryProjectSnapshotProvider(settings));
     }
   }
 
@@ -1863,6 +1896,9 @@ class _ProjectSnapshotTile extends ConsumerWidget {
   const _ProjectSnapshotTile({
     required this.settings,
     required this.currentIdentityKey,
+    required this.audioDownloadState,
+    required this.onDownloadAudio,
+    required this.onRemoveAudio,
     required this.onSetTarget,
     required this.onOpen,
     required this.onForget,
@@ -1870,6 +1906,9 @@ class _ProjectSnapshotTile extends ConsumerWidget {
 
   final RuntimeConnectionSettings settings;
   final String? currentIdentityKey;
+  final ReaderAudioDownloadState audioDownloadState;
+  final Future<void> Function() onDownloadAudio;
+  final Future<void> Function() onRemoveAudio;
   final VoidCallback onSetTarget;
   final VoidCallback onOpen;
   final VoidCallback onForget;
@@ -1885,6 +1924,9 @@ class _ProjectSnapshotTile extends ConsumerWidget {
         value: value,
         offline: offline,
         isCurrentTarget: settings.identityKey == currentIdentityKey,
+        audioDownloadState: audioDownloadState,
+        onDownloadAudio: onDownloadAudio,
+        onRemoveAudio: onRemoveAudio,
         onSetTarget: onSetTarget,
         onOpen: onOpen,
         onForget: onForget,
@@ -1921,6 +1963,9 @@ class _ProjectSnapshotCard extends StatelessWidget {
     required this.value,
     required this.offline,
     required this.isCurrentTarget,
+    required this.audioDownloadState,
+    required this.onDownloadAudio,
+    required this.onRemoveAudio,
     required this.onSetTarget,
     required this.onOpen,
     required this.onForget,
@@ -1930,6 +1975,9 @@ class _ProjectSnapshotCard extends StatelessWidget {
   final LibraryProjectSnapshot value;
   final AsyncValue<LibraryOfflineSnapshot> offline;
   final bool isCurrentTarget;
+  final ReaderAudioDownloadState audioDownloadState;
+  final Future<void> Function() onDownloadAudio;
+  final Future<void> Function() onRemoveAudio;
   final VoidCallback onSetTarget;
   final VoidCallback onOpen;
   final VoidCallback onForget;
@@ -1937,6 +1985,16 @@ class _ProjectSnapshotCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = ReaderPalette.of(context);
+    final offlineValue = offline.asData?.value;
+    final isActionProject =
+        audioDownloadState.projectId == settings.normalizedProjectId;
+    final isDownloadingHere =
+        isActionProject &&
+        audioDownloadState.status == ReaderAudioDownloadStatus.downloading;
+    final isRemovingHere =
+        isActionProject &&
+        audioDownloadState.status == ReaderAudioDownloadStatus.removing;
+    final isBusyElsewhere = audioDownloadState.isBusy && !isActionProject;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -2022,6 +2080,24 @@ class _ProjectSnapshotCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _ProjectSnapshotSummaryRow(value: value, offline: offline),
+          if (isDownloadingHere) ...[
+            const SizedBox(height: 12),
+            _LibraryProgressMeter(
+              label: audioDownloadState.activeAssetId == null
+                  ? 'Downloading audio'
+                  : 'Downloading ${audioDownloadState.activeAssetId}',
+              percent: (audioDownloadState.progress * 100).round(),
+            ),
+          ],
+          if (isRemovingHere && audioDownloadState.message != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              audioDownloadState.message!,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+            ),
+          ],
           if (value.latestJobPercent != null) ...[
             const SizedBox(height: 12),
             _LibraryProgressMeter(
@@ -2034,7 +2110,9 @@ class _ProjectSnapshotCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 14),
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
               TextButton(
                 onPressed: () => _showProjectDetailsSheet(
@@ -2051,8 +2129,28 @@ class _ProjectSnapshotCard extends StatelessWidget {
                   onPressed: onSetTarget,
                   child: const Text('Set Target'),
                 ),
+              if (value.audioAssetCount > 0)
+                TextButton(
+                  onPressed:
+                      isBusyElsewhere || isRemovingHere || isDownloadingHere
+                      ? null
+                      : offlineValue != null &&
+                            offlineValue.cachedAudioAssets >=
+                                value.audioAssetCount
+                      ? onRemoveAudio
+                      : onDownloadAudio,
+                  child: Text(
+                    offlineValue != null &&
+                            offlineValue.cachedAudioAssets >=
+                                value.audioAssetCount
+                        ? 'Remove Audio'
+                        : offlineValue != null &&
+                              offlineValue.cachedAudioAssets > 0
+                        ? 'Download Rest'
+                        : 'Download Audio',
+                  ),
+                ),
               TextButton(onPressed: onForget, child: const Text('Forget')),
-              const Spacer(),
               FilledButton.tonal(
                 onPressed: onOpen,
                 child: const Text('Reader'),

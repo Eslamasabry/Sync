@@ -1,10 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sync_flutter/core/config/runtime_connection_settings.dart';
+import 'package:sync_flutter/core/config/runtime_connection_settings_controller.dart';
 import 'package:sync_flutter/core/network/sync_api_client.dart';
 import 'package:sync_flutter/features/reader/data/reader_audio_cache.dart';
 import 'package:sync_flutter/features/reader/data/reader_repository.dart';
 import 'package:sync_flutter/features/reader/state/reader_audio_download_controller.dart';
-import 'package:sync_flutter/features/reader/state/reader_project_provider.dart';
 
 class _FakeDownloadRepository extends ReaderRepository {
   _FakeDownloadRepository()
@@ -51,8 +52,18 @@ void main() {
       final repository = _FakeDownloadRepository();
       final container = ProviderContainer(
         overrides: [
-          projectIdProvider.overrideWith((ref) async => 'demo-book'),
-          readerRepositoryProvider.overrideWith((ref) async => repository),
+          runtimeConnectionSettingsProvider.overrideWith(
+            () => _FixedRuntimeConnectionSettingsController(
+              const RuntimeConnectionSettings(
+                apiBaseUrl: 'http://sync.example.test/v1',
+                projectId: 'demo-book',
+                authToken: '',
+              ),
+            ),
+          ),
+          readerRepositoryFactoryProvider.overrideWithValue(
+            (settings) => repository,
+          ),
         ],
       );
       addTearDown(container.dispose);
@@ -65,8 +76,12 @@ void main() {
       expect(state.progress, 1);
       expect(state.completedAssets, 2);
       expect(state.totalAssets, 2);
+      expect(state.projectId, 'demo-book');
       expect(state.activeAssetId, isNull);
-      expect(state.message, contains('Downloaded 2 of 2 audio files'));
+      expect(
+        state.message,
+        contains('Downloaded 2 of 2 audio files for demo-book'),
+      );
     },
   );
 
@@ -74,8 +89,18 @@ void main() {
     final repository = _FakeDownloadRepository();
     final container = ProviderContainer(
       overrides: [
-        projectIdProvider.overrideWith((ref) async => 'demo-book'),
-        readerRepositoryProvider.overrideWith((ref) async => repository),
+        runtimeConnectionSettingsProvider.overrideWith(
+          () => _FixedRuntimeConnectionSettingsController(
+            const RuntimeConnectionSettings(
+              apiBaseUrl: 'http://sync.example.test/v1',
+              projectId: 'demo-book',
+              authToken: '',
+            ),
+          ),
+        ),
+        readerRepositoryFactoryProvider.overrideWithValue(
+          (settings) => repository,
+        ),
       ],
     );
     addTearDown(container.dispose);
@@ -88,6 +113,45 @@ void main() {
     expect(state.status, ReaderAudioDownloadStatus.succeeded);
     expect(state.completedAssets, 0);
     expect(state.totalAssets, 0);
-    expect(state.message, contains('Removed downloaded audio'));
+    expect(state.projectId, 'demo-book');
+    expect(state.message, contains('Removed downloaded audio for demo-book'));
   });
+
+  test(
+    'download controller can operate on an arbitrary saved project',
+    () async {
+      final container = ProviderContainer(
+        overrides: [
+          readerRepositoryFactoryProvider.overrideWithValue(
+            (settings) => _FakeDownloadRepository(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final controller = container.read(readerAudioDownloadProvider.notifier);
+      await controller.downloadProject(
+        const RuntimeConnectionSettings(
+          apiBaseUrl: 'http://sync.example.test/v1',
+          projectId: 'mars-book',
+          authToken: '',
+        ),
+      );
+
+      final state = container.read(readerAudioDownloadProvider);
+      expect(state.status, ReaderAudioDownloadStatus.succeeded);
+      expect(state.projectId, 'mars-book');
+      expect(state.message, contains('mars-book'));
+    },
+  );
+}
+
+class _FixedRuntimeConnectionSettingsController
+    extends RuntimeConnectionSettingsController {
+  _FixedRuntimeConnectionSettingsController(this._settings);
+
+  final RuntimeConnectionSettings _settings;
+
+  @override
+  Future<RuntimeConnectionSettings> build() async => _settings;
 }
