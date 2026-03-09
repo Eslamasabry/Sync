@@ -21,6 +21,7 @@ Safe defaults:
 - CORS is disabled by default until origins are configured.
 - trusted hosts are disabled by default until explicit hostnames or IPs are configured.
 - `JOB_EXECUTION_MODE=celery` is the default. `JOB_EXECUTION_MODE=inline` runs alignment jobs in-process and allows Redis readiness to be intentionally skipped.
+- `API_AUTH_TOKEN` is empty by default. When configured, all `/v1/projects/**` routes require `Authorization: Bearer <token>`, and `/v1/ws/projects/{project_id}` accepts either that header or `?access_token=<token>` during the handshake.
 
 ## Resource Model
 

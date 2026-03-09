@@ -12,18 +12,21 @@ class ApiError(Exception):
         message: str,
         status_code: int,
         details: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
         self.status_code = status_code
         self.details = details or {}
+        self.headers = headers or {}
 
 
 async def api_error_handler(_: Request, exc: Exception) -> JSONResponse:
     api_exc = cast(ApiError, exc)
     return JSONResponse(
         status_code=api_exc.status_code,
+        headers=api_exc.headers,
         content={
             "error": {
                 "code": api_exc.code,

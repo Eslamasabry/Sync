@@ -18,6 +18,7 @@ String _wsBaseUrlFromApiBaseUrl(String apiBaseUrl) {
 final projectEventsClientProvider = Provider<ProjectEventsClient>(
   (ref) => ProjectEventsClient(
     baseWsUrl: _wsBaseUrlFromApiBaseUrl(defaultApiBaseUrl),
+    authToken: defaultApiAuthToken,
   ),
 );
 

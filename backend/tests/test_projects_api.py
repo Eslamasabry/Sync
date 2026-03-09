@@ -6,8 +6,10 @@ from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
+from starlette.websockets import WebSocketDisconnect
 
 from sync_backend.alignment.audio import AudioPreprocessor, PreparedAudioSegment
 from sync_backend.alignment.matching_pipeline import build_match_artifact
@@ -1040,6 +1042,67 @@ def test_job_events_stream_over_websocket(client: TestClient) -> None:
         cancelled_event = websocket.receive_json()
         assert cancelled_event["type"] == "job.cancelled"
         assert cancelled_event["job_id"] == job_id
+
+
+def test_project_websocket_requires_auth_when_configured(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "ws-auth.db"
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("API_AUTH_TOKEN", "secret-token")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{database_path}")
+    monkeypatch.setenv("ALIGNMENT_WORKDIR", str(tmp_path / "artifacts"))
+    get_settings.cache_clear()
+    reset_db_caches()
+    broker.reset()
+
+    with TestClient(create_app()) as auth_client:
+        project_id = auth_client.post(
+            "/v1/projects",
+            headers={"Authorization": "Bearer secret-token"},
+            json={"title": "Realtime Auth Project"},
+        ).json()["project_id"]
+        epub_asset_id = auth_client.post(
+            f"/v1/projects/{project_id}/assets",
+            headers={"Authorization": "Bearer secret-token"},
+            json={
+                "kind": "epub",
+                "filename": "book.epub",
+                "content_type": "application/epub+zip",
+            },
+        ).json()["asset_id"]
+        audio_asset_id = auth_client.post(
+            f"/v1/projects/{project_id}/assets",
+            headers={"Authorization": "Bearer secret-token"},
+            json={
+                "kind": "audio",
+                "filename": "book.mp3",
+                "content_type": "audio/mpeg",
+            },
+        ).json()["asset_id"]
+
+        with pytest.raises(WebSocketDisconnect), auth_client.websocket_connect(
+            f"/v1/ws/projects/{project_id}"
+        ):
+            pass
+
+        with auth_client.websocket_connect(
+            f"/v1/ws/projects/{project_id}?access_token=secret-token"
+        ) as websocket:
+            create_response = auth_client.post(
+                f"/v1/projects/{project_id}/jobs",
+                headers={"Authorization": "Bearer secret-token"},
+                json={
+                    "job_type": "alignment",
+                    "book_asset_id": epub_asset_id,
+                    "audio_asset_ids": [audio_asset_id],
+                },
+            )
+            job_id = create_response.json()["job_id"]
+            queued_event = websocket.receive_json()
+            assert queued_event["type"] == "job.queued"
+            assert queued_event["job_id"] == job_id
 
 
 def test_cancel_job_is_idempotent_for_already_cancelled_job(client: TestClient) -> None:

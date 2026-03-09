@@ -6,11 +6,13 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 class ProjectEventsClient {
   ProjectEventsClient({
     required this.baseWsUrl,
+    this.authToken = '',
     this.initialReconnectDelay = const Duration(seconds: 1),
     this.maxReconnectDelay = const Duration(seconds: 8),
   });
 
   final String baseWsUrl;
+  final String authToken;
   final Duration initialReconnectDelay;
   final Duration maxReconnectDelay;
 
@@ -82,9 +84,7 @@ class ProjectEventsClient {
         var receivedMessage = false;
 
         try {
-          channel = WebSocketChannel.connect(
-            Uri.parse('$baseWsUrl/ws/projects/$projectId'),
-          );
+          channel = WebSocketChannel.connect(projectUri(projectId));
           subscription = channel!.stream.listen(
             (event) {
               final decoded = decodeEvent(event);
@@ -133,5 +133,18 @@ class ProjectEventsClient {
       },
     );
     return controller.stream;
+  }
+
+  Uri projectUri(String projectId) {
+    final uri = Uri.parse('$baseWsUrl/ws/projects/$projectId');
+    if (authToken.trim().isEmpty) {
+      return uri;
+    }
+    return uri.replace(
+      queryParameters: {
+        ...uri.queryParameters,
+        'access_token': authToken.trim(),
+      },
+    );
   }
 }

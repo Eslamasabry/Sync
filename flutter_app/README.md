@@ -33,6 +33,7 @@ The app currently reads two compile-time values:
 
 - `SYNC_API_BASE_URL`: backend API root, default `http://localhost:8000/v1`
 - `SYNC_PROJECT_ID`: project UUID or the fallback `demo-book`
+- `SYNC_API_AUTH_TOKEN`: optional bearer token for protected self-hosted backends
 
 The WebSocket URL is derived automatically from `SYNC_API_BASE_URL`:
 
@@ -47,6 +48,7 @@ Local desktop or iOS simulator:
 cd flutter_app
 flutter run \
   --dart-define=SYNC_API_BASE_URL=http://localhost:8000/v1 \
+  --dart-define=SYNC_API_AUTH_TOKEN=<token> \
   --dart-define=SYNC_PROJECT_ID=<project-id>
 ```
 
@@ -56,6 +58,7 @@ Android emulator:
 cd flutter_app
 flutter run \
   --dart-define=SYNC_API_BASE_URL=http://10.0.2.2:8000/v1 \
+  --dart-define=SYNC_API_AUTH_TOKEN=<token> \
   --dart-define=SYNC_PROJECT_ID=<project-id>
 ```
 
@@ -65,6 +68,7 @@ Physical device on the same LAN as the backend host:
 cd flutter_app
 flutter run \
   --dart-define=SYNC_API_BASE_URL=http://<host-lan-ip>:8000/v1 \
+  --dart-define=SYNC_API_AUTH_TOKEN=<token> \
   --dart-define=SYNC_PROJECT_ID=<project-id>
 ```
 
@@ -122,6 +126,7 @@ For a complete smoke run, prefer the repo scripts documented in [local-run.md](/
 - Browser clients require backend CORS configuration through `CORS_ALLOW_ORIGINS` or `CORS_ALLOW_ORIGIN_REGEX`.
 - Reverse proxies must pass both HTTP and WebSocket traffic for `/v1/ws/projects/{project_id}`.
 - Use `https://` in `SYNC_API_BASE_URL` for deployed environments so the client upgrades to `wss://` automatically.
+- When the backend is protected with `API_AUTH_TOKEN`, set the same value in `SYNC_API_AUTH_TOKEN` so both HTTP requests and project-event WebSocket connections authenticate correctly.
 - The client assumes uploaded audio is streamable from `GET /v1/projects/{project_id}/assets/{asset_id}/content`.
 - When the API is unreachable, the app intentionally falls back to demo content only for the default `demo-book` project. Real project ids now surface a load error instead of silently masking backend issues.
 

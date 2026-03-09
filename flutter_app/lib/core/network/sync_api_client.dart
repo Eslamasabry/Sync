@@ -3,11 +3,19 @@ import 'package:sync_flutter/features/reader/domain/reader_model.dart';
 import 'package:sync_flutter/features/reader/domain/sync_artifact.dart';
 
 class SyncApiClient {
-  SyncApiClient({Dio? dio, String baseUrl = 'http://localhost:8000/v1'})
-    : _baseUrl = _normalizeBaseUrl(baseUrl),
-      _dio = dio ?? Dio(BaseOptions(baseUrl: _normalizeBaseUrl(baseUrl)));
+  SyncApiClient({
+    Dio? dio,
+    String baseUrl = 'http://localhost:8000/v1',
+    String authToken = '',
+  }) : _baseUrl = _normalizeBaseUrl(baseUrl),
+       _authToken = authToken.trim(),
+       _dio = dio ?? Dio(BaseOptions(baseUrl: _normalizeBaseUrl(baseUrl))) {
+    _dio.options.baseUrl = _baseUrl;
+    _dio.options.headers.addAll(_defaultHeaders(_authToken));
+  }
 
   final String _baseUrl;
+  final String _authToken;
   final Dio _dio;
 
   Future<ReaderModel> fetchReaderModel(String projectId) async {
@@ -105,6 +113,8 @@ class SyncApiClient {
   String assetContentUrl({required String projectId, required String assetId}) {
     return '$_baseUrl/projects/$projectId/assets/$assetId/content';
   }
+
+  Map<String, String> get authorizationHeaders => _defaultHeaders(_authToken);
 }
 
 String _normalizeBaseUrl(String baseUrl) {
@@ -131,4 +141,11 @@ bool _looksLikeReaderModelPayload(Map<String, dynamic> payload) {
   return payload.containsKey('book_id') &&
       payload.containsKey('title') &&
       payload.containsKey('sections');
+}
+
+Map<String, String> _defaultHeaders(String authToken) {
+  if (authToken.isEmpty) {
+    return const {};
+  }
+  return {'Authorization': 'Bearer $authToken'};
 }

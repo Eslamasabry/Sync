@@ -9,7 +9,8 @@ import 'package:sync_flutter/features/reader/state/reader_playback_controller.da
 final projectIdProvider = Provider<String>((ref) => defaultProjectId);
 
 final syncApiClientProvider = Provider<SyncApiClient>(
-  (ref) => SyncApiClient(baseUrl: defaultApiBaseUrl),
+  (ref) =>
+      SyncApiClient(baseUrl: defaultApiBaseUrl, authToken: defaultApiAuthToken),
 );
 
 final readerArtifactCacheProvider = Provider<ReaderArtifactCache>(

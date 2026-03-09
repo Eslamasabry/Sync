@@ -98,3 +98,34 @@ def test_gzip_enabled_by_default(monkeypatch: MonkeyPatch) -> None:
 
     assert response.status_code == 200
     assert response.headers["content-encoding"] == "gzip"
+
+
+def test_project_routes_require_bearer_auth_when_configured(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("API_AUTH_TOKEN", "secret-token")
+    get_settings.cache_clear()
+
+    with TestClient(create_app()) as client:
+        health_response = client.get("/v1/health")
+        unauthorized_response = client.post(
+            "/v1/projects",
+            json={"title": "Protected Project"},
+        )
+        wrong_token_response = client.post(
+            "/v1/projects",
+            headers={"Authorization": "Bearer wrong-token"},
+            json={"title": "Protected Project"},
+        )
+        authorized_response = client.post(
+            "/v1/projects",
+            headers={"Authorization": "Bearer secret-token"},
+            json={"title": "Protected Project"},
+        )
+
+    assert health_response.status_code == 200
+    assert unauthorized_response.status_code == 401
+    assert unauthorized_response.headers["www-authenticate"] == "Bearer"
+    assert unauthorized_response.json()["error"]["code"] == "auth_invalid"
+    assert wrong_token_response.status_code == 401
+    assert authorized_response.status_code == 201

@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     )
     cors_allow_credentials: bool = Field(default=False, alias="CORS_ALLOW_CREDENTIALS")
     trusted_hosts: str = Field(default="", alias="TRUSTED_HOSTS")
+    api_auth_token: str = Field(default="", alias="API_AUTH_TOKEN")
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -79,6 +80,10 @@ class Settings(BaseSettings):
     @property
     def use_inline_job_execution(self) -> bool:
         return self.job_execution_mode.strip().lower() == "inline"
+
+    @property
+    def auth_enabled(self) -> bool:
+        return bool(self.api_auth_token.strip())
 
 
 def _parse_csv_env(raw_value: str) -> list[str]:
