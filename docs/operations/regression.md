@@ -87,6 +87,10 @@ make local-regression-corpus-gate
 
 The plain corpus run records metrics for all titles without failing on thresholds.
 The gate variant enforces each case's thresholds from the corpus manifest.
+Both variants now write:
+
+- `summary.json`: machine-readable aggregate result
+- `summary.md`: markdown report suitable for release notes or CI summaries
 
 Run a specific title only:
 
@@ -122,3 +126,14 @@ The corpus runner saves:
 
 - per-case artifacts under `tmp/regression-corpus/<case-id>/`
 - aggregate summary under `tmp/regression-corpus/summary.json`
+- markdown report under `tmp/regression-corpus/summary.md`
+
+`summary.json` now includes:
+
+- `overall_result`
+- `gate_enabled`
+- `expected_case_count`
+- `failed_case_ids`
+- per-case copied threshold metadata
+
+That makes the corpus runner safe to use as a release gate instead of only a debugging script.

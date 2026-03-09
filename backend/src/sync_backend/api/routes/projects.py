@@ -88,6 +88,9 @@ def _job_summary(job: AlignmentJob) -> JobSummary:
         job_id=UUID(job.id),
         job_type=job.job_type,
         status=job.status,
+        attempt_number=job.attempt_number,
+        retry_of_job_id=_as_uuid(job.retry_of_job_id),
+        terminal_reason=job.terminal_reason,
         created_at=job.created_at,
         updated_at=job.updated_at,
     )
@@ -102,6 +105,10 @@ def _job_detail(job: AlignmentJob) -> JobDetailResponse:
             match_confidence=job.match_confidence,
             mismatch_ranges=job.mismatch_ranges,
         ),
+        request_fingerprint=job.request_fingerprint,
+        attempt_number=job.attempt_number,
+        retry_of_job_id=_as_uuid(job.retry_of_job_id),
+        terminal_reason=job.terminal_reason,
         book_asset_id=UUID(job.book_asset_id),
         audio_asset_ids=[UUID(asset_id) for asset_id in job.audio_asset_ids],
         created_at=job.created_at,
@@ -475,25 +482,33 @@ async def create_job_route(
     background_tasks: BackgroundTasks,
     session: DbSession,
 ) -> JobCreateResponse:
-    job = create_alignment_job(
+    result = create_alignment_job(
         session=session,
         project_id=project_id,
         book_asset_id=parse_uuid(payload.book_asset_id),
         audio_asset_ids=[parse_uuid(asset_id) for asset_id in payload.audio_asset_ids],
     )
-    await broker.broadcast(
-        project_id=project_id,
-        event_type="job.queued",
-        job_id=job.id,
-        payload={"stage": job.progress_stage, "percent": job.progress_percent},
+    job = result.job
+    if not result.reused_existing:
+        await broker.broadcast(
+            project_id=project_id,
+            event_type="job.queued",
+            job_id=job.id,
+            payload={"stage": job.progress_stage, "percent": job.progress_percent},
+        )
+        settings = get_settings()
+        if settings.app_env != "test":
+            if settings.use_inline_job_execution:
+                background_tasks.add_task(run_alignment_job_inline, project_id, job.id)
+            else:
+                run_alignment_job_task.delay(project_id, job.id)
+    return JobCreateResponse(
+        job_id=UUID(job.id),
+        status=job.status,
+        reused_existing=result.reused_existing,
+        attempt_number=job.attempt_number,
+        retry_of_job_id=_as_uuid(job.retry_of_job_id),
     )
-    settings = get_settings()
-    if settings.app_env != "test":
-        if settings.use_inline_job_execution:
-            background_tasks.add_task(run_alignment_job_inline, project_id, job.id)
-        else:
-            run_alignment_job_task.delay(project_id, job.id)
-    return JobCreateResponse(job_id=UUID(job.id), status=job.status)
 
 
 @router.get("/{project_id}", response_model=ProjectDetailResponse)
@@ -671,7 +686,13 @@ async def download_match_route(
 async def cancel_job_route(project_id: str, job_id: str, session: DbSession) -> JobCreateResponse:
     existing_job = get_job_or_404(session=session, project_id=project_id, job_id=job_id)
     if existing_job.status == "cancelled":
-        return JobCreateResponse(job_id=UUID(existing_job.id), status=existing_job.status)
+        return JobCreateResponse(
+            job_id=UUID(existing_job.id),
+            status=existing_job.status,
+            reused_existing=True,
+            attempt_number=existing_job.attempt_number,
+            retry_of_job_id=_as_uuid(existing_job.retry_of_job_id),
+        )
     job = cancel_job(session=session, project_id=project_id, job_id=job_id)
     await broker.broadcast(
         project_id=project_id,
@@ -679,4 +700,10 @@ async def cancel_job_route(project_id: str, job_id: str, session: DbSession) -> 
         job_id=job.id,
         payload={"stage": job.progress_stage, "percent": job.progress_percent},
     )
-    return JobCreateResponse(job_id=UUID(job.id), status=job.status)
+    return JobCreateResponse(
+        job_id=UUID(job.id),
+        status=job.status,
+        reused_existing=False,
+        attempt_number=job.attempt_number,
+        retry_of_job_id=_as_uuid(job.retry_of_job_id),
+    )

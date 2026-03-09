@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 
@@ -67,7 +69,7 @@ def test_ready_endpoint_reports_degraded_dependency(
 
 def test_ready_endpoint_skips_redis_in_inline_execution_mode(
     monkeypatch: MonkeyPatch,
-    tmp_path,
+    tmp_path: Path,
 ) -> None:
     database_path = tmp_path / "inline-ready.db"
     monkeypatch.setenv("APP_ENV", "development")

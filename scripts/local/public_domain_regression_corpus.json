@@ -42,7 +42,7 @@
       "thresholds": {
         "min_match_confidence": 0.88,
         "min_coverage": 0.8,
-        "max_gap_ranges": 90
+        "max_gap_ranges": 120
       }
     }
   ]

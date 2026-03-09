@@ -221,13 +221,18 @@ Response:
 ```json
 {
   "job_id": "uuid",
-  "status": "queued"
+  "status": "queued",
+  "reused_existing": false,
+  "attempt_number": 1,
+  "retry_of_job_id": null
 }
 ```
 
 Notes:
 
 - In the current backend, creating a job also dispatches background processing immediately when `APP_ENV != test`.
+- Duplicate alignment requests for the same project, EPUB asset, and ordered audio asset list reuse an existing `queued`, `running`, or `completed` job instead of scheduling duplicate work.
+- If the latest matching job is `failed` or `cancelled`, the backend creates a new retry attempt and exposes the previous job id in `retry_of_job_id`.
 - Dispatch mode depends on `JOB_EXECUTION_MODE`:
   - `celery`: enqueue through Redis/Celery and expect a worker process
   - `inline`: execute through a FastAPI background task in the API process
@@ -280,6 +285,10 @@ Response shape:
 {
   "job_id": "uuid",
   "status": "running",
+  "request_fingerprint": "sha256",
+  "attempt_number": 1,
+  "retry_of_job_id": null,
+  "terminal_reason": null,
   "progress": {
     "stage": "transcription",
     "percent": 42
@@ -290,6 +299,11 @@ Response shape:
   }
 }
 ```
+
+Notes:
+
+- `request_fingerprint` is the canonical signature the backend uses for alignment-job idempotency.
+- `terminal_reason` is populated for failed or cancelled jobs so operators can see why a request stopped without scraping worker logs first.
 
 ### `GET /v1/projects/{project_id}/sync`
 

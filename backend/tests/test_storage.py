@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from pathlib import Path
 
 from sync_backend.storage import FileObjectStore, S3ObjectStore
@@ -11,7 +12,7 @@ class _FakeStreamingBody:
     def read(self) -> bytes:
         return self.payload
 
-    def iter_chunks(self, *, chunk_size: int):
+    def iter_chunks(self, *, chunk_size: int) -> Iterator[bytes]:
         for index in range(0, len(self.payload), chunk_size):
             yield self.payload[index:index + chunk_size]
 

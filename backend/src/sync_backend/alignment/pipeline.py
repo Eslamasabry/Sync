@@ -42,11 +42,12 @@ def run_alignment_job(
             job_id=job_id,
             object_store=object_store,
         )
-    except Exception:
+    except Exception as exc:
         session.rollback()
         job = get_job_or_404(session=session, project_id=project_id, job_id=job_id)
         job.status = "failed"
         job.progress_stage = "failed"
+        job.terminal_reason = f"{type(exc).__name__}: {exc}"
         session.add(job)
         session.commit()
         publish_project_event_sync(
@@ -61,6 +62,7 @@ def run_alignment_job(
     job.status = "completed"
     job.progress_stage = "completed"
     job.progress_percent = 100
+    job.terminal_reason = None
     session.add(job)
     session.commit()
     publish_project_event_sync(

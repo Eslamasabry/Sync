@@ -79,8 +79,15 @@ class AlignmentJob(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(32), default="queued")
     book_asset_id: Mapped[str] = mapped_column(ForeignKey("assets.id"))
     audio_asset_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    request_fingerprint: Mapped[str] = mapped_column(String(128), index=True)
+    attempt_number: Mapped[int] = mapped_column(Integer, default=1)
+    retry_of_job_id: Mapped[str | None] = mapped_column(
+        ForeignKey("alignment_jobs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     progress_stage: Mapped[str | None] = mapped_column(String(64), nullable=True)
     progress_percent: Mapped[int] = mapped_column(Integer, default=0)
+    terminal_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     match_confidence: Mapped[float | None] = mapped_column(nullable=True)
     mismatch_ranges: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
 

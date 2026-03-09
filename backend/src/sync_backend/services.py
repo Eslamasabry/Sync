@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import wave
+from dataclasses import dataclass
 from http import HTTPStatus
 from uuid import UUID, uuid4
 
@@ -21,6 +22,12 @@ from sync_backend.models import (
     TranscriptArtifact,
 )
 from sync_backend.storage import ObjectStore
+
+
+@dataclass(frozen=True)
+class AlignmentJobCreateResult:
+    job: AlignmentJob
+    reused_existing: bool
 
 
 def create_project(*, session: Session, title: str, language: str | None) -> Project:
@@ -210,13 +217,29 @@ def generate_reader_model_artifact(
     return artifact
 
 
+def build_alignment_request_fingerprint(
+    *,
+    project_id: str,
+    book_asset_id: str,
+    audio_asset_ids: list[str],
+) -> str:
+    fingerprint_source = "\n".join(
+        [
+            project_id,
+            book_asset_id,
+            *audio_asset_ids,
+        ]
+    )
+    return hashlib.sha256(fingerprint_source.encode("utf-8")).hexdigest()
+
+
 def create_alignment_job(
     *,
     session: Session,
     project_id: str,
     book_asset_id: str,
     audio_asset_ids: list[str],
-) -> AlignmentJob:
+) -> AlignmentJobCreateResult:
     get_project_or_404(session=session, project_id=project_id)
     book_asset = get_asset_or_404(session=session, asset_id=book_asset_id)
     audio_assets = [
@@ -241,6 +264,27 @@ def create_alignment_job(
                 details={"audio_asset_id": audio_asset.id},
             )
 
+    request_fingerprint = build_alignment_request_fingerprint(
+        project_id=project_id,
+        book_asset_id=book_asset_id,
+        audio_asset_ids=audio_asset_ids,
+    )
+    previous_job = session.scalar(
+        select(AlignmentJob)
+        .where(AlignmentJob.project_id == project_id)
+        .where(AlignmentJob.request_fingerprint == request_fingerprint)
+        .order_by(AlignmentJob.created_at.desc())
+        .limit(1)
+    )
+    if previous_job is not None and previous_job.status in {"queued", "running", "completed"}:
+        return AlignmentJobCreateResult(job=previous_job, reused_existing=True)
+
+    retry_of_job_id = None
+    attempt_number = 1
+    if previous_job is not None and previous_job.status in {"failed", "cancelled"}:
+        retry_of_job_id = previous_job.id
+        attempt_number = previous_job.attempt_number + 1
+
     job = AlignmentJob(
         id=str(uuid4()),
         project_id=project_id,
@@ -248,14 +292,18 @@ def create_alignment_job(
         status="queued",
         book_asset_id=book_asset_id,
         audio_asset_ids=audio_asset_ids,
+        request_fingerprint=request_fingerprint,
+        attempt_number=attempt_number,
+        retry_of_job_id=retry_of_job_id,
         progress_stage="queued",
         progress_percent=0,
+        terminal_reason=None,
         mismatch_ranges=[],
     )
     session.add(job)
     session.commit()
     session.refresh(job)
-    return job
+    return AlignmentJobCreateResult(job=job, reused_existing=False)
 
 
 def get_job_or_404(*, session: Session, project_id: str, job_id: str) -> AlignmentJob:
@@ -281,6 +329,7 @@ def cancel_job(*, session: Session, project_id: str, job_id: str) -> AlignmentJo
 
     job.status = "cancelled"
     job.progress_stage = "cancelled"
+    job.terminal_reason = "cancelled_by_request"
     session.add(job)
     session.commit()
     session.refresh(job)

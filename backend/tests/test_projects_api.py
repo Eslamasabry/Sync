@@ -9,16 +9,17 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 
-from sync_backend.alignment.audio import AudioPreprocessor
+from sync_backend.alignment.audio import AudioPreprocessor, PreparedAudioSegment
 from sync_backend.alignment.matching_pipeline import build_match_artifact
 from sync_backend.alignment.pipeline import run_alignment_job
 from sync_backend.alignment.sync_export import build_sync_artifact
-from sync_backend.alignment.transcription import StaticTranscriber
+from sync_backend.alignment.transcription import StaticTranscriber, TranscriptWord
 from sync_backend.alignment.transcription_pipeline import transcribe_alignment_job
 from sync_backend.api.realtime import broker
 from sync_backend.config import get_settings
 from sync_backend.db import get_session_factory, reset_db_caches
 from sync_backend.main import create_app
+from sync_backend.models import AlignmentJob
 from sync_backend.storage import get_object_store
 
 
@@ -130,6 +131,8 @@ def test_project_asset_job_flow(client: TestClient) -> None:
     job_detail_response = client.get(f"/v1/projects/{project_id}/jobs/{job_id}")
     assert job_detail_response.status_code == 200
     assert job_detail_response.json()["status"] == "queued"
+    assert job_detail_response.json()["attempt_number"] == 1
+    assert job_detail_response.json()["retry_of_job_id"] is None
 
 
 def test_epub_upload_generates_reader_model(client: TestClient) -> None:
@@ -363,6 +366,131 @@ def test_create_job_dispatches_inline_execution_when_configured(
     assert response.status_code == 201
     job_id = response.json()["job_id"]
     assert inline_calls == [(project_id, job_id)]
+
+
+def test_duplicate_job_request_reuses_existing_job_without_redispatch(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "idempotent-dispatch.db"
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("JOB_EXECUTION_MODE", "inline")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{database_path}")
+    monkeypatch.setenv("ALIGNMENT_WORKDIR", str(tmp_path / "artifacts"))
+    get_settings.cache_clear()
+    reset_db_caches()
+    broker.reset()
+
+    inline_calls: list[tuple[str, str]] = []
+
+    def record_inline_dispatch(project_id: str, job_id: str) -> None:
+        inline_calls.append((project_id, job_id))
+
+    monkeypatch.setattr(
+        "sync_backend.api.routes.projects.run_alignment_job_inline",
+        record_inline_dispatch,
+    )
+
+    with TestClient(create_app()) as inline_client:
+        project_id = inline_client.post(
+            "/v1/projects",
+            json={"title": "Idempotent Dispatch Project", "language": "en"},
+        ).json()["project_id"]
+
+        book_asset_id = inline_client.post(
+            f"/v1/projects/{project_id}/assets",
+            json={
+                "kind": "epub",
+                "filename": "book.epub",
+                "content_type": "application/epub+zip",
+            },
+        ).json()["asset_id"]
+        audio_asset_id = inline_client.post(
+            f"/v1/projects/{project_id}/assets",
+            json={
+                "kind": "audio",
+                "filename": "book.wav",
+                "content_type": "audio/wav",
+            },
+        ).json()["asset_id"]
+
+        payload = {
+            "job_type": "alignment",
+            "book_asset_id": book_asset_id,
+            "audio_asset_ids": [audio_asset_id],
+        }
+        first_response = inline_client.post(f"/v1/projects/{project_id}/jobs", json=payload)
+        second_response = inline_client.post(f"/v1/projects/{project_id}/jobs", json=payload)
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 201
+    assert first_response.json()["reused_existing"] is False
+    assert first_response.json()["attempt_number"] == 1
+    assert second_response.json()["reused_existing"] is True
+    assert second_response.json()["job_id"] == first_response.json()["job_id"]
+    assert second_response.json()["attempt_number"] == 1
+    assert len(inline_calls) == 1
+
+
+def test_failed_job_request_creates_retry_attempt(client: TestClient) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Retry Project", "language": "en"},
+    ).json()["project_id"]
+    book_asset_id = client.post(
+        f"/v1/projects/{project_id}/assets",
+        json={
+            "kind": "epub",
+            "filename": "book.epub",
+            "content_type": "application/epub+zip",
+        },
+    ).json()["asset_id"]
+    audio_asset_id = client.post(
+        f"/v1/projects/{project_id}/assets",
+        json={
+            "kind": "audio",
+            "filename": "book.wav",
+            "content_type": "audio/wav",
+        },
+    ).json()["asset_id"]
+
+    payload = {
+        "job_type": "alignment",
+        "book_asset_id": book_asset_id,
+        "audio_asset_ids": [audio_asset_id],
+    }
+    first_response = client.post(f"/v1/projects/{project_id}/jobs", json=payload)
+    first_job_id = first_response.json()["job_id"]
+
+    session = get_session_factory()()
+    try:
+        first_job = session.get(AlignmentJob, first_job_id)
+        assert first_job is not None
+        first_job.status = "failed"
+        first_job.progress_stage = "failed"
+        first_job.terminal_reason = "RuntimeError: transcription exploded"
+        session.add(first_job)
+        session.commit()
+    finally:
+        session.close()
+
+    retry_response = client.post(f"/v1/projects/{project_id}/jobs", json=payload)
+    retry_job_id = retry_response.json()["job_id"]
+
+    assert retry_response.status_code == 201
+    assert retry_response.json()["reused_existing"] is False
+    assert retry_job_id != first_job_id
+    assert retry_response.json()["attempt_number"] == 2
+    assert retry_response.json()["retry_of_job_id"] == first_job_id
+
+    retry_job_response = client.get(f"/v1/projects/{project_id}/jobs/{retry_job_id}")
+    assert retry_job_response.status_code == 200
+    assert retry_job_response.json()["attempt_number"] == 2
+    assert retry_job_response.json()["retry_of_job_id"] == first_job_id
+
+    project_response = client.get(f"/v1/projects/{project_id}")
+    assert project_response.status_code == 200
+    assert project_response.json()["latest_job"]["job_id"] == retry_job_id
 
 
 def test_transcription_pipeline_generates_transcript_artifact(client: TestClient) -> None:
@@ -837,6 +965,7 @@ def test_alignment_pipeline_completes_job_and_offsets_multiple_audio_assets(
     assert job_response.status_code == 200
     assert job_response.json()["status"] == "completed"
     assert job_response.json()["progress"]["percent"] == 100
+    assert job_response.json()["terminal_reason"] is None
 
     sync_payload = client.get(f"/v1/projects/{project_id}/sync").json()["inline_payload"]
     assert len(sync_payload["audio"]) == 2
@@ -950,3 +1079,68 @@ def test_cancel_job_is_idempotent_for_already_cancelled_job(client: TestClient) 
     assert first_cancel_response.status_code == 200
     assert second_cancel_response.status_code == 200
     assert second_cancel_response.json()["status"] == "cancelled"
+
+
+def test_failed_alignment_job_persists_terminal_reason(client: TestClient) -> None:
+    class FailingTranscriber:
+        def set_preferred_language(self, language: str | None) -> None:
+            return
+
+        def transcribe_segment(self, segment: PreparedAudioSegment) -> list[TranscriptWord]:
+            raise RuntimeError("synthetic transcription failure")
+
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Failure Reason Project", "language": "en"},
+    ).json()["project_id"]
+
+    client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "epub"},
+        files={"file": ("book.epub", make_test_epub_bytes(), "application/epub+zip")},
+    )
+    audio_asset_id = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "audio"},
+        files={"file": ("narration.wav", make_test_wav_bytes(), "audio/wav")},
+    ).json()["asset_id"]
+
+    project_detail = client.get(f"/v1/projects/{project_id}").json()
+    book_asset_id = next(
+        asset["asset_id"] for asset in project_detail["assets"] if asset["kind"] == "epub"
+    )
+    job_id = client.post(
+        f"/v1/projects/{project_id}/jobs",
+        json={
+            "job_type": "alignment",
+            "book_asset_id": book_asset_id,
+            "audio_asset_ids": [audio_asset_id],
+        },
+    ).json()["job_id"]
+
+    settings = get_settings()
+    session = get_session_factory()()
+    try:
+        try:
+            run_alignment_job(
+                session=session,
+                project_id=project_id,
+                job_id=job_id,
+                object_store=get_object_store(),
+                preprocessor=AudioPreprocessor(
+                    object_store=get_object_store(),
+                    ffmpeg_bin=settings.ffmpeg_bin,
+                    ffprobe_bin=settings.ffprobe_bin,
+                    chunk_duration_ms=400,
+                ),
+                transcriber=FailingTranscriber(),
+            )
+        except RuntimeError as exc:
+            assert str(exc) == "synthetic transcription failure"
+    finally:
+        session.close()
+
+    job_response = client.get(f"/v1/projects/{project_id}/jobs/{job_id}")
+    assert job_response.status_code == 200
+    assert job_response.json()["status"] == "failed"
+    assert job_response.json()["terminal_reason"] == "RuntimeError: synthetic transcription failure"

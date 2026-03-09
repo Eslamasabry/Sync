@@ -50,6 +50,7 @@ def transcribe_alignment_job(
     job.status = "running"
     job.progress_stage = "audio_preprocessing"
     job.progress_percent = 0
+    job.terminal_reason = None
     persist_progress(event_type="job.started")
 
     prepared_assets = []

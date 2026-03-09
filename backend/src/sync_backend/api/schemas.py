@@ -37,6 +37,9 @@ class JobCreateRequest(BaseModel):
 class JobCreateResponse(BaseModel):
     job_id: UUID
     status: str
+    reused_existing: bool = False
+    attempt_number: int = Field(ge=1)
+    retry_of_job_id: UUID | None = None
 
 
 class AssetSummary(BaseModel):
@@ -71,6 +74,9 @@ class JobSummary(BaseModel):
     job_id: UUID
     job_type: str
     status: str
+    attempt_number: int = Field(ge=1)
+    retry_of_job_id: UUID | None = None
+    terminal_reason: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -91,6 +97,10 @@ class JobDetailResponse(BaseModel):
     status: str
     progress: JobProgress
     quality: JobQuality
+    request_fingerprint: str
+    attempt_number: int = Field(ge=1)
+    retry_of_job_id: UUID | None = None
+    terminal_reason: str | None = None
     book_asset_id: UUID
     audio_asset_ids: list[UUID]
     created_at: datetime
