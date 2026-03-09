@@ -7,6 +7,7 @@ import 'package:sync_flutter/core/navigation/home_shell_controller.dart';
 import 'package:sync_flutter/core/theme/sync_theme.dart';
 import 'package:sync_flutter/features/library/state/library_import_controller.dart';
 import 'package:sync_flutter/features/reader/data/reader_location_store.dart';
+import 'package:sync_flutter/features/reader/data/reader_repository.dart';
 import 'package:sync_flutter/features/reader/state/reader_audio_download_controller.dart';
 import 'package:sync_flutter/features/reader/state/reader_events_provider.dart';
 import 'package:sync_flutter/features/reader/state/reader_location_provider.dart';
@@ -191,7 +192,6 @@ class LibraryScreen extends ConsumerWidget {
     final currentProject = ref.watch(readerProjectProvider);
     final audioDownload = ref.watch(readerAudioDownloadProvider);
     final audioActions = ref.read(readerAudioDownloadProvider.notifier);
-    final currentBundle = currentProject.asData?.value;
 
     final recentConnectionCount = recentConnections.asData?.value.length ?? 0;
     final recentBookCount = recentLocations.asData?.value.length ?? 0;
@@ -267,24 +267,6 @@ class LibraryScreen extends ConsumerWidget {
                       icon: const Icon(Icons.book_online_rounded),
                       label: const Text('Continue Reader'),
                     ),
-                    if ((currentBundle?.totalAudioAssets ?? 0) > 0)
-                      FilledButton.tonalIcon(
-                        onPressed: audioDownload.isBusy
-                            ? null
-                            : currentBundle?.hasCompleteOfflineAudio == true
-                            ? audioActions.removeCurrentProjectAudio
-                            : audioActions.downloadCurrentProject,
-                        icon: Icon(
-                          currentBundle?.hasCompleteOfflineAudio == true
-                              ? Icons.delete_outline_rounded
-                              : Icons.download_for_offline_rounded,
-                        ),
-                        label: Text(
-                          currentBundle?.hasCompleteOfflineAudio == true
-                              ? 'Remove Offline Audio'
-                              : 'Download Audio',
-                        ),
-                      ),
                     currentSettings.maybeWhen(
                       data: (settings) => OutlinedButton.icon(
                         onPressed: () => _forgetConnection(context, ref, settings),
@@ -296,9 +278,22 @@ class LibraryScreen extends ConsumerWidget {
                   ],
                 ),
                 child: currentSettings.when(
-                  data: (settings) => _ProjectTargetSummary(
-                    settings: settings,
-                    onOpen: () => _activateConnection(context, ref, settings),
+                  data: (settings) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _ProjectTargetSummary(
+                        settings: settings,
+                        onOpen: () => _activateConnection(context, ref, settings),
+                      ),
+                      const SizedBox(height: 14),
+                      _CurrentTargetOfflineManager(
+                        settings: settings,
+                        project: currentProject,
+                        downloadState: audioDownload,
+                        onDownload: audioActions.downloadCurrentProject,
+                        onRemove: audioActions.removeCurrentProjectAudio,
+                      ),
+                    ],
                   ),
                   loading: () => const Padding(
                     padding: EdgeInsets.symmetric(vertical: 12),
@@ -1552,6 +1547,133 @@ class _ProjectTargetSummary extends ConsumerWidget {
             'Could not fetch project snapshot. $error',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CurrentTargetOfflineManager extends ConsumerWidget {
+  const _CurrentTargetOfflineManager({
+    required this.settings,
+    required this.project,
+    required this.downloadState,
+    required this.onDownload,
+    required this.onRemove,
+  });
+
+  final RuntimeConnectionSettings settings;
+  final AsyncValue<ReaderProjectBundle> project;
+  final ReaderAudioDownloadState downloadState;
+  final Future<void> Function() onDownload;
+  final Future<void> Function() onRemove;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = ReaderPalette.of(context);
+    final offline = ref.watch(libraryOfflineSnapshotProvider(settings));
+
+    String message;
+    List<Widget> actions = const <Widget>[];
+
+    final bundle = project.asData?.value;
+    if (project.isLoading) {
+      message =
+          'Reader workspace is still connecting for this target. Offline details will sharpen once the project bundle loads.';
+    } else if (project.hasError) {
+      message =
+          'Offline controls are available, but the live reader bundle is not reachable right now. Reopen the reader or refresh once the backend responds.';
+    } else if (bundle == null || bundle.totalAudioAssets == 0) {
+      message =
+          'This target has no playable audiobook assets yet. Text and sync caches can still exist, but there is no audio package to download.';
+    } else if (downloadState.status == ReaderAudioDownloadStatus.downloading) {
+      message =
+          'Downloading audio ${downloadState.completedAssets + 1} of ${downloadState.totalAssets > 0 ? downloadState.totalAssets : bundle.totalAudioAssets} for offline playback.';
+      actions = [
+        FilledButton.tonalIcon(
+          onPressed: null,
+          icon: const Icon(Icons.download_rounded),
+          label: const Text('Downloading'),
+        ),
+      ];
+    } else if (bundle.hasCompleteOfflineAudio) {
+      message =
+          'All audiobook files for the current target are stored locally. You can remove them here without leaving the library.';
+      actions = [
+        FilledButton.tonalIcon(
+          onPressed: downloadState.isBusy ? null : onRemove,
+          icon: const Icon(Icons.delete_outline_rounded),
+          label: const Text('Remove Offline Audio'),
+        ),
+      ];
+    } else {
+      message =
+          'Audio is still streaming for this target. Download it here to make the current project fully portable on this device.';
+      actions = [
+        FilledButton.tonalIcon(
+          onPressed: downloadState.isBusy ? null : onDownload,
+          icon: const Icon(Icons.download_for_offline_rounded),
+          label: Text(
+            bundle.cachedAudioAssets > 0 ? 'Download Remaining' : 'Download Audio',
+          ),
+        ),
+      ];
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        color: palette.backgroundBase,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Offline Manager', style: Theme.of(context).textTheme.labelLarge),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+          ),
+          if (downloadState.message != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              downloadState.message!,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+            ),
+          ],
+          if (downloadState.status == ReaderAudioDownloadStatus.downloading) ...[
+            const SizedBox(height: 12),
+            LinearProgressIndicator(value: downloadState.progress),
+          ],
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ...offline.maybeWhen(
+                data: (value) => _offlineStatusChips(
+                  value,
+                  bundle?.totalAudioAssets ?? 0,
+                ),
+                orElse: () => const <Widget>[],
+              ),
+              if (bundle != null)
+                _LibraryStatusChip(
+                  label: 'Audio ${bundle.cachedAudioAssets}/${bundle.totalAudioAssets}',
+                ),
+            ],
+          ),
+          if (actions.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Wrap(spacing: 10, runSpacing: 10, children: actions),
+          ],
         ],
       ),
     );
