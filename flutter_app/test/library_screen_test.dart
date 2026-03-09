@@ -204,6 +204,12 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Processing Queue'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Recent Server Projects'),
+        220,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
       expect(find.text('Recent Server Projects'), findsOneWidget);
       expect(find.textContaining('Running'), findsWidgets);
       expect(find.text('Text cached'), findsWidgets);

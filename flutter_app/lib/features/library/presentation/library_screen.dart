@@ -1049,6 +1049,17 @@ class _ProjectTargetSummary extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('${settings.shortHost} • ${settings.normalizedProjectId}'),
+          if (value.latestJobPercent != null) ...[
+            const SizedBox(height: 12),
+            _LibraryProgressMeter(
+              label: value.latestJobStage == null
+                  ? 'Latest job progress'
+                  : _capitalizeLabel(
+                      value.latestJobStage!.replaceAll('_', ' '),
+                    ),
+              percent: value.latestJobPercent!,
+            ),
+          ],
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
@@ -1057,6 +1068,8 @@ class _ProjectTargetSummary extends ConsumerWidget {
               _LibraryStatusChip(label: value.projectStatusLabel),
               if (value.latestJobLabel case final jobLabel?)
                 _LibraryStatusChip(label: jobLabel),
+              if (value.latestJobAttempt != null)
+                _LibraryStatusChip(label: 'Attempt ${value.latestJobAttempt}'),
               _LibraryStatusChip(label: '${value.audioAssetCount} audio'),
               _LibraryStatusChip(label: '${value.epubAssetCount} EPUB'),
               ...offline.maybeWhen(
@@ -1164,6 +1177,17 @@ class _QueueSnapshotTile extends ConsumerWidget {
                         color: palette.textMuted,
                       ),
                     ),
+                    if (value.latestJobPercent != null) ...[
+                      const SizedBox(height: 10),
+                      _LibraryProgressMeter(
+                        label: value.latestJobStage == null
+                            ? 'Active job'
+                            : _capitalizeLabel(
+                                value.latestJobStage!.replaceAll('_', ' '),
+                              ),
+                        percent: value.latestJobPercent!,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -1298,6 +1322,8 @@ class _ProjectSnapshotCard extends StatelessWidget {
               _LibraryStatusChip(label: value.projectStatusLabel),
               if (value.latestJobLabel case final jobLabel?)
                 _LibraryStatusChip(label: jobLabel),
+              if (value.latestJobAttempt != null)
+                _LibraryStatusChip(label: 'Attempt ${value.latestJobAttempt}'),
               _LibraryStatusChip(label: _formatBytes(value.totalSizeBytes)),
               ...offline.maybeWhen(
                 data: (offlineValue) =>
@@ -1306,6 +1332,17 @@ class _ProjectSnapshotCard extends StatelessWidget {
               ),
             ],
           ),
+          if (value.latestJobPercent != null) ...[
+            const SizedBox(height: 12),
+            _LibraryProgressMeter(
+              label: value.latestJobStage == null
+                  ? 'Latest job'
+                  : _capitalizeLabel(
+                      value.latestJobStage!.replaceAll('_', ' '),
+                    ),
+              percent: value.latestJobPercent!,
+            ),
+          ],
           const SizedBox(height: 14),
           Row(
             children: [
@@ -1339,6 +1376,50 @@ class _LibraryStatusChip extends StatelessWidget {
         border: Border.all(color: palette.borderSubtle),
       ),
       child: Text(label, style: Theme.of(context).textTheme.labelMedium),
+    );
+  }
+}
+
+class _LibraryProgressMeter extends StatelessWidget {
+  const _LibraryProgressMeter({required this.label, required this.percent});
+
+  final String label;
+  final int percent;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final normalizedPercent = percent.clamp(0, 100);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+              ),
+            ),
+            Text(
+              '$normalizedPercent%',
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            value: normalizedPercent / 100,
+            minHeight: 8,
+            backgroundColor: palette.accentSoft.withValues(alpha: 0.45),
+            valueColor: AlwaysStoppedAnimation<Color>(palette.accentPrimary),
+          ),
+        ),
+      ],
     );
   }
 }
