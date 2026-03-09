@@ -669,9 +669,52 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
   Widget build(BuildContext context) {
     final palette = ReaderPalette.of(context);
     final actions = ref.read(libraryImportProvider.notifier);
+    final hasDraft =
+        widget.state.epubFile != null || widget.state.audioFiles.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          decoration: BoxDecoration(
+            color: palette.backgroundBase,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: palette.borderSubtle),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Draft status',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _LibraryStatusChip(
+                    label: widget.state.epubFile == null
+                        ? 'EPUB missing'
+                        : 'EPUB ready',
+                  ),
+                  _LibraryStatusChip(
+                    label: widget.state.audioFiles.isEmpty
+                        ? 'Audio missing'
+                        : '${widget.state.audioFiles.length} audio ready',
+                  ),
+                  _LibraryStatusChip(
+                    label: widget.state.canStartImport
+                        ? 'Ready to align'
+                        : 'Draft incomplete',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
         TextField(
           controller: _titleController,
           decoration: const InputDecoration(labelText: 'Book Title'),
@@ -684,6 +727,8 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
           onChanged: actions.setLanguage,
         ),
         const SizedBox(height: 16),
+        Text('Source files', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 10),
         Wrap(
           spacing: 12,
           runSpacing: 8,
@@ -706,6 +751,15 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
             ),
           ],
         ),
+        if (!hasDraft) ...[
+          const SizedBox(height: 12),
+          Text(
+            'Attach the book first, then the audiobook files. Multi-file audio is fine.',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+          ),
+        ],
         if (widget.state.epubFile != null) ...[
           const SizedBox(height: 12),
           _ImportFileTile(
@@ -747,6 +801,8 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
           ),
         ],
         const SizedBox(height: 16),
+        Text('Launch', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 10),
         Wrap(
           spacing: 12,
           runSpacing: 8,
