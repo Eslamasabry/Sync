@@ -354,6 +354,52 @@ void main() {
     expect(find.text('Speed'), findsOneWidget);
     expect(find.text('Download Audio'), findsOneWidget);
     expect(find.text('Connection'), findsOneWidget);
+    expect(find.text('Navigate'), findsOneWidget);
+  });
+
+  testWidgets('focus mode hides the hero and shows the floating reader HUD', (
+    tester,
+  ) async {
+    await _pumpReaderApp(tester, repository: _FakeReaderRepository());
+
+    await tester.tap(find.text('Focus'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Connection'), findsNothing);
+    expect(find.text('Exit Focus'), findsOneWidget);
+  });
+
+  testWidgets('text size controls change rendered token size', (tester) async {
+    await _pumpReaderApp(tester, repository: _FakeReaderRepository());
+
+    final before = tester.widget<Text>(find.text('Call').first);
+    final beforeSize = before.style?.fontSize ?? 0;
+
+    await tester.tap(find.text('Large').first);
+    await tester.pumpAndSettle();
+
+    final after = tester.widget<Text>(find.text('Call').first);
+    final afterSize = after.style?.fontSize ?? 0;
+
+    expect(afterSize, greaterThan(beforeSize));
+  });
+
+  testWidgets('navigation sheet shows contents and text search results', (
+    tester,
+  ) async {
+    await _pumpReaderApp(tester, repository: _FakeReaderRepository());
+
+    await tester.tap(find.text('Navigate'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Contents'), findsOneWidget);
+    expect(find.text('Loomings'), findsAtLeastNWidgets(1));
+
+    await tester.enterText(find.byType(TextField), 'Ishmael');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Search Results'), findsOneWidget);
+    expect(find.textContaining('Call me Ishmael'), findsOneWidget);
   });
 
   testWidgets('saves runtime connection settings locally through the UI', (

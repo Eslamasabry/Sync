@@ -20,6 +20,11 @@ class ReaderPlaybackState {
     required this.isPlaying,
     required this.speed,
     required this.themeMode,
+    required this.fontScale,
+    required this.lineHeight,
+    required this.paragraphSpacing,
+    required this.followPlayback,
+    required this.distractionFreeMode,
     required this.usesNativeAudio,
     required this.totalDurationMs,
     required this.contentStartMs,
@@ -32,6 +37,11 @@ class ReaderPlaybackState {
   final bool isPlaying;
   final double speed;
   final ThemeMode themeMode;
+  final double fontScale;
+  final double lineHeight;
+  final double paragraphSpacing;
+  final bool followPlayback;
+  final bool distractionFreeMode;
   final bool usesNativeAudio;
   final int totalDurationMs;
   final int contentStartMs;
@@ -51,6 +61,11 @@ class ReaderPlaybackState {
     bool? isPlaying,
     double? speed,
     ThemeMode? themeMode,
+    double? fontScale,
+    double? lineHeight,
+    double? paragraphSpacing,
+    bool? followPlayback,
+    bool? distractionFreeMode,
     bool? usesNativeAudio,
     int? totalDurationMs,
     int? contentStartMs,
@@ -64,6 +79,11 @@ class ReaderPlaybackState {
       isPlaying: isPlaying ?? this.isPlaying,
       speed: speed ?? this.speed,
       themeMode: themeMode ?? this.themeMode,
+      fontScale: fontScale ?? this.fontScale,
+      lineHeight: lineHeight ?? this.lineHeight,
+      paragraphSpacing: paragraphSpacing ?? this.paragraphSpacing,
+      followPlayback: followPlayback ?? this.followPlayback,
+      distractionFreeMode: distractionFreeMode ?? this.distractionFreeMode,
       usesNativeAudio: usesNativeAudio ?? this.usesNativeAudio,
       totalDurationMs: totalDurationMs ?? this.totalDurationMs,
       contentStartMs: contentStartMs ?? this.contentStartMs,
@@ -93,6 +113,11 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
       isPlaying: false,
       speed: 1.0,
       themeMode: ThemeMode.light,
+      fontScale: 1.0,
+      lineHeight: 1.55,
+      paragraphSpacing: 1.0,
+      followPlayback: true,
+      distractionFreeMode: false,
       usesNativeAudio: false,
       totalDurationMs: 0,
       contentStartMs: 0,
@@ -236,6 +261,26 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
           ? ThemeMode.dark
           : ThemeMode.light,
     );
+  }
+
+  void setFontScale(double value) {
+    state = state.copyWith(fontScale: value);
+  }
+
+  void setLineHeight(double value) {
+    state = state.copyWith(lineHeight: value);
+  }
+
+  void setParagraphSpacing(double value) {
+    state = state.copyWith(paragraphSpacing: value);
+  }
+
+  void toggleFollowPlayback() {
+    state = state.copyWith(followPlayback: !state.followPlayback);
+  }
+
+  void toggleDistractionFreeMode() {
+    state = state.copyWith(distractionFreeMode: !state.distractionFreeMode);
   }
 
   void resetForProject() {
