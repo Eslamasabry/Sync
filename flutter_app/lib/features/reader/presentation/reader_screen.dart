@@ -78,7 +78,7 @@ class ReaderScreen extends ConsumerWidget {
                     onToggleTheme: controller.toggleTheme,
                     onToggleDistractionFree:
                         controller.toggleDistractionFreeMode,
-                            onOpenNavigation: bundle == null
+                    onOpenNavigation: bundle == null
                         ? null
                         : () => _showNavigationSheet(
                             context,
@@ -125,8 +125,9 @@ class ReaderScreen extends ConsumerWidget {
                               ),
                             ),
                             Positioned(
-                              right: 16,
                               bottom: 16,
+                              left: playback.leftHandedMode ? 16 : null,
+                              right: playback.leftHandedMode ? null : 16,
                               child: _ReaderFocusOverlay(
                                 playback: playback,
                                 hasPlayableContent:
@@ -184,6 +185,10 @@ class ReaderScreen extends ConsumerWidget {
                                   controller.toggleFollowPlayback,
                               onToggleDistractionFree:
                                   controller.toggleDistractionFreeMode,
+                              onToggleHighContrast:
+                                  controller.toggleHighContrastMode,
+                              onToggleLeftHanded:
+                                  controller.toggleLeftHandedMode,
                               onOpenGapInspector: bundle == null
                                   ? null
                                   : () => _showGapInspectorSheet(
@@ -195,15 +200,17 @@ class ReaderScreen extends ConsumerWidget {
                               onJumpToNextConfidentSpan: bundle == null
                                   ? null
                                   : () {
-                                      final nextStart = _nextConfidentSpanStartMs(
-                                        bundle.syncArtifact,
-                                        playback.displayedPositionMs,
-                                      );
+                                      final nextStart =
+                                          _nextConfidentSpanStartMs(
+                                            bundle.syncArtifact,
+                                            playback.displayedPositionMs,
+                                          );
                                       if (nextStart != null) {
                                         controller.seekTo(nextStart);
                                       }
                                     },
-                              studyEntries: studyEntries.asData?.value ?? const [],
+                              studyEntries:
+                                  studyEntries.asData?.value ?? const [],
                               onAddBookmark: bundle == null
                                   ? null
                                   : () => studyActions.addEntry(
@@ -579,20 +586,24 @@ class _ReaderStage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: project.when(
-        data: (bundle) => _ReaderLoadedView(
-          bundle: bundle,
-          playback: playback,
-          onTokenTap: onTokenTap,
-        ),
-        loading: () => _ReaderLoadingView(settings: settings),
-        error: (error, _) => _ReaderErrorView(
-          message: error.toString(),
-          settings: settings,
-          onRetry: onRetry,
-          onOpenConnectionSettings: onOpenConnectionSettings,
+    return Semantics(
+      container: true,
+      label: 'Reader stage',
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        child: project.when(
+          data: (bundle) => _ReaderLoadedView(
+            bundle: bundle,
+            playback: playback,
+            onTokenTap: onTokenTap,
+          ),
+          loading: () => _ReaderLoadingView(settings: settings),
+          error: (error, _) => _ReaderErrorView(
+            message: error.toString(),
+            settings: settings,
+            onRetry: onRetry,
+            onOpenConnectionSettings: onOpenConnectionSettings,
+          ),
         ),
       ),
     );
@@ -624,6 +635,8 @@ class _ControlDock extends StatelessWidget {
     required this.onSetParagraphSpacing,
     required this.onToggleFollowPlayback,
     required this.onToggleDistractionFree,
+    required this.onToggleHighContrast,
+    required this.onToggleLeftHanded,
     required this.onOpenGapInspector,
     required this.onJumpToNextConfidentSpan,
     required this.studyEntries,
@@ -660,6 +673,8 @@ class _ControlDock extends StatelessWidget {
   final ValueChanged<double> onSetParagraphSpacing;
   final VoidCallback onToggleFollowPlayback;
   final VoidCallback onToggleDistractionFree;
+  final VoidCallback onToggleHighContrast;
+  final VoidCallback onToggleLeftHanded;
   final VoidCallback? onOpenGapInspector;
   final VoidCallback? onJumpToNextConfidentSpan;
   final List<ReaderStudyEntry> studyEntries;
@@ -727,6 +742,8 @@ class _ControlDock extends StatelessWidget {
                 onSetParagraphSpacing: onSetParagraphSpacing,
                 onToggleFollowPlayback: onToggleFollowPlayback,
                 onToggleDistractionFree: onToggleDistractionFree,
+                onToggleHighContrast: onToggleHighContrast,
+                onToggleLeftHanded: onToggleLeftHanded,
               ),
               const SizedBox(height: 12),
               _StudyWorkflowCard(
@@ -1267,6 +1284,7 @@ class _ReaderLoadedViewState extends State<_ReaderLoadedView> {
                           fontScale: playback.fontScale,
                           lineHeight: playback.lineHeight,
                           paragraphSpacing: playback.paragraphSpacing,
+                          highContrastMode: playback.highContrastMode,
                         ),
                       ),
                   ],
@@ -1439,6 +1457,8 @@ class _ReaderPreferencesCard extends StatelessWidget {
     required this.onSetParagraphSpacing,
     required this.onToggleFollowPlayback,
     required this.onToggleDistractionFree,
+    required this.onToggleHighContrast,
+    required this.onToggleLeftHanded,
   });
 
   final ReaderPlaybackState playback;
@@ -1447,6 +1467,8 @@ class _ReaderPreferencesCard extends StatelessWidget {
   final ValueChanged<double> onSetParagraphSpacing;
   final VoidCallback onToggleFollowPlayback;
   final VoidCallback onToggleDistractionFree;
+  final VoidCallback onToggleHighContrast;
+  final VoidCallback onToggleLeftHanded;
 
   @override
   Widget build(BuildContext context) {
@@ -1527,6 +1549,24 @@ class _ReaderPreferencesCard extends StatelessWidget {
               'Hide the full reader dock and keep a minimal floating playback HUD.',
             ),
             onChanged: (_) => onToggleDistractionFree(),
+          ),
+          SwitchListTile.adaptive(
+            value: playback.highContrastMode,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Enhanced contrast'),
+            subtitle: const Text(
+              'Increase contrast and confidence cues for tougher lighting and lower-precision spans.',
+            ),
+            onChanged: (_) => onToggleHighContrast(),
+          ),
+          SwitchListTile.adaptive(
+            value: playback.leftHandedMode,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Left-handed HUD'),
+            subtitle: const Text(
+              'Pin the floating focus controls to the lower-left corner.',
+            ),
+            onChanged: (_) => onToggleLeftHanded(),
           ),
         ],
       ),
@@ -2431,7 +2471,11 @@ class _PresetChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChoiceChip(label: Text(label), selected: isActive, onSelected: (_) => onTap());
+    return ChoiceChip(
+      label: Text(label),
+      selected: isActive,
+      onSelected: (_) => onTap(),
+    );
   }
 }
 
@@ -2649,7 +2693,10 @@ class _SyncIntelligenceBanner extends StatelessWidget {
     final palette = ReaderPalette.of(context);
     final theme = Theme.of(context);
     final gap = bundle.syncArtifact.activeGapAt(currentPositionMs);
-    final token = _activeTokenAtPosition(bundle.syncArtifact, currentPositionMs);
+    final token = _activeTokenAtPosition(
+      bundle.syncArtifact,
+      currentPositionMs,
+    );
     final confidence = token?.confidence ?? 1.0;
     final nextStrongSpan = _nextConfidentSpanStartMs(
       bundle.syncArtifact,
@@ -2658,7 +2705,8 @@ class _SyncIntelligenceBanner extends StatelessWidget {
 
     final headline = gap != null
         ? switch (gap.reason) {
-            'audiobook_front_matter' => 'Audiobook intro sits outside the book.',
+            'audiobook_front_matter' =>
+              'Audiobook intro sits outside the book.',
             'audiobook_end_matter' => 'Audiobook outro sits outside the book.',
             _ => 'Narration drift detected in this span.',
           }
@@ -2741,6 +2789,7 @@ class _ParagraphBlock extends StatelessWidget {
     required this.fontScale,
     required this.lineHeight,
     required this.paragraphSpacing,
+    required this.highContrastMode,
   });
 
   final ReaderSection section;
@@ -2751,6 +2800,7 @@ class _ParagraphBlock extends StatelessWidget {
   final double fontScale;
   final double lineHeight;
   final double paragraphSpacing;
+  final bool highContrastMode;
 
   @override
   Widget build(BuildContext context) {
@@ -2771,6 +2821,7 @@ class _ParagraphBlock extends StatelessWidget {
             palette: palette,
             fontScale: fontScale,
             lineHeight: lineHeight,
+            highContrastMode: highContrastMode,
           ),
       ],
     );
@@ -2786,6 +2837,7 @@ class _TokenPill extends StatelessWidget {
     required this.palette,
     required this.fontScale,
     required this.lineHeight,
+    required this.highContrastMode,
   });
 
   final ReaderToken token;
@@ -2795,6 +2847,7 @@ class _TokenPill extends StatelessWidget {
   final ReaderPalette palette;
   final double fontScale;
   final double lineHeight;
+  final bool highContrastMode;
 
   @override
   Widget build(BuildContext context) {
@@ -2804,15 +2857,38 @@ class _TokenPill extends StatelessWidget {
     final confidence = syncToken?.confidence ?? 1.0;
     final isSoftConfidence = confidence < 0.86;
     final isWeakConfidence = confidence < 0.72;
-    final foregroundColor = isActive
+    final foregroundColor = highContrastMode
+        ? isActive
+              ? palette.backgroundBase
+              : isWeakConfidence
+              ? palette.textPrimary
+              : palette.textPrimary
+        : isActive
         ? palette.accentPrimary
         : isWeakConfidence
         ? palette.textMuted
         : palette.textPrimary;
-    final backgroundColor = isActive
+    final backgroundColor = highContrastMode
+        ? isActive
+              ? palette.textPrimary
+              : isWeakConfidence
+              ? palette.accentSoft.withValues(alpha: 0.72)
+              : palette.backgroundBase
+        : isActive
         ? palette.accentSoft
         : isWeakConfidence
         ? palette.accentSoft.withValues(alpha: 0.28)
+        : Colors.transparent;
+    final borderColor = highContrastMode
+        ? isActive
+              ? palette.textPrimary
+              : isSoftConfidence
+              ? palette.accentPrimary
+              : palette.borderSubtle
+        : isActive
+        ? palette.accentPrimary
+        : isSoftConfidence
+        ? palette.borderSubtle
         : Colors.transparent;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
@@ -2835,11 +2911,8 @@ class _TokenPill extends StatelessWidget {
             color: backgroundColor,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isActive
-                  ? palette.accentPrimary
-                  : isSoftConfidence
-                  ? palette.borderSubtle
-                  : Colors.transparent,
+              color: borderColor,
+              width: highContrastMode ? 1.4 : 1,
             ),
           ),
           child: Text(
@@ -2850,12 +2923,13 @@ class _TokenPill extends StatelessWidget {
               color: foregroundColor,
               fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
               fontStyle: isWeakConfidence ? FontStyle.italic : FontStyle.normal,
-              decoration:
-                  isActive || isSoftConfidence
-                      ? TextDecoration.underline
-                      : null,
+              decoration: isActive || isSoftConfidence || highContrastMode
+                  ? TextDecoration.underline
+                  : null,
               decorationColor: isActive
-                  ? palette.accentPrimary
+                  ? (highContrastMode
+                        ? palette.backgroundBase
+                        : palette.accentPrimary)
                   : palette.textMuted,
               decorationStyle: isActive
                   ? TextDecorationStyle.solid
@@ -3061,7 +3135,9 @@ class _ReviewTraySheet extends StatelessWidget {
                       for (final entry in entries)
                         ListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: Text(entry.sectionTitle ?? _studyTypeLabel(entry.type)),
+                          title: Text(
+                            entry.sectionTitle ?? _studyTypeLabel(entry.type),
+                          ),
                           subtitle: Text(
                             '${_studyTypeLabel(entry.type)} • ${ReaderScreen._formatMs(entry.positionMs)}\n${entry.excerpt}${entry.note == null ? '' : '\n${entry.note}'}',
                           ),
@@ -3132,7 +3208,9 @@ _ReadingProgressSnapshot _readingProgress(
       }
     }
     final sectionTokens = bundle.syncArtifact.tokens
-        .where((token) => token.location.sectionId == activeToken.location.sectionId)
+        .where(
+          (token) => token.location.sectionId == activeToken.location.sectionId,
+        )
         .toList(growable: false);
     if (sectionTokens.isNotEmpty) {
       final sectionStart = sectionTokens.first.startMs;

@@ -131,8 +131,9 @@ class _MemoryReaderStudyStore implements ReaderStudyStore {
   final Map<String, List<ReaderStudyEntry>> _items;
 
   @override
-  Future<List<ReaderStudyEntry>> loadProject(String projectId) async =>
-      [...?_items[projectId]];
+  Future<List<ReaderStudyEntry>> loadProject(String projectId) async => [
+    ...?_items[projectId],
+  ];
 
   @override
   Future<void> saveProject(
@@ -428,6 +429,67 @@ void main() {
 
     expect(find.text('Connection'), findsNothing);
     expect(find.text('Exit Focus'), findsOneWidget);
+  });
+
+  testWidgets('enhanced contrast changes token emphasis styling', (
+    tester,
+  ) async {
+    await _pumpReaderApp(tester, repository: _FakeReaderRepository());
+
+    final beforeContainer = tester.widget<AnimatedContainer>(
+      find
+          .ancestor(
+            of: find.text('Call').first,
+            matching: find.byType(AnimatedContainer),
+          )
+          .first,
+    );
+    final beforeDecoration = beforeContainer.decoration! as BoxDecoration;
+
+    await tester.ensureVisible(find.text('Enhanced contrast'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Enhanced contrast'));
+    await tester.pumpAndSettle();
+
+    final afterContainer = tester.widget<AnimatedContainer>(
+      find
+          .ancestor(
+            of: find.text('Call').first,
+            matching: find.byType(AnimatedContainer),
+          )
+          .first,
+    );
+    final afterDecoration = afterContainer.decoration! as BoxDecoration;
+
+    expect(afterDecoration.color, isNot(equals(beforeDecoration.color)));
+  });
+
+  testWidgets('left-handed HUD moves the focus overlay to the lower left', (
+    tester,
+  ) async {
+    await _pumpReaderApp(tester, repository: _FakeReaderRepository());
+
+    await tester.ensureVisible(find.text('Left-handed HUD'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Left-handed HUD'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Focus'));
+    await tester.pumpAndSettle();
+
+    final positioned = tester.widgetList<Positioned>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Positioned &&
+            widget.bottom == 16 &&
+            (widget.left == 16 || widget.right == 16),
+      ),
+    );
+
+    expect(
+      positioned.any((widget) => widget.left == 16 && widget.right == null),
+      isTrue,
+    );
   });
 
   testWidgets('text size controls change rendered token size', (tester) async {

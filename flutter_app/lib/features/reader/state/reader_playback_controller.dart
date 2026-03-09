@@ -40,6 +40,8 @@ class ReaderPlaybackState {
     required this.playbackPreset,
     required this.loopStartMs,
     required this.loopEndMs,
+    required this.highContrastMode,
+    required this.leftHandedMode,
   });
 
   final int positionMs;
@@ -60,6 +62,8 @@ class ReaderPlaybackState {
   final ReaderPlaybackPreset playbackPreset;
   final int? loopStartMs;
   final int? loopEndMs;
+  final bool highContrastMode;
+  final bool leftHandedMode;
 
   int get displayedPositionMs => scrubPositionMs ?? positionMs;
 
@@ -69,9 +73,7 @@ class ReaderPlaybackState {
       contentEndMs > 0 && contentEndMs < totalDurationMs;
 
   bool get hasLoop =>
-      loopStartMs != null &&
-      loopEndMs != null &&
-      loopEndMs! > loopStartMs!;
+      loopStartMs != null && loopEndMs != null && loopEndMs! > loopStartMs!;
 
   ReaderPlaybackState copyWith({
     int? positionMs,
@@ -92,6 +94,8 @@ class ReaderPlaybackState {
     ReaderPlaybackPreset? playbackPreset,
     int? loopStartMs,
     int? loopEndMs,
+    bool? highContrastMode,
+    bool? leftHandedMode,
     bool clearScrubPosition = false,
     bool clearLoopStart = false,
     bool clearLoopEnd = false,
@@ -117,6 +121,8 @@ class ReaderPlaybackState {
       playbackPreset: playbackPreset ?? this.playbackPreset,
       loopStartMs: clearLoopStart ? null : loopStartMs ?? this.loopStartMs,
       loopEndMs: clearLoopEnd ? null : loopEndMs ?? this.loopEndMs,
+      highContrastMode: highContrastMode ?? this.highContrastMode,
+      leftHandedMode: leftHandedMode ?? this.leftHandedMode,
     );
   }
 }
@@ -157,6 +163,8 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
       playbackPreset: ReaderPlaybackPreset.custom,
       loopStartMs: null,
       loopEndMs: null,
+      highContrastMode: false,
+      leftHandedMode: false,
     );
   }
 
@@ -354,6 +362,14 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
     state = state.copyWith(distractionFreeMode: !state.distractionFreeMode);
   }
 
+  void toggleHighContrastMode() {
+    state = state.copyWith(highContrastMode: !state.highContrastMode);
+  }
+
+  void toggleLeftHandedMode() {
+    state = state.copyWith(leftHandedMode: !state.leftHandedMode);
+  }
+
   Future<void> applyPreset(ReaderPlaybackPreset preset) async {
     switch (preset) {
       case ReaderPlaybackPreset.custom:
@@ -396,8 +412,12 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
       state = state.copyWith(loopStartMs: currentPosition);
       return;
     }
-    final orderedStart = currentPosition < loopStart ? currentPosition : loopStart;
-    final orderedEnd = currentPosition < loopStart ? loopStart : currentPosition;
+    final orderedStart = currentPosition < loopStart
+        ? currentPosition
+        : loopStart;
+    final orderedEnd = currentPosition < loopStart
+        ? loopStart
+        : currentPosition;
     state = state.copyWith(
       loopStartMs: orderedStart,
       loopEndMs: orderedEnd,
@@ -426,6 +446,8 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
       playbackPreset: ReaderPlaybackPreset.custom,
       clearLoopStart: true,
       clearLoopEnd: true,
+      highContrastMode: false,
+      leftHandedMode: false,
     );
     _lastPersistedPositionMs = -1;
     _lastPersistedAt = null;
@@ -456,8 +478,8 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
     final elapsed = _lastPersistedAt == null
         ? null
         : now.difference(_lastPersistedAt!);
-    final movedEnough = (currentPosition - _lastPersistedPositionMs).abs() >=
-        5000;
+    final movedEnough =
+        (currentPosition - _lastPersistedPositionMs).abs() >= 5000;
     if (_lastPersistedAt != null &&
         !movedEnough &&
         elapsed != null &&

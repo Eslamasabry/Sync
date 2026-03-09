@@ -15,11 +15,12 @@ class _MemoryRuntimeConnectionSettingsStorage
   Future<void> clear() async {}
 
   @override
-  Future<RuntimeConnectionSettings?> load() async => const RuntimeConnectionSettings(
-    apiBaseUrl: 'http://sync.example.test/v1',
-    projectId: 'demo-book',
-    authToken: '',
-  );
+  Future<RuntimeConnectionSettings?> load() async =>
+      const RuntimeConnectionSettings(
+        apiBaseUrl: 'http://sync.example.test/v1',
+        projectId: 'demo-book',
+        authToken: '',
+      );
 
   @override
   Future<List<RuntimeConnectionSettings>> loadRecent() async => const [
@@ -59,37 +60,76 @@ class _MemoryReaderLocationStore implements ReaderLocationStore {
   Future<void> storeProject(ReaderLocationSnapshot snapshot) async {}
 }
 
-void main() {
-  testWidgets('library screen shows import workspace and recent local history', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          runtimeConnectionSettingsStorageProvider.overrideWithValue(
-            _MemoryRuntimeConnectionSettingsStorage(),
-          ),
-          readerLocationStoreProvider.overrideWithValue(
-            _MemoryReaderLocationStore(),
-          ),
-        ],
-        child: MaterialApp(
-          theme: SyncTheme.paper(),
-          home: const LibraryScreen(),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
+class _FakeLibraryProjectSummaryLoader implements LibraryProjectSummaryLoader {
+  const _FakeLibraryProjectSummaryLoader();
 
-    expect(find.text('Import Book'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('Recent Books'),
-      300,
-      scrollable: find.byType(Scrollable).first,
+  @override
+  Future<LibraryProjectSnapshot> load(
+    RuntimeConnectionSettings settings,
+  ) async {
+    return LibraryProjectSnapshot(
+      settings: settings,
+      title: 'Demo Project',
+      language: 'en',
+      projectStatus: 'ready',
+      assetCount: 2,
+      audioAssetCount: 1,
+      epubAssetCount: 1,
+      totalSizeBytes: 3 * 1024 * 1024,
+      updatedAt: DateTime.utc(2026, 3, 9, 12, 30),
+      latestJobStatus: 'running',
+      latestJobStage: 'matching',
+      latestJobPercent: 72,
+      latestJobAttempt: 1,
     );
-    await tester.pumpAndSettle();
-    expect(find.text('Recent Books'), findsOneWidget);
-    expect(find.textContaining('Loomings'), findsOneWidget);
-    expect(find.text('Choose EPUB'), findsOneWidget);
-  });
+  }
+}
+
+void main() {
+  testWidgets(
+    'library screen shows import workspace and recent local history',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            runtimeConnectionSettingsStorageProvider.overrideWithValue(
+              _MemoryRuntimeConnectionSettingsStorage(),
+            ),
+            libraryProjectSummaryLoaderProvider.overrideWithValue(
+              const _FakeLibraryProjectSummaryLoader(),
+            ),
+            readerLocationStoreProvider.overrideWithValue(
+              _MemoryReaderLocationStore(),
+            ),
+          ],
+          child: MaterialApp(
+            theme: SyncTheme.paper(),
+            home: const LibraryScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Import Book'), findsOneWidget);
+      expect(find.text('Choose EPUB'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Processing Queue'),
+        240,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Processing Queue'), findsOneWidget);
+      expect(find.text('Recent Server Projects'), findsOneWidget);
+      expect(find.textContaining('Running'), findsWidgets);
+      expect(find.text('Details'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Recent Books'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Recent Books'), findsOneWidget);
+      expect(find.textContaining('Loomings'), findsOneWidget);
+    },
+  );
 }
