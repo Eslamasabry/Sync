@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.2
+
+- Stronger library project catalog with current-target state, clearer project cards, and direct workspace vs reader actions
+- Project workspace guidance now explains the next recommended move based on sync state and offline readiness
+- Per-project audio download and removal actions are available directly from the library, not only from the reader target
+- Continued frontend polish across library flows to reduce status clutter and make device-side project management clearer
+
 ## v0.1.1
 
 - Runtime connection setup in the release APK, so users can point the app at their own backend without rebuilding
