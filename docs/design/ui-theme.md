@@ -28,11 +28,13 @@ Sepia-style reading is the primary visual identity. Dark mode is functional, not
 | --- | --- | --- |
 | `bg.base` | `#F6F0E2` | main background |
 | `bg.elevated` | `#FFF9ED` | cards and sheets |
+| `bg.chrome` | `#F1E5D1` | app shell and dock surfaces |
 | `text.primary` | `#241A12` | body text |
 | `text.muted` | `#6A5849` | secondary text |
 | `accent.primary` | `#B8742A` | active word, progress, CTAs |
 | `accent.soft` | `#E6C79B` | soft highlight fill |
 | `border.subtle` | `#D8C8AE` | dividers |
+| `shell.glow` | `#F0D4AF` | shell ambient glow |
 | `status.error` | `#A33A2B` | failures |
 | `status.success` | `#3F6B45` | completed jobs |
 
@@ -42,11 +44,13 @@ Sepia-style reading is the primary visual identity. Dark mode is functional, not
 | --- | --- | --- |
 | `bg.base` | `#171411` | main background |
 | `bg.elevated` | `#211C17` | panels |
+| `bg.chrome` | `#130F0B` | app shell and dock surfaces |
 | `text.primary` | `#F4E7CF` | body text |
 | `text.muted` | `#C6B79E` | secondary text |
 | `accent.primary` | `#E29A47` | active word and progress |
 | `accent.soft` | `#5B4327` | soft highlight fill |
 | `border.subtle` | `#3D332A` | dividers |
+| `shell.glow` | `#5B4327` at 60% | shell ambient glow |
 
 ## Typography
 
@@ -86,6 +90,8 @@ Avoid:
 - Playback controls stay pinned to the bottom region.
 - Scrubber, speed, and skip actions must remain reachable with one hand on phones.
 - The reader must tolerate large text and accessibility scaling.
+- The app shell uses a floating dock rather than a flat system navigation slab.
+- Shell chrome should feel denser and darker than the reading surface so content remains the focal plane.
 
 ## Accessibility
 

@@ -80,6 +80,38 @@ class SyncArtifact {
   bool get hasTrailingMatter =>
       contentEndMs > 0 && contentEndMs < totalDurationMs;
 
+  double get coverage {
+    if (tokens.isEmpty) {
+      return 0;
+    }
+    final contentDuration = (contentEndMs - contentStartMs).clamp(
+      0,
+      totalDurationMs,
+    );
+    if (contentDuration == 0) {
+      return 0;
+    }
+    var coveredDuration = 0;
+    for (final token in tokens) {
+      coveredDuration += (token.endMs - token.startMs).clamp(
+        0,
+        totalDurationMs,
+      );
+    }
+    return (coveredDuration / contentDuration).clamp(0, 1).toDouble();
+  }
+
+  double get matchConfidence {
+    if (tokens.isEmpty) {
+      return 0;
+    }
+    final totalConfidence = tokens.fold<double>(
+      0,
+      (sum, token) => sum + token.confidence,
+    );
+    return (totalConfidence / tokens.length).clamp(0, 1).toDouble();
+  }
+
   SyncGap? activeGapAt(int positionMs) {
     for (final gap in gaps) {
       if (positionMs >= gap.startMs && positionMs < gap.endMs) {

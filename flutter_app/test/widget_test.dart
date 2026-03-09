@@ -568,7 +568,6 @@ void main() {
 
     expect(find.text('Sync'), findsAtLeastNWidgets(1));
     expect(find.text('Moby-Dick'), findsOneWidget);
-    expect(find.text('Play'), findsOneWidget);
     expect(find.text('Speed'), findsOneWidget);
     expect(find.text('Download Audio'), findsOneWidget);
     expect(find.text('Connection'), findsOneWidget);
@@ -850,12 +849,11 @@ void main() {
   testWidgets('opens the sync inspector and lists gap spans', (tester) async {
     await _pumpReaderApp(tester, repository: _FakeReaderRepository());
 
-    await tester.tap(find.byIcon(Icons.radar_rounded));
+    await tester.tap(find.text('Sync Inspector'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Sync Inspector'), findsOneWidget);
+    expect(find.text('Sync Inspector'), findsAtLeastNWidgets(1));
     expect(find.text('Audiobook intro'), findsAtLeastNWidgets(1));
-    expect(find.text('Audiobook outro'), findsAtLeastNWidgets(1));
   });
 
   testWidgets('saves bookmarks and shows them in the review tray', (

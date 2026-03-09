@@ -52,249 +52,106 @@ class ReaderScreen extends ConsumerWidget {
     });
 
     return Scaffold(
-      body: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: const Alignment(-0.92, -1.08),
-            radius: 1.8,
-            colors: [
-              palette.accentSoft.withValues(alpha: 0.85),
-              palette.backgroundBase,
-              palette.backgroundElevated,
-            ],
-            stops: const [0, 0.3, 1],
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    palette.backgroundBase,
+                    palette.backgroundElevated,
+                    palette.backgroundBase,
+                  ],
+                  stops: const [0, 0.58, 1],
+                ),
+              ),
+            ),
           ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-            child: Column(
-              children: [
-                if (!playback.distractionFreeMode) ...[
-                  _ReaderHero(
-                    project: project,
-                    settings: activeSettings,
-                    playback: playback,
-                    onToggleTheme: controller.toggleTheme,
-                    onToggleDistractionFree:
-                        controller.toggleDistractionFreeMode,
-                    onOpenNavigation: bundle == null
-                        ? null
-                        : () => _showNavigationSheet(
-                            context,
-                            bundle,
-                            controller.seekTo,
-                          ),
-                    onOpenGapInspector: bundle == null
-                        ? null
-                        : () => _showGapInspectorSheet(
-                            context,
-                            bundle,
-                            playback.displayedPositionMs,
-                            controller.seekTo,
-                          ),
-                    onOpenConnectionSettings: () =>
-                        _showConnectionSettingsSheet(
-                          context,
-                          activeSettings,
-                          recentConnections.asData?.value ?? const [],
-                        ),
+          Positioned(
+            top: -140,
+            left: -60,
+            child: IgnorePointer(
+              child: Container(
+                width: 320,
+                height: 320,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      palette.accentSoft.withValues(alpha: 0.70),
+                      palette.accentSoft.withValues(alpha: 0),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                ],
-                Expanded(
-                  child: playback.distractionFreeMode
-                      ? Stack(
-                          children: [
-                            Positioned.fill(
-                              child: _ReaderStage(
-                                project: project,
-                                playback: playback,
-                                onRetry: () =>
-                                    ref.invalidate(readerProjectProvider),
-                                settings: activeSettings,
-                                onOpenConnectionSettings: () =>
-                                    _showConnectionSettingsSheet(
-                                      context,
-                                      activeSettings,
-                                      recentConnections.asData?.value ??
-                                          const [],
-                                    ),
-                                onTokenTap: (token) =>
-                                    controller.seekTo(token.startMs),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            right: -100,
+            top: 110,
+            child: IgnorePointer(
+              child: Container(
+                width: 280,
+                height: 280,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      palette.accentPrimary.withValues(alpha: 0.18),
+                      palette.accentPrimary.withValues(alpha: 0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+                child: Column(
+                  children: [
+                    if (!playback.distractionFreeMode) ...[
+                      _ReaderHero(
+                        project: project,
+                        settings: activeSettings,
+                        playback: playback,
+                        bundle: bundle,
+                        onToggleTheme: controller.toggleTheme,
+                        onToggleDistractionFree:
+                            controller.toggleDistractionFreeMode,
+                        onOpenNavigation: bundle == null
+                            ? null
+                            : () => _showNavigationSheet(
+                                context,
+                                bundle,
+                                controller.seekTo,
                               ),
-                            ),
-                            Positioned(
-                              bottom: 16,
-                              left: playback.leftHandedMode ? 16 : null,
-                              right: playback.leftHandedMode ? null : 16,
-                              child: _ReaderFocusOverlay(
-                                playback: playback,
-                                hasPlayableContent:
-                                    bundle != null &&
-                                    bundle.syncArtifact.totalDurationMs > 0,
-                                onTogglePlayback: bundle == null
-                                    ? null
-                                    : () => controller.togglePlayback(
-                                        bundle.syncArtifact.totalDurationMs,
-                                      ),
-                                onToggleDistractionFree:
-                                    controller.toggleDistractionFreeMode,
-                                onRewind: controller.rewind15Seconds,
-                                onForward: controller.forward15Seconds,
+                        onOpenGapInspector: bundle == null
+                            ? null
+                            : () => _showGapInspectorSheet(
+                                context,
+                                bundle,
+                                playback.displayedPositionMs,
+                                controller.seekTo,
                               ),
+                        onOpenConnectionSettings: () =>
+                            _showConnectionSettingsSheet(
+                              context,
+                              activeSettings,
+                              recentConnections.asData?.value ?? const [],
                             ),
-                          ],
-                        )
-                      : LayoutBuilder(
-                          builder: (context, constraints) {
-                            final isWide = constraints.maxWidth >= 1100;
-                            final controlPanel = _ControlDock(
-                              bundle: bundle,
-                              playback: playback,
-                              latestEvent: latestEvent,
-                              audioDownload: audioDownload,
-                              onDownload: audioActions.downloadCurrentProject,
-                              onRemove: audioActions.removeCurrentProjectAudio,
-                              onRefresh: () =>
-                                  ref.invalidate(readerProjectProvider),
-                              onStartBook: controller.seekToContentStart,
-                              onJumpToOutro: controller.seekToContentEnd,
-                              onSeekStart: controller.beginScrub,
-                              onSeekUpdate: controller.updateScrub,
-                              onSeekCommit: controller.commitScrub,
-                              onRewind: controller.rewind15Seconds,
-                              onForward: controller.forward15Seconds,
-                              onTogglePlayback: bundle == null
-                                  ? null
-                                  : () => controller.togglePlayback(
-                                      bundle.syncArtifact.totalDurationMs,
-                                    ),
-                              onSetSpeed: controller.setSpeed,
-                              onJumpToStart: playback.hasLeadingMatter
-                                  ? controller.seekToContentStart
-                                  : null,
-                              onJumpToEnd: playback.hasTrailingMatter
-                                  ? controller.seekToContentEnd
-                                  : null,
-                              onSetFontScale: controller.setFontScale,
-                              onSetLineHeight: controller.setLineHeight,
-                              onSetParagraphSpacing:
-                                  controller.setParagraphSpacing,
-                              onToggleFollowPlayback:
-                                  controller.toggleFollowPlayback,
-                              onToggleDistractionFree:
-                                  controller.toggleDistractionFreeMode,
-                              onToggleHighContrast:
-                                  controller.toggleHighContrastMode,
-                              onToggleLeftHanded:
-                                  controller.toggleLeftHandedMode,
-                              onOpenGapInspector: bundle == null
-                                  ? null
-                                  : () => _showGapInspectorSheet(
-                                      context,
-                                      bundle,
-                                      playback.displayedPositionMs,
-                                      controller.seekTo,
-                                    ),
-                              onJumpToNextConfidentSpan: bundle == null
-                                  ? null
-                                  : () {
-                                      final nextStart =
-                                          _nextConfidentSpanStartMs(
-                                            bundle.syncArtifact,
-                                            playback.displayedPositionMs,
-                                          );
-                                      if (nextStart != null) {
-                                        controller.seekTo(nextStart);
-                                      }
-                                    },
-                              studyEntries:
-                                  studyEntries.asData?.value ?? const [],
-                              onAddBookmark: bundle == null
-                                  ? null
-                                  : () => studyActions.addEntry(
-                                      _studyDraftForPosition(
-                                        bundle,
-                                        playback.displayedPositionMs,
-                                        ReaderStudyEntryType.bookmark,
-                                      ),
-                                    ),
-                              onAddHighlight: bundle == null
-                                  ? null
-                                  : () => studyActions.addEntry(
-                                      _studyDraftForPosition(
-                                        bundle,
-                                        playback.displayedPositionMs,
-                                        ReaderStudyEntryType.highlight,
-                                      ),
-                                    ),
-                              onAddNote: bundle == null
-                                  ? null
-                                  : () => _showNoteComposerSheet(
-                                      context,
-                                      onSave: (note) => studyActions.addEntry(
-                                        _studyDraftForPosition(
-                                          bundle,
-                                          playback.displayedPositionMs,
-                                          ReaderStudyEntryType.note,
-                                          note: note,
-                                        ),
-                                      ),
-                                    ),
-                              onOpenReviewTray: bundle == null
-                                  ? null
-                                  : () => _showReviewTraySheet(
-                                      context,
-                                      studyEntries.asData?.value ?? const [],
-                                      controller.seekTo,
-                                      studyActions.removeEntry,
-                                    ),
-                              onApplyPreset: controller.applyPreset,
-                              onMarkLoopStart: controller.markLoopStart,
-                              onMarkLoopEnd: controller.markLoopEnd,
-                              onClearLoop: controller.clearLoop,
-                            );
-
-                            if (isWide) {
-                              return Row(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  Expanded(
-                                    child: _ReaderStage(
-                                      project: project,
-                                      playback: playback,
-                                      onRetry: () =>
-                                          ref.invalidate(readerProjectProvider),
-                                      settings: activeSettings,
-                                      onOpenConnectionSettings: () =>
-                                          _showConnectionSettingsSheet(
-                                            context,
-                                            activeSettings,
-                                            recentConnections.asData?.value ??
-                                                const [],
-                                          ),
-                                      onTokenTap: (token) =>
-                                          controller.seekTo(token.startMs),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  SizedBox(width: 380, child: controlPanel),
-                                ],
-                              );
-                            }
-
-                            final readerHeight = (constraints.maxHeight * 0.7)
-                                .clamp(320.0, 560.0)
-                                .toDouble();
-                            final dockHeight = (constraints.maxHeight * 0.62)
-                                .clamp(bundle != null ? 320.0 : 240.0, 520.0)
-                                .toDouble();
-
-                            return ListView(
+                      ),
+                      const SizedBox(height: 18),
+                    ],
+                    Expanded(
+                      child: playback.distractionFreeMode
+                          ? Stack(
                               children: [
-                                SizedBox(
-                                  height: readerHeight,
+                                Positioned.fill(
                                   child: _ReaderStage(
                                     project: project,
                                     playback: playback,
@@ -312,20 +169,215 @@ class ReaderScreen extends ConsumerWidget {
                                         controller.seekTo(token.startMs),
                                   ),
                                 ),
-                                const SizedBox(height: 16),
-                                SizedBox(
-                                  height: dockHeight,
-                                  child: controlPanel,
+                                Positioned(
+                                  bottom: 16,
+                                  left: playback.leftHandedMode ? 16 : null,
+                                  right: playback.leftHandedMode ? null : 16,
+                                  child: _ReaderFocusOverlay(
+                                    playback: playback,
+                                    hasPlayableContent:
+                                        bundle != null &&
+                                        bundle.syncArtifact.totalDurationMs > 0,
+                                    onTogglePlayback: bundle == null
+                                        ? null
+                                        : () => controller.togglePlayback(
+                                            bundle.syncArtifact.totalDurationMs,
+                                          ),
+                                    onToggleDistractionFree:
+                                        controller.toggleDistractionFreeMode,
+                                    onRewind: controller.rewind15Seconds,
+                                    onForward: controller.forward15Seconds,
+                                  ),
                                 ),
                               ],
-                            );
-                          },
-                        ),
+                            )
+                          : LayoutBuilder(
+                              builder: (context, constraints) {
+                                final isWide = constraints.maxWidth >= 1160;
+                                final controlPanel = _ControlDock(
+                                  bundle: bundle,
+                                  playback: playback,
+                                  latestEvent: latestEvent,
+                                  audioDownload: audioDownload,
+                                  onDownload:
+                                      audioActions.downloadCurrentProject,
+                                  onRemove:
+                                      audioActions.removeCurrentProjectAudio,
+                                  onRefresh: () =>
+                                      ref.invalidate(readerProjectProvider),
+                                  onStartBook: controller.seekToContentStart,
+                                  onJumpToOutro: controller.seekToContentEnd,
+                                  onSeekStart: controller.beginScrub,
+                                  onSeekUpdate: controller.updateScrub,
+                                  onSeekCommit: controller.commitScrub,
+                                  onRewind: controller.rewind15Seconds,
+                                  onForward: controller.forward15Seconds,
+                                  onTogglePlayback: bundle == null
+                                      ? null
+                                      : () => controller.togglePlayback(
+                                          bundle.syncArtifact.totalDurationMs,
+                                        ),
+                                  onSetSpeed: controller.setSpeed,
+                                  onJumpToStart: playback.hasLeadingMatter
+                                      ? controller.seekToContentStart
+                                      : null,
+                                  onJumpToEnd: playback.hasTrailingMatter
+                                      ? controller.seekToContentEnd
+                                      : null,
+                                  onSetFontScale: controller.setFontScale,
+                                  onSetLineHeight: controller.setLineHeight,
+                                  onSetParagraphSpacing:
+                                      controller.setParagraphSpacing,
+                                  onToggleFollowPlayback:
+                                      controller.toggleFollowPlayback,
+                                  onToggleDistractionFree:
+                                      controller.toggleDistractionFreeMode,
+                                  onToggleHighContrast:
+                                      controller.toggleHighContrastMode,
+                                  onToggleLeftHanded:
+                                      controller.toggleLeftHandedMode,
+                                  onOpenGapInspector: bundle == null
+                                      ? null
+                                      : () => _showGapInspectorSheet(
+                                          context,
+                                          bundle,
+                                          playback.displayedPositionMs,
+                                          controller.seekTo,
+                                        ),
+                                  onJumpToNextConfidentSpan: bundle == null
+                                      ? null
+                                      : () {
+                                          final nextStart =
+                                              _nextConfidentSpanStartMs(
+                                                bundle.syncArtifact,
+                                                playback.displayedPositionMs,
+                                              );
+                                          if (nextStart != null) {
+                                            controller.seekTo(nextStart);
+                                          }
+                                        },
+                                  studyEntries:
+                                      studyEntries.asData?.value ?? const [],
+                                  onAddBookmark: bundle == null
+                                      ? null
+                                      : () => studyActions.addEntry(
+                                          _studyDraftForPosition(
+                                            bundle,
+                                            playback.displayedPositionMs,
+                                            ReaderStudyEntryType.bookmark,
+                                          ),
+                                        ),
+                                  onAddHighlight: bundle == null
+                                      ? null
+                                      : () => studyActions.addEntry(
+                                          _studyDraftForPosition(
+                                            bundle,
+                                            playback.displayedPositionMs,
+                                            ReaderStudyEntryType.highlight,
+                                          ),
+                                        ),
+                                  onAddNote: bundle == null
+                                      ? null
+                                      : () => _showNoteComposerSheet(
+                                          context,
+                                          onSave: (note) =>
+                                              studyActions.addEntry(
+                                                _studyDraftForPosition(
+                                                  bundle,
+                                                  playback.displayedPositionMs,
+                                                  ReaderStudyEntryType.note,
+                                                  note: note,
+                                                ),
+                                              ),
+                                        ),
+                                  onOpenReviewTray: bundle == null
+                                      ? null
+                                      : () => _showReviewTraySheet(
+                                          context,
+                                          studyEntries.asData?.value ??
+                                              const [],
+                                          controller.seekTo,
+                                          studyActions.removeEntry,
+                                        ),
+                                  onApplyPreset: controller.applyPreset,
+                                  onMarkLoopStart: controller.markLoopStart,
+                                  onMarkLoopEnd: controller.markLoopEnd,
+                                  onClearLoop: controller.clearLoop,
+                                );
+
+                                if (isWide) {
+                                  return Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      Expanded(
+                                        flex: 13,
+                                        child: _ReaderStage(
+                                          project: project,
+                                          playback: playback,
+                                          onRetry: () => ref.invalidate(
+                                            readerProjectProvider,
+                                          ),
+                                          settings: activeSettings,
+                                          onOpenConnectionSettings: () =>
+                                              _showConnectionSettingsSheet(
+                                                context,
+                                                activeSettings,
+                                                recentConnections
+                                                        .asData
+                                                        ?.value ??
+                                                    const [],
+                                              ),
+                                          onTokenTap: (token) =>
+                                              controller.seekTo(token.startMs),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 18),
+                                      SizedBox(width: 392, child: controlPanel),
+                                    ],
+                                  );
+                                }
+
+                                final readerHeight =
+                                    (constraints.maxHeight * 0.64)
+                                        .clamp(340.0, 620.0)
+                                        .toDouble();
+
+                                return ListView(
+                                  children: [
+                                    SizedBox(
+                                      height: readerHeight,
+                                      child: _ReaderStage(
+                                        project: project,
+                                        playback: playback,
+                                        onRetry: () => ref.invalidate(
+                                          readerProjectProvider,
+                                        ),
+                                        settings: activeSettings,
+                                        onOpenConnectionSettings: () =>
+                                            _showConnectionSettingsSheet(
+                                              context,
+                                              activeSettings,
+                                              recentConnections.asData?.value ??
+                                                  const [],
+                                            ),
+                                        onTokenTap: (token) =>
+                                            controller.seekTo(token.startMs),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 18),
+                                    controlPanel,
+                                  ],
+                                );
+                              },
+                            ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -416,6 +468,7 @@ class _ReaderHero extends StatelessWidget {
     required this.project,
     required this.settings,
     required this.playback,
+    required this.bundle,
     required this.onToggleTheme,
     required this.onToggleDistractionFree,
     required this.onOpenNavigation,
@@ -426,6 +479,7 @@ class _ReaderHero extends StatelessWidget {
   final AsyncValue<ReaderProjectBundle> project;
   final RuntimeConnectionSettings settings;
   final ReaderPlaybackState playback;
+  final ReaderProjectBundle? bundle;
   final VoidCallback onToggleTheme;
   final VoidCallback onToggleDistractionFree;
   final VoidCallback? onOpenNavigation;
@@ -448,115 +502,211 @@ class _ReaderHero extends StatelessWidget {
       error: (_, _) =>
           'The app can start from GitHub releases and point at your own backend at runtime.',
     );
+    final sync = bundle?.syncArtifact;
+    final coverage = sync == null ? '--' : '${(sync.coverage * 100).round()}%';
+    final confidence = sync == null
+        ? '--'
+        : '${(sync.matchConfidence * 100).round()}%';
+    final audioState = bundle == null
+        ? 'No audio'
+        : bundle!.hasCompleteOfflineAudio
+        ? 'Offline audio'
+        : bundle!.audioUrls.isNotEmpty
+        ? 'Streaming audio'
+        : 'Text sync only';
 
-    return Card(
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: palette.borderSubtle),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            palette.backgroundElevated.withValues(alpha: 0.94),
+            palette.backgroundElevated,
+            palette.backgroundBase.withValues(alpha: 0.98),
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 30,
+            offset: const Offset(0, 18),
+          ),
+        ],
+      ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 22),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Wrap(
+              spacing: 18,
+              runSpacing: 18,
+              crossAxisAlignment: WrapCrossAlignment.start,
               alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 12,
-              runSpacing: 12,
               children: [
                 ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 720),
+                  constraints: const BoxConstraints(maxWidth: 700),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Sync',
-                        style: theme.textTheme.displaySmall?.copyWith(
-                          color: palette.textPrimary,
-                        ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: palette.accentPrimary.withValues(
+                                alpha: 0.12,
+                              ),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              'Sync',
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                color: palette.accentPrimary,
+                                letterSpacing: 1.1,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          _DiagnosticsChip(label: audioState),
+                        ],
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 14),
                       Text(
                         title,
-                        style: theme.textTheme.headlineSmall?.copyWith(
+                        style: theme.textTheme.displaySmall?.copyWith(
                           color: palette.textPrimary,
+                          height: 1.0,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        subtitle,
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          color: palette.textMuted,
+                      const SizedBox(height: 10),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 620),
+                        child: Text(
+                          subtitle,
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            color: palette.textMuted,
+                            height: 1.45,
+                          ),
                         ),
+                      ),
+                      const SizedBox(height: 18),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          _DiagnosticsChip(
+                            label: 'Project ${settings.projectId}',
+                          ),
+                          _DiagnosticsChip(
+                            label: 'Server ${settings.shortHost}',
+                          ),
+                          _DiagnosticsChip(
+                            label: settings.hasAuthToken
+                                ? 'Auth enabled'
+                                : 'Auth open',
+                          ),
+                          _DiagnosticsChip(
+                            label: settings.isLocalhostTarget
+                                ? 'Localhost target'
+                                : settings.usesHttp
+                                ? 'HTTP dev link'
+                                : 'Remote host',
+                          ),
+                          _DiagnosticsChip(
+                            label: playback.themeMode == ThemeMode.light
+                                ? 'Paper theme'
+                                : 'Night theme',
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    FilledButton.tonalIcon(
-                      onPressed: onOpenConnectionSettings,
-                      icon: const Icon(Icons.settings_input_component_rounded),
-                      label: const Text('Connection'),
-                    ),
-                    FilledButton.tonalIcon(
-                      onPressed: onOpenNavigation,
-                      icon: const Icon(Icons.menu_book_rounded),
-                      label: const Text('Navigate'),
-                    ),
-                    FilledButton.tonalIcon(
-                      onPressed: onOpenGapInspector,
-                      icon: const Icon(Icons.radar_rounded),
-                      label: const Text('Sync'),
-                    ),
-                    FilledButton.tonalIcon(
-                      onPressed: onToggleTheme,
-                      icon: Icon(
-                        playback.themeMode == ThemeMode.light
-                            ? Icons.nightlight_round
-                            : Icons.wb_sunny_outlined,
+                SizedBox(
+                  width: 320,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _HeroStat(
+                              label: 'Coverage',
+                              value: coverage,
+                              icon: Icons.align_horizontal_left_rounded,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _HeroStat(
+                              label: 'Confidence',
+                              value: confidence,
+                              icon: Icons.graphic_eq_rounded,
+                            ),
+                          ),
+                        ],
                       ),
-                      label: Text(
-                        playback.themeMode == ThemeMode.light
-                            ? 'Night'
-                            : 'Paper',
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: onOpenNavigation,
+                        icon: const Icon(Icons.auto_stories_rounded),
+                        label: const Text('Navigate'),
                       ),
-                    ),
-                    FilledButton.tonalIcon(
-                      onPressed: onToggleDistractionFree,
-                      icon: Icon(
-                        playback.distractionFreeMode
-                            ? Icons.center_focus_strong_rounded
-                            : Icons.center_focus_weak_rounded,
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          FilledButton.tonalIcon(
+                            onPressed: onOpenConnectionSettings,
+                            icon: const Icon(
+                              Icons.settings_input_component_rounded,
+                            ),
+                            label: const Text('Connection'),
+                          ),
+                          FilledButton.tonalIcon(
+                            onPressed: onOpenGapInspector,
+                            icon: const Icon(Icons.radar_rounded),
+                            label: const Text('Sync Inspector'),
+                          ),
+                          FilledButton.tonalIcon(
+                            onPressed: onToggleTheme,
+                            icon: Icon(
+                              playback.themeMode == ThemeMode.light
+                                  ? Icons.nightlight_round
+                                  : Icons.wb_sunny_outlined,
+                            ),
+                            label: Text(
+                              playback.themeMode == ThemeMode.light
+                                  ? 'Night'
+                                  : 'Paper',
+                            ),
+                          ),
+                          FilledButton.tonalIcon(
+                            onPressed: onToggleDistractionFree,
+                            icon: Icon(
+                              playback.distractionFreeMode
+                                  ? Icons.center_focus_strong_rounded
+                                  : Icons.center_focus_weak_rounded,
+                            ),
+                            label: Text(
+                              playback.distractionFreeMode
+                                  ? 'Exit Focus'
+                                  : 'Focus',
+                            ),
+                          ),
+                        ],
                       ),
-                      label: Text(
-                        playback.distractionFreeMode ? 'Exit Focus' : 'Focus',
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                _DiagnosticsChip(label: 'Project ${settings.projectId}'),
-                _DiagnosticsChip(label: 'Server ${settings.shortHost}'),
-                _DiagnosticsChip(
-                  label: settings.hasAuthToken ? 'Auth enabled' : 'Auth open',
-                ),
-                _DiagnosticsChip(
-                  label: settings.isLocalhostTarget
-                      ? 'Localhost target'
-                      : settings.usesHttp
-                      ? 'HTTP dev link'
-                      : 'Remote host',
-                ),
-                _DiagnosticsChip(
-                  label: playback.themeMode == ThemeMode.light
-                      ? 'Paper theme'
-                      : 'Night theme',
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -586,23 +736,45 @@ class _ReaderStage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
     return Semantics(
       container: true,
       label: 'Reader stage',
-      child: Card(
-        clipBehavior: Clip.antiAlias,
-        child: project.when(
-          data: (bundle) => _ReaderLoadedView(
-            bundle: bundle,
-            playback: playback,
-            onTokenTap: onTokenTap,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(34),
+          border: Border.all(color: palette.borderSubtle),
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              palette.backgroundElevated.withValues(alpha: 0.98),
+              palette.backgroundBase.withValues(alpha: 0.98),
+            ],
           ),
-          loading: () => _ReaderLoadingView(settings: settings),
-          error: (error, _) => _ReaderErrorView(
-            message: error.toString(),
-            settings: settings,
-            onRetry: onRetry,
-            onOpenConnectionSettings: onOpenConnectionSettings,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.07),
+              blurRadius: 34,
+              offset: const Offset(0, 20),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(34),
+          child: project.when(
+            data: (bundle) => _ReaderLoadedView(
+              bundle: bundle,
+              playback: playback,
+              onTokenTap: onTokenTap,
+            ),
+            loading: () => _ReaderLoadingView(settings: settings),
+            error: (error, _) => _ReaderErrorView(
+              message: error.toString(),
+              settings: settings,
+              onRetry: onRetry,
+              onOpenConnectionSettings: onOpenConnectionSettings,
+            ),
           ),
         ),
       ),
@@ -692,103 +864,167 @@ class _ControlDock extends StatelessWidget {
     final palette = ReaderPalette.of(context);
     final currentPositionMs = playback.displayedPositionMs;
 
-    return Card(
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(30),
+        color: palette.backgroundElevated.withValues(alpha: 0.92),
+        border: Border.all(color: palette.borderSubtle),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 24,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Reader Status',
-              style: Theme.of(context).textTheme.titleLarge,
+            _DockHeader(
+              bundle: bundle,
+              playback: playback,
+              currentPositionMs: currentPositionMs,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             if (bundle != null)
-              _SourceBanner(
-                source: bundle!.source,
-                message: bundle!.statusMessage,
-                onRefresh: onRefresh,
+              _DockSection(
+                title: 'Source',
+                icon: Icons.travel_explore_rounded,
+                child: _SourceBanner(
+                  source: bundle!.source,
+                  message: bundle!.statusMessage,
+                  onRefresh: onRefresh,
+                ),
               ),
             if (bundle != null) const SizedBox(height: 12),
             if (bundle != null && bundle!.totalAudioAssets > 0) ...[
-              _AudioDownloadBanner(
-                bundle: bundle!,
-                downloadState: audioDownload,
-                onDownload: onDownload,
-                onRemove: onRemove,
+              _DockSection(
+                title: 'Offline audio',
+                icon: Icons.download_for_offline_rounded,
+                child: _AudioDownloadBanner(
+                  bundle: bundle!,
+                  downloadState: audioDownload,
+                  onDownload: onDownload,
+                  onRemove: onRemove,
+                ),
               ),
               const SizedBox(height: 12),
             ],
             if (bundle != null) ...[
-              _ReaderDiagnosticsBanner(bundle: bundle!, playback: playback),
-              const SizedBox(height: 12),
-              _ReadingProgressBanner(
-                bundle: bundle!,
-                currentPositionMs: currentPositionMs,
+              _DockSection(
+                title: 'Diagnostics',
+                icon: Icons.podcasts_rounded,
+                child: _ReaderDiagnosticsBanner(
+                  bundle: bundle!,
+                  playback: playback,
+                ),
               ),
               const SizedBox(height: 12),
-              _PlaybackPowerCard(
-                playback: playback,
-                onApplyPreset: onApplyPreset,
-                onMarkLoopStart: onMarkLoopStart,
-                onMarkLoopEnd: onMarkLoopEnd,
-                onClearLoop: onClearLoop,
+              _DockSection(
+                title: 'Progress',
+                icon: Icons.timeline_rounded,
+                child: _ReadingProgressBanner(
+                  bundle: bundle!,
+                  currentPositionMs: currentPositionMs,
+                ),
               ),
               const SizedBox(height: 12),
-              _ReaderPreferencesCard(
-                playback: playback,
-                onSetFontScale: onSetFontScale,
-                onSetLineHeight: onSetLineHeight,
-                onSetParagraphSpacing: onSetParagraphSpacing,
-                onToggleFollowPlayback: onToggleFollowPlayback,
-                onToggleDistractionFree: onToggleDistractionFree,
-                onToggleHighContrast: onToggleHighContrast,
-                onToggleLeftHanded: onToggleLeftHanded,
+              _DockSection(
+                title: 'Listen',
+                icon: Icons.play_circle_outline_rounded,
+                child: _PlaybackPowerCard(
+                  playback: playback,
+                  onApplyPreset: onApplyPreset,
+                  onMarkLoopStart: onMarkLoopStart,
+                  onMarkLoopEnd: onMarkLoopEnd,
+                  onClearLoop: onClearLoop,
+                ),
               ),
               const SizedBox(height: 12),
-              _StudyWorkflowCard(
-                entries: studyEntries,
-                onAddBookmark: onAddBookmark,
-                onAddHighlight: onAddHighlight,
-                onAddNote: onAddNote,
-                onOpenReviewTray: onOpenReviewTray,
+              _DockSection(
+                title: 'Reading surface',
+                icon: Icons.format_size_rounded,
+                child: _ReaderPreferencesCard(
+                  playback: playback,
+                  onSetFontScale: onSetFontScale,
+                  onSetLineHeight: onSetLineHeight,
+                  onSetParagraphSpacing: onSetParagraphSpacing,
+                  onToggleFollowPlayback: onToggleFollowPlayback,
+                  onToggleDistractionFree: onToggleDistractionFree,
+                  onToggleHighContrast: onToggleHighContrast,
+                  onToggleLeftHanded: onToggleLeftHanded,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _DockSection(
+                title: 'Study',
+                icon: Icons.edit_note_rounded,
+                child: _StudyWorkflowCard(
+                  entries: studyEntries,
+                  onAddBookmark: onAddBookmark,
+                  onAddHighlight: onAddHighlight,
+                  onAddNote: onAddNote,
+                  onOpenReviewTray: onOpenReviewTray,
+                ),
               ),
               const SizedBox(height: 12),
             ],
             if (bundle != null &&
                 bundle!.syncArtifact.hasLeadingMatter &&
                 currentPositionMs < bundle!.syncArtifact.contentStartMs) ...[
-              _ContentWindowBanner(
-                syncArtifact: bundle!.syncArtifact,
-                currentPositionMs: currentPositionMs,
-                onStartBook: () => onStartBook(),
-                onJumpToOutro: bundle!.syncArtifact.hasTrailingMatter
-                    ? () => onJumpToOutro()
-                    : null,
+              _DockSection(
+                title: 'Content window',
+                icon: Icons.skip_next_rounded,
+                child: _ContentWindowBanner(
+                  syncArtifact: bundle!.syncArtifact,
+                  currentPositionMs: currentPositionMs,
+                  onStartBook: () => onStartBook(),
+                  onJumpToOutro: bundle!.syncArtifact.hasTrailingMatter
+                      ? () => onJumpToOutro()
+                      : null,
+                ),
               ),
               const SizedBox(height: 12),
             ],
             if (bundle != null) ...[
-              _SyncIntelligenceBanner(
-                bundle: bundle!,
-                currentPositionMs: currentPositionMs,
-                onOpenGapInspector: onOpenGapInspector,
-                onJumpToNextConfidentSpan: onJumpToNextConfidentSpan,
+              _DockSection(
+                title: 'Sync intelligence',
+                icon: Icons.radar_rounded,
+                child: _SyncIntelligenceBanner(
+                  bundle: bundle!,
+                  currentPositionMs: currentPositionMs,
+                  onOpenGapInspector: onOpenGapInspector,
+                  onJumpToNextConfidentSpan: onJumpToNextConfidentSpan,
+                ),
               ),
               const SizedBox(height: 12),
             ],
             if (latestEvent != null) ...[
-              _JobEventBanner(event: latestEvent!),
+              _DockSection(
+                title: 'Live job state',
+                icon: Icons.sync_rounded,
+                child: _JobEventBanner(event: latestEvent!),
+              ),
               const SizedBox(height: 12),
             ],
             if (bundle != null) ...[
-              _GapStatusBanner(
-                gap: bundle!.syncArtifact.activeGapAt(currentPositionMs),
+              _DockSection(
+                title: 'Current gap',
+                icon: Icons.linear_scale_rounded,
+                child: _GapStatusBanner(
+                  gap: bundle!.syncArtifact.activeGapAt(currentPositionMs),
+                ),
               ),
               const SizedBox(height: 12),
-              _PlaybackStatusBanner(
-                playback: playback,
-                currentPositionMs: currentPositionMs,
+              _DockSection(
+                title: 'Playback state',
+                icon: Icons.equalizer_rounded,
+                child: _PlaybackStatusBanner(
+                  playback: playback,
+                  currentPositionMs: currentPositionMs,
+                ),
               ),
               const SizedBox(height: 16),
               Container(
@@ -842,42 +1078,74 @@ class _ControlDock extends StatelessWidget {
                       onJumpToEnd: onJumpToEnd,
                     ),
                     const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        IconButton.filledTonal(
-                          onPressed: onRewind,
-                          icon: const Icon(Icons.replay_10_rounded),
-                        ),
-                        const SizedBox(width: 12),
-                        IconButton.filledTonal(
-                          onPressed: onForward,
-                          icon: const Icon(Icons.forward_10_rounded),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: FilledButton.icon(
-                            onPressed: onTogglePlayback,
-                            icon: Icon(
-                              playback.isPlaying
-                                  ? Icons.pause_rounded
-                                  : Icons.play_arrow_rounded,
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final compact = constraints.maxWidth < 340;
+                        final playButton = compact
+                            ? FilledButton(
+                                onPressed: onTogglePlayback,
+                                child: Icon(
+                                  playback.isPlaying
+                                      ? Icons.pause_rounded
+                                      : Icons.play_arrow_rounded,
+                                ),
+                              )
+                            : FilledButton.icon(
+                                onPressed: onTogglePlayback,
+                                icon: Icon(
+                                  playback.isPlaying
+                                      ? Icons.pause_rounded
+                                      : Icons.play_arrow_rounded,
+                                ),
+                                label: Text(
+                                  playback.isPlaying ? 'Pause' : 'Play',
+                                ),
+                              );
+
+                        return Column(
+                          children: [
+                            Row(
+                              children: [
+                                IconButton.filledTonal(
+                                  onPressed: onRewind,
+                                  icon: const Icon(Icons.replay_10_rounded),
+                                ),
+                                const SizedBox(width: 12),
+                                IconButton.filledTonal(
+                                  onPressed: onForward,
+                                  icon: const Icon(Icons.forward_10_rounded),
+                                ),
+                                const Spacer(),
+                                PopupMenuButton<double>(
+                                  initialValue: playback.speed,
+                                  onSelected: onSetSpeed,
+                                  itemBuilder: (context) => const [
+                                    PopupMenuItem(
+                                      value: 0.8,
+                                      child: Text('0.8x'),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 1.0,
+                                      child: Text('1.0x'),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 1.25,
+                                      child: Text('1.25x'),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 1.5,
+                                      child: Text('1.5x'),
+                                    ),
+                                  ],
+                                  child: const _SpeedChip(),
+                                ),
+                              ],
                             ),
-                            label: Text(playback.isPlaying ? 'Pause' : 'Play'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        PopupMenuButton<double>(
-                          initialValue: playback.speed,
-                          onSelected: onSetSpeed,
-                          itemBuilder: (context) => const [
-                            PopupMenuItem(value: 0.8, child: Text('0.8x')),
-                            PopupMenuItem(value: 1.0, child: Text('1.0x')),
-                            PopupMenuItem(value: 1.25, child: Text('1.25x')),
-                            PopupMenuItem(value: 1.5, child: Text('1.5x')),
+                            const SizedBox(height: 12),
+                            SizedBox(width: double.infinity, child: playButton),
                           ],
-                          child: const _SpeedChip(),
-                        ),
-                      ],
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -885,6 +1153,254 @@ class _ControlDock extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _HeroStat extends StatelessWidget {
+  const _HeroStat({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: palette.backgroundBase,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: palette.accentPrimary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: palette.accentPrimary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DockHeader extends StatelessWidget {
+  const _DockHeader({
+    required this.bundle,
+    required this.playback,
+    required this.currentPositionMs,
+  });
+
+  final ReaderProjectBundle? bundle;
+  final ReaderPlaybackState playback;
+  final int currentPositionMs;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            palette.accentPrimary.withValues(alpha: 0.10),
+            palette.backgroundBase,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Session dock', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 6),
+          Text(
+            bundle == null
+                ? 'Connect a project to unlock playback, diagnostics, and study controls.'
+                : 'Keep playback, sync quality, and study actions close without covering the page.',
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _DiagnosticsChip(
+                label: playback.isPlaying ? 'Playing' : 'Paused',
+              ),
+              _DiagnosticsChip(
+                label: '${playback.speed.toStringAsFixed(2)}x pace',
+              ),
+              _DiagnosticsChip(
+                label: 'At ${ReaderScreen._formatMs(currentPositionMs)}',
+              ),
+              if (bundle != null)
+                _DiagnosticsChip(
+                  label: '${bundle!.syncArtifact.tokens.length} synced words',
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DockSection extends StatelessWidget {
+  const _DockSection({
+    required this.title,
+    required this.icon,
+    required this.child,
+  });
+
+  final String title;
+  final IconData icon;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: palette.backgroundBase.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: palette.accentPrimary),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: Theme.of(
+                  context,
+                ).textTheme.labelLarge?.copyWith(color: palette.textPrimary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _ReaderPageHeader extends StatelessWidget {
+  const _ReaderPageHeader({
+    required this.bundle,
+    required this.playback,
+    required this.activeLocationKey,
+  });
+
+  final ReaderProjectBundle bundle;
+  final ReaderPlaybackState playback;
+  final String? activeLocationKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final activeToken = _activeTokenAtPosition(
+      bundle.syncArtifact,
+      playback.displayedPositionMs,
+    );
+    final activeWord = activeToken?.text ?? 'Waiting for audio';
+    final activeSection =
+        bundle.readerModel.sections
+            .where((section) => section.id == activeToken?.location.sectionId)
+            .map((section) => section.title ?? 'Current section')
+            .cast<String?>()
+            .firstWhere(
+              (value) => value != null && value.isNotEmpty,
+              orElse: () => null,
+            ) ??
+        'Current section';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      decoration: BoxDecoration(
+        color: palette.backgroundBase.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        runSpacing: 12,
+        spacing: 12,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Reading stage',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: palette.accentPrimary,
+                  letterSpacing: 0.7,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                activeSection,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ],
+          ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _DiagnosticsChip(label: 'Live word $activeWord'),
+              if (activeLocationKey != null)
+                _DiagnosticsChip(label: 'Anchor $activeLocationKey'),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -1195,9 +1711,9 @@ class _ReaderLoadedViewState extends State<_ReaderLoadedView> {
   Widget build(BuildContext context) {
     final bundle = widget.bundle;
     final playback = widget.playback;
+    final palette = ReaderPalette.of(context);
 
     if (bundle.readerModel.sections.isEmpty) {
-      final palette = ReaderPalette.of(context);
       return Padding(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
         child: Container(
@@ -1245,18 +1761,54 @@ class _ReaderLoadedViewState extends State<_ReaderLoadedView> {
 
     return Stack(
       children: [
+        Positioned.fill(
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    palette.accentSoft.withValues(alpha: 0.18),
+                    Colors.transparent,
+                    palette.accentPrimary.withValues(alpha: 0.05),
+                  ],
+                  stops: const [0, 0.32, 1],
+                ),
+              ),
+            ),
+          ),
+        ),
         SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+          padding: const EdgeInsets.fromLTRB(22, 14, 22, 22),
           child: Align(
             alignment: Alignment.topCenter,
             child: ConstrainedBox(
               constraints: BoxConstraints(maxWidth: maxWidth),
-              child: Card(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: palette.backgroundElevated.withValues(alpha: 0.96),
+                  borderRadius: BorderRadius.circular(32),
+                  border: Border.all(color: palette.borderSubtle),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 28,
+                      offset: const Offset(0, 18),
+                    ),
+                  ],
+                ),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
+                  padding: const EdgeInsets.fromLTRB(26, 28, 26, 28),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      _ReaderPageHeader(
+                        bundle: bundle,
+                        playback: playback,
+                        activeLocationKey: activeLocationKey,
+                      ),
+                      const SizedBox(height: 22),
                       for (final section in bundle.readerModel.sections) ...[
                         if (section.title != null)
                           Padding(
@@ -2554,13 +3106,13 @@ class _PlaybackStatusBanner extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: palette.borderSubtle),
         ),
-        child: Row(
+        child: Wrap(
+          spacing: 10,
+          runSpacing: 8,
           children: [
-            Expanded(
-              child: Text(
-                '$positionLabel • $phase',
-                style: Theme.of(context).textTheme.labelLarge,
-              ),
+            Text(
+              '$positionLabel • $phase',
+              style: Theme.of(context).textTheme.labelLarge,
             ),
             Text(
               '${playback.isPlaying ? 'Playing' : 'Paused'} • '
