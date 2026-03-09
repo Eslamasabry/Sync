@@ -683,6 +683,8 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _ImportStepRail(state: widget.state),
+        const SizedBox(height: 16),
         Container(
           width: double.infinity,
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
@@ -718,8 +720,19 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
                         ? 'Ready to align'
                         : 'Draft incomplete',
                   ),
+                  if (widget.state.statusLabel != null)
+                    _LibraryStatusChip(label: widget.state.statusLabel!),
                 ],
               ),
+              if (widget.state.statusNarrative != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  widget.state.statusNarrative!,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+                ),
+              ],
             ],
           ),
         ),
@@ -1122,6 +1135,124 @@ class _ImportCompletionBanner extends ConsumerWidget {
             onPressed: onOpenReader,
             icon: const Icon(Icons.chrome_reader_mode_rounded),
             label: const Text('Open Reader'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ImportStepRail extends StatelessWidget {
+  const _ImportStepRail({required this.state});
+
+  final LibraryImportState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final steps = [
+      (
+        title: 'Book',
+        caption: 'Name the project and set language.',
+        index: 0,
+      ),
+      (
+        title: 'Files',
+        caption: 'Attach EPUB and audiobook sources.',
+        index: 1,
+      ),
+      (
+        title: 'Align',
+        caption: 'Create the project and start syncing.',
+        index: 2,
+      ),
+    ];
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: [
+        for (final step in steps)
+          SizedBox(
+            width: 220,
+            child: _ImportStepCard(
+              title: step.title,
+              caption: step.caption,
+              index: step.index,
+              currentIndex: state.currentStepIndex,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _ImportStepCard extends StatelessWidget {
+  const _ImportStepCard({
+    required this.title,
+    required this.caption,
+    required this.index,
+    required this.currentIndex,
+  });
+
+  final String title;
+  final String caption;
+  final int index;
+  final int currentIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final isComplete = index < currentIndex;
+    final isCurrent = index == currentIndex;
+    final accent = isComplete
+        ? palette.success
+        : isCurrent
+        ? palette.accentPrimary
+        : palette.textMuted;
+    final background = isComplete
+        ? palette.success.withValues(alpha: 0.10)
+        : isCurrent
+        ? palette.accentPrimary.withValues(alpha: 0.10)
+        : palette.backgroundBase;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Icon(
+              isComplete ? Icons.check_rounded : Icons.arrow_forward_rounded,
+              size: 18,
+              color: accent,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: Theme.of(context).textTheme.labelLarge),
+                const SizedBox(height: 4),
+                Text(
+                  caption,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -2306,6 +2437,70 @@ extension on LibraryProjectSnapshot {
       return '$normalizedStatus • $percent%';
     }
     return normalizedStatus;
+  }
+}
+
+extension on LibraryImportState {
+  int get currentStepIndex {
+    if (status == LibraryImportStatus.creatingProject ||
+        status == LibraryImportStatus.uploadingEpub ||
+        status == LibraryImportStatus.uploadingAudio ||
+        status == LibraryImportStatus.startingJob ||
+        status == LibraryImportStatus.completed) {
+      return 2;
+    }
+    if (epubFile != null || audioFiles.isNotEmpty) {
+      return 1;
+    }
+    return 0;
+  }
+
+  String? get statusLabel {
+    switch (status) {
+      case LibraryImportStatus.picking:
+        return 'Choosing files';
+      case LibraryImportStatus.creatingProject:
+        return 'Creating project';
+      case LibraryImportStatus.uploadingEpub:
+        return 'Uploading EPUB';
+      case LibraryImportStatus.uploadingAudio:
+        return 'Uploading audio';
+      case LibraryImportStatus.startingJob:
+        return 'Starting job';
+      case LibraryImportStatus.completed:
+        return 'Alignment queued';
+      case LibraryImportStatus.failed:
+        return 'Needs attention';
+      case LibraryImportStatus.ready:
+        return 'Draft ready';
+      case LibraryImportStatus.idle:
+        return null;
+    }
+  }
+
+  String? get statusNarrative {
+    switch (status) {
+      case LibraryImportStatus.idle:
+        return null;
+      case LibraryImportStatus.ready:
+        return canStartImport
+            ? 'Everything required for the first alignment pass is attached.'
+            : 'The draft has started, but at least one required input is still missing.';
+      case LibraryImportStatus.picking:
+        return 'Selecting source files on this device.';
+      case LibraryImportStatus.creatingProject:
+        return 'Creating the backend project shell before uploads begin.';
+      case LibraryImportStatus.uploadingEpub:
+        return 'The book file is on its way to the backend.';
+      case LibraryImportStatus.uploadingAudio:
+        return 'Audio files are uploading in sequence so the timeline order stays explicit.';
+      case LibraryImportStatus.startingJob:
+        return 'Assets are attached. The app is now asking the backend to start alignment.';
+      case LibraryImportStatus.completed:
+        return 'The backend accepted the job, and this project can now be monitored from the library or opened in Reader.';
+      case LibraryImportStatus.failed:
+        return 'The draft is preserved, so you can correct the problem and launch again.';
+    }
   }
 }
 
