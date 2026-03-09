@@ -111,6 +111,7 @@ For a complete smoke run, prefer the repo scripts documented in [local-run.md](/
 - real projects now respect backend artifact `download_url` values for both reader-model and sync payload loading
 - after a successful real-project load, the app caches the normalized reader-model and sync artifact locally and reuses them when the backend is unreachable
 - the reader can download project audio for offline playback and will prefer local cached files when they exist
+- the reader now exposes a diagnostics panel that distinguishes local cached audio, mixed local plus streaming audio, streaming-only playback, and text-only sync mode
 - cached offline mode now supports two states:
   - full offline: cached reader artifacts plus cached audio
   - partial offline: cached reader artifacts without fully downloaded audio

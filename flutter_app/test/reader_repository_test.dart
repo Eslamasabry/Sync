@@ -121,6 +121,71 @@ class _OfflineSyncApiClient extends SyncApiClient {
   }
 }
 
+class _MixedAudioSyncApiClient extends SyncApiClient {
+  _MixedAudioSyncApiClient() : super(baseUrl: 'http://localhost');
+
+  @override
+  Future<ReaderModel> fetchReaderModel(String projectId) async {
+    return demoReaderModel;
+  }
+
+  @override
+  Future<SyncArtifact> fetchSyncArtifact(String projectId) async {
+    return SyncArtifact.fromJson({
+      'version': '1.0',
+      'book_id': projectId,
+      'language': 'en',
+      'audio': [
+        {'asset_id': 'audio-local', 'offset_ms': 0, 'duration_ms': 2500},
+        {'asset_id': 'audio-remote', 'offset_ms': 2500, 'duration_ms': 2400},
+      ],
+      'content_start_ms': 600,
+      'content_end_ms': 4300,
+      'tokens': demoSyncArtifact.toJson()['tokens'],
+      'gaps': demoSyncArtifact.toJson()['gaps'],
+    });
+  }
+
+  @override
+  Future<Map<String, dynamic>> fetchProjectDetail(String projectId) async {
+    return {
+      'project_id': projectId,
+      'title': demoReaderModel.title,
+      'language': 'en',
+      'status': 'created',
+      'assets': [
+        {
+          'asset_id': 'audio-local',
+          'kind': 'audio',
+          'filename': 'audio-local.wav',
+          'content_type': 'audio/wav',
+          'upload_mode': 'multipart',
+          'status': 'uploaded',
+          'size_bytes': 1024,
+          'checksum_sha256': 'a' * 64,
+          'duration_ms': 2500,
+          'download_url': 'http://localhost/audio-local.wav',
+          'created_at': '2026-03-09T00:00:00Z',
+        },
+        {
+          'asset_id': 'audio-remote',
+          'kind': 'audio',
+          'filename': 'audio-remote.wav',
+          'content_type': 'audio/wav',
+          'upload_mode': 'multipart',
+          'status': 'uploaded',
+          'size_bytes': 2048,
+          'checksum_sha256': 'b' * 64,
+          'duration_ms': 2400,
+          'download_url': 'http://localhost/audio-remote.wav',
+          'created_at': '2026-03-09T00:00:00Z',
+        },
+      ],
+      'latest_job': null,
+    };
+  }
+}
+
 void main() {
   test(
     'writes normalized artifacts into cache after a successful load',
@@ -164,33 +229,96 @@ void main() {
     expect(bundle.statusMessage, contains('Cached reader artifacts loaded'));
   });
 
-  test('prefers cached local audio when a project has downloaded files', () async {
+  test(
+    'prefers cached local audio when a project has downloaded files',
+    () async {
+      final audioCache = _FakeReaderAudioCache()
+        ..cached = CachedProjectAudio(
+          assetsById: {
+            'audio-demo': CachedAudioAsset(
+              assetId: 'audio-demo',
+              filePath: '/tmp/audio-demo.wav',
+              cachedAt: DateTime.utc(2026, 3, 9, 12),
+              sizeBytes: 1024,
+              checksumSha256: 'a' * 64,
+              durationMs: 4900,
+            ),
+          },
+          updatedAt: DateTime.utc(2026, 3, 9, 12),
+        );
+
+      final repository = ReaderRepository(
+        apiClient: _SuccessfulSyncApiClient(),
+        artifactCache: _FakeReaderArtifactCache(),
+        audioCache: audioCache,
+      );
+
+      final bundle = await repository.loadProject('demo-book');
+
+      expect(bundle.hasCompleteOfflineAudio, isTrue);
+      expect(bundle.cachedAudioAssets, 1);
+      expect(bundle.audioUrls.single, startsWith('file:///tmp/audio-demo.wav'));
+      expect(bundle.statusMessage, contains('offline playback'));
+      expect(bundle.audioCachedAt, DateTime.utc(2026, 3, 9, 12));
+      expect(
+        bundle.playbackSourceMode(usesNativeAudio: true),
+        ReaderPlaybackSourceMode.offlineCached,
+      );
+    },
+  );
+
+  test('keeps cached audio first and streams remaining files', () async {
     final audioCache = _FakeReaderAudioCache()
       ..cached = CachedProjectAudio(
         assetsById: {
-          'audio-demo': CachedAudioAsset(
-            assetId: 'audio-demo',
-            filePath: '/tmp/audio-demo.wav',
+          'audio-local': CachedAudioAsset(
+            assetId: 'audio-local',
+            filePath: '/tmp/audio-local.wav',
             cachedAt: DateTime.utc(2026, 3, 9, 12),
             sizeBytes: 1024,
             checksumSha256: 'a' * 64,
-            durationMs: 4900,
+            durationMs: 2500,
           ),
         },
         updatedAt: DateTime.utc(2026, 3, 9, 12),
       );
 
     final repository = ReaderRepository(
-      apiClient: _SuccessfulSyncApiClient(),
+      apiClient: _MixedAudioSyncApiClient(),
       artifactCache: _FakeReaderArtifactCache(),
       audioCache: audioCache,
     );
 
     final bundle = await repository.loadProject('demo-book');
 
-    expect(bundle.hasCompleteOfflineAudio, isTrue);
+    expect(bundle.totalAudioAssets, 2);
     expect(bundle.cachedAudioAssets, 1);
-    expect(bundle.audioUrls.single, startsWith('file:///tmp/audio-demo.wav'));
-    expect(bundle.statusMessage, contains('offline playback'));
+    expect(bundle.hasCompleteOfflineAudio, isFalse);
+    expect(
+      bundle.playbackSourceMode(usesNativeAudio: true),
+      ReaderPlaybackSourceMode.mixed,
+    );
+    expect(bundle.audioUrls.first, startsWith('file:///tmp/audio-local.wav'));
+    expect(bundle.audioUrls.last, 'http://localhost/audio-remote.wav');
+    expect(bundle.audioCachedAt, DateTime.utc(2026, 3, 9, 12));
+  });
+
+  test('uses backend audio URLs when no local audio is cached', () async {
+    final repository = ReaderRepository(
+      apiClient: _SuccessfulSyncApiClient(),
+      artifactCache: _FakeReaderArtifactCache(),
+      audioCache: _FakeReaderAudioCache(),
+    );
+
+    final bundle = await repository.loadProject('demo-book');
+
+    expect(bundle.cachedAudioAssets, 0);
+    expect(bundle.totalAudioAssets, 1);
+    expect(
+      bundle.playbackSourceMode(usesNativeAudio: true),
+      ReaderPlaybackSourceMode.remoteStreaming,
+    );
+    expect(bundle.audioUrls.single, 'http://localhost/audio-demo.wav');
+    expect(bundle.audioCachedAt, isNull);
   });
 }

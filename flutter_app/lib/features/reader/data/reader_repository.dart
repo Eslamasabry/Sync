@@ -15,6 +15,13 @@ enum ReaderContentSource {
   demoFallback,
 }
 
+enum ReaderPlaybackSourceMode {
+  textOnly,
+  remoteStreaming,
+  mixed,
+  offlineCached,
+}
+
 class ReaderProjectBundle {
   const ReaderProjectBundle({
     required this.projectId,
@@ -27,6 +34,7 @@ class ReaderProjectBundle {
     required this.hasCompleteOfflineAudio,
     this.statusMessage,
     this.cachedAt,
+    this.audioCachedAt,
   });
 
   final String projectId;
@@ -39,6 +47,27 @@ class ReaderProjectBundle {
   final bool hasCompleteOfflineAudio;
   final String? statusMessage;
   final DateTime? cachedAt;
+  final DateTime? audioCachedAt;
+
+  int get streamingAudioAssets {
+    final remaining = totalAudioAssets - cachedAudioAssets;
+    return remaining > 0 ? remaining : 0;
+  }
+
+  bool get hasAnyAudio => totalAudioAssets > 0;
+
+  ReaderPlaybackSourceMode playbackSourceMode({required bool usesNativeAudio}) {
+    if (!usesNativeAudio || audioUrls.isEmpty) {
+      return ReaderPlaybackSourceMode.textOnly;
+    }
+    if (hasCompleteOfflineAudio) {
+      return ReaderPlaybackSourceMode.offlineCached;
+    }
+    if (cachedAudioAssets > 0) {
+      return ReaderPlaybackSourceMode.mixed;
+    }
+    return ReaderPlaybackSourceMode.remoteStreaming;
+  }
 }
 
 class AudioDownloadResult {
@@ -121,6 +150,7 @@ class ReaderRepository {
       cachedAudioAssets: resolvedAudio.cachedAudioAssets,
       hasCompleteOfflineAudio: resolvedAudio.hasCompleteOfflineAudio,
       statusMessage: _apiAudioStatusMessage(resolvedAudio),
+      audioCachedAt: resolvedAudio.updatedAt,
     );
   }
 
@@ -208,6 +238,7 @@ class ReaderRepository {
       cachedAudioAssets: resolvedAudio.cachedAudioAssets,
       hasCompleteOfflineAudio: resolvedAudio.hasCompleteOfflineAudio,
       cachedAt: cached.cachedAt,
+      audioCachedAt: resolvedAudio.updatedAt,
       statusMessage: _offlineCacheMessage(
         cached.cachedAt,
         hasCompleteOfflineAudio: resolvedAudio.hasCompleteOfflineAudio,
@@ -339,6 +370,7 @@ class ReaderRepository {
       hasCompleteOfflineAudio:
           syncArtifact.audio.isNotEmpty &&
           cachedCount == syncArtifact.audio.length,
+      updatedAt: cachedAudio.updatedAt,
     );
   }
 }
@@ -542,12 +574,14 @@ class _ResolvedAudioSources {
     required this.totalAudioAssets,
     required this.cachedAudioAssets,
     required this.hasCompleteOfflineAudio,
+    required this.updatedAt,
   });
 
   final List<String> audioUrls;
   final int totalAudioAssets;
   final int cachedAudioAssets;
   final bool hasCompleteOfflineAudio;
+  final DateTime? updatedAt;
 }
 
 int? _asInt(Object? value) {

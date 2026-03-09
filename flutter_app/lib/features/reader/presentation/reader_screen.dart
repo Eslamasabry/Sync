@@ -141,6 +141,13 @@ class ReaderScreen extends ConsumerWidget {
                             ),
                             const SizedBox(height: 12),
                           ],
+                          if (bundle != null) ...[
+                            _ReaderDiagnosticsBanner(
+                              bundle: bundle,
+                              playback: playback,
+                            ),
+                            const SizedBox(height: 12),
+                          ],
                           if (bundle != null &&
                               bundle.syncArtifact.hasLeadingMatter &&
                               currentPositionMs <
@@ -300,6 +307,15 @@ class ReaderScreen extends ConsumerWidget {
     final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
     final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
+  }
+
+  static String formatTimestamp(DateTime value) {
+    final local = value.toLocal();
+    final month = local.month.toString().padLeft(2, '0');
+    final day = local.day.toString().padLeft(2, '0');
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '${local.year}-$month-$day $hour:$minute';
   }
 }
 
@@ -675,6 +691,150 @@ class _ContentWindowBanner extends StatelessWidget {
   }
 }
 
+class _ReaderDiagnosticsBanner extends StatelessWidget {
+  const _ReaderDiagnosticsBanner({
+    required this.bundle,
+    required this.playback,
+  });
+
+  final ReaderProjectBundle bundle;
+  final ReaderPlaybackState playback;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final theme = Theme.of(context);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: palette.backgroundBase,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(_headline(bundle, playback), style: theme.textTheme.labelLarge),
+          const SizedBox(height: 6),
+          Text(
+            _detail(bundle, playback),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: palette.textMuted,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _DiagnosticsChip(label: _artifactSourceLabel(bundle.source)),
+              _DiagnosticsChip(
+                label:
+                    'Local audio ${bundle.cachedAudioAssets}/${bundle.totalAudioAssets}',
+              ),
+              if (bundle.streamingAudioAssets > 0)
+                _DiagnosticsChip(
+                  label: 'Streaming ${bundle.streamingAudioAssets}',
+                ),
+              _DiagnosticsChip(
+                label: playback.usesNativeAudio
+                    ? 'Native audio active'
+                    : 'Text timeline mode',
+              ),
+              if (bundle.audioCachedAt != null)
+                _DiagnosticsChip(
+                  label:
+                      'Audio cache ${ReaderScreen.formatTimestamp(bundle.audioCachedAt!)}',
+                ),
+              if (bundle.cachedAt != null)
+                _DiagnosticsChip(
+                  label:
+                      'Artifacts cache ${ReaderScreen.formatTimestamp(bundle.cachedAt!)}',
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _headline(
+    ReaderProjectBundle bundle,
+    ReaderPlaybackState playback,
+  ) {
+    return switch (bundle.playbackSourceMode(
+      usesNativeAudio: playback.usesNativeAudio,
+    )) {
+      ReaderPlaybackSourceMode.offlineCached =>
+        'Playback source: local cached audio.',
+      ReaderPlaybackSourceMode.mixed =>
+        'Playback source: mixed local and backend audio.',
+      ReaderPlaybackSourceMode.remoteStreaming =>
+        'Playback source: streaming from the backend.',
+      ReaderPlaybackSourceMode.textOnly =>
+        bundle.hasAnyAudio
+            ? 'Playback source: text timeline only.'
+            : 'Playback source: no audio source available.',
+    };
+  }
+
+  static String _detail(
+    ReaderProjectBundle bundle,
+    ReaderPlaybackState playback,
+  ) {
+    final sourceMode = bundle.playbackSourceMode(
+      usesNativeAudio: playback.usesNativeAudio,
+    );
+    if (sourceMode == ReaderPlaybackSourceMode.offlineCached) {
+      return 'All project audio is downloaded on this device and native playback can run without backend access.';
+    }
+    if (sourceMode == ReaderPlaybackSourceMode.mixed) {
+      return '${bundle.cachedAudioAssets} of ${bundle.totalAudioAssets} audio files are local. The rest will stream from the backend when needed.';
+    }
+    if (sourceMode == ReaderPlaybackSourceMode.remoteStreaming) {
+      return 'Audio will stream from the backend. Download it on this device to enable offline playback.';
+    }
+    if (bundle.hasAnyAudio) {
+      return playback.usesNativeAudio
+          ? 'Native audio is active for the currently available files.'
+          : 'This project has audio metadata, but no playable local or remote source is active right now.';
+    }
+    return 'Word highlighting follows the sync timeline, but there is no playable audiobook source for this project yet.';
+  }
+
+  static String _artifactSourceLabel(ReaderContentSource source) {
+    return switch (source) {
+      ReaderContentSource.api => 'Artifacts: live API',
+      ReaderContentSource.offlineCache => 'Artifacts: offline cache',
+      ReaderContentSource.artifactPending => 'Artifacts: pending',
+      ReaderContentSource.projectError => 'Artifacts: incomplete',
+      ReaderContentSource.demoFallback => 'Artifacts: demo data',
+    };
+  }
+}
+
+class _DiagnosticsChip extends StatelessWidget {
+  const _DiagnosticsChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: palette.backgroundElevated,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Text(label, style: Theme.of(context).textTheme.labelMedium),
+    );
+  }
+}
+
 class _PlaybackStatusBanner extends StatelessWidget {
   const _PlaybackStatusBanner({
     required this.playback,
@@ -707,7 +867,8 @@ class _PlaybackStatusBanner extends StatelessWidget {
             ),
           ),
           Text(
-            playback.isPlaying ? 'Playing' : 'Paused',
+            '${playback.isPlaying ? 'Playing' : 'Paused'} • '
+            '${playback.usesNativeAudio ? 'Native audio' : 'Text timeline'}',
             style: Theme.of(
               context,
             ).textTheme.labelLarge?.copyWith(color: palette.textMuted),

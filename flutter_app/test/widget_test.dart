@@ -1,15 +1,62 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import 'package:sync_flutter/app.dart';
+import 'package:sync_flutter/core/playback/playback_driver.dart';
 import 'package:sync_flutter/core/network/sync_api_client.dart';
 import 'package:sync_flutter/features/reader/data/reader_repository.dart';
 import 'package:sync_flutter/features/reader/domain/reader_model.dart';
 import 'package:sync_flutter/features/reader/domain/sync_artifact.dart';
 import 'package:sync_flutter/features/reader/state/reader_events_provider.dart';
+import 'package:sync_flutter/features/reader/state/reader_playback_controller.dart';
 import 'package:sync_flutter/features/reader/state/reader_project_provider.dart';
 import 'package:sync_flutter/features/reader/state/sample_reader_data.dart';
+
+class _FakePlaybackDriver implements PlaybackDriver {
+  final StreamController<Duration> _positionController =
+      StreamController<Duration>.broadcast();
+  final StreamController<bool> _playingController =
+      StreamController<bool>.broadcast();
+
+  @override
+  Stream<Duration> get positionStream => _positionController.stream;
+
+  @override
+  Stream<bool> get playingStream => _playingController.stream;
+
+  @override
+  Future<void> dispose() async {
+    await _positionController.close();
+    await _playingController.close();
+  }
+
+  @override
+  Future<void> pause() async {
+    _playingController.add(false);
+  }
+
+  @override
+  Future<void> play() async {
+    _playingController.add(true);
+  }
+
+  @override
+  Future<void> seek(Duration position) async {
+    _positionController.add(position);
+  }
+
+  @override
+  Future<void> setSpeed(double speed) async {}
+
+  @override
+  Future<void> setUrls(List<String> urls) async {
+    _playingController.add(false);
+    _positionController.add(Duration.zero);
+  }
+}
 
 class _FakeReaderRepository extends ReaderRepository {
   _FakeReaderRepository()
@@ -153,6 +200,87 @@ class _CachedReaderRepository extends ReaderRepository {
       hasCompleteOfflineAudio: false,
       statusMessage:
           'Cached reader artifacts loaded from this device. Audio streaming stays disabled until the backend is reachable again. Cached at 2026-03-09T12:00:00.',
+      cachedAt: DateTime.utc(2026, 3, 9, 12),
+    );
+  }
+}
+
+class _StreamingAudioReaderRepository extends ReaderRepository {
+  _StreamingAudioReaderRepository()
+    : super(apiClient: SyncApiClient(baseUrl: 'http://localhost'));
+
+  @override
+  Future<ReaderProjectBundle> loadProject(String projectId) async {
+    return ReaderProjectBundle(
+      projectId: 'streaming-book',
+      readerModel: demoReaderModel,
+      syncArtifact: demoSyncArtifact,
+      source: ReaderContentSource.api,
+      audioUrls: const ['https://example.com/audio-demo.mp3'],
+      totalAudioAssets: 1,
+      cachedAudioAssets: 0,
+      hasCompleteOfflineAudio: false,
+      statusMessage:
+          'Audio will stream from the backend until you download it.',
+    );
+  }
+}
+
+class _MixedAudioReaderRepository extends ReaderRepository {
+  _MixedAudioReaderRepository()
+    : super(apiClient: SyncApiClient(baseUrl: 'http://localhost'));
+
+  @override
+  Future<ReaderProjectBundle> loadProject(String projectId) async {
+    return ReaderProjectBundle(
+      projectId: 'mixed-book',
+      readerModel: demoReaderModel,
+      syncArtifact: SyncArtifact.fromJson({
+        'version': '1.0',
+        'book_id': 'mixed-book',
+        'language': 'en',
+        'audio': [
+          {'asset_id': 'audio-local', 'offset_ms': 0, 'duration_ms': 4700},
+          {'asset_id': 'audio-remote', 'offset_ms': 4700, 'duration_ms': 4200},
+        ],
+        'content_start_ms': 600,
+        'content_end_ms': 4300,
+        'tokens': demoSyncArtifact.toJson()['tokens'],
+        'gaps': demoSyncArtifact.toJson()['gaps'],
+      }),
+      source: ReaderContentSource.api,
+      audioUrls: const [
+        'file:///tmp/audio-local.mp3',
+        'https://example.com/audio-remote.mp3',
+      ],
+      totalAudioAssets: 2,
+      cachedAudioAssets: 1,
+      hasCompleteOfflineAudio: false,
+      audioCachedAt: DateTime.utc(2026, 3, 9, 12),
+      statusMessage: '1 of 2 audio files are downloaded locally.',
+    );
+  }
+}
+
+class _OfflineAudioReaderRepository extends ReaderRepository {
+  _OfflineAudioReaderRepository()
+    : super(apiClient: SyncApiClient(baseUrl: 'http://localhost'));
+
+  @override
+  Future<ReaderProjectBundle> loadProject(String projectId) async {
+    return ReaderProjectBundle(
+      projectId: 'offline-book',
+      readerModel: demoReaderModel,
+      syncArtifact: demoSyncArtifact,
+      source: ReaderContentSource.offlineCache,
+      audioUrls: const ['file:///tmp/audio-demo.mp3'],
+      totalAudioAssets: 1,
+      cachedAudioAssets: 1,
+      hasCompleteOfflineAudio: true,
+      cachedAt: DateTime.utc(2026, 3, 9, 12),
+      audioCachedAt: DateTime.utc(2026, 3, 9, 12),
+      statusMessage:
+          'Cached reader artifacts and downloaded audio loaded from this device.',
     );
   }
 }
@@ -166,11 +294,12 @@ Future<void> _pumpReaderApp(
       overrides: [
         readerRepositoryProvider.overrideWithValue(repository),
         projectEventsProvider.overrideWith((ref) => const Stream.empty()),
+        playbackDriverProvider.overrideWithValue(_FakePlaybackDriver()),
       ],
       child: const SyncApp(),
     ),
   );
-  await tester.pump();
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -306,5 +435,69 @@ void main() {
       findsNothing,
     );
     expect(find.text('Download Audio'), findsOneWidget);
+  });
+
+  testWidgets('shows text-only diagnostics when audio is not playable', (
+    tester,
+  ) async {
+    await _pumpReaderApp(tester, repository: _FakeReaderRepository());
+
+    expect(find.text('Playback source: text timeline only.'), findsOneWidget);
+    expect(find.text('Text timeline mode'), findsOneWidget);
+    expect(
+      find.textContaining('no playable local or remote source is active'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('shows streaming-only diagnostics for backend audio', (
+    tester,
+  ) async {
+    await _pumpReaderApp(tester, repository: _StreamingAudioReaderRepository());
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Playback source: streaming from the backend.'),
+      findsOneWidget,
+    );
+    expect(find.text('Local audio 0/1'), findsOneWidget);
+    expect(find.text('Streaming 1'), findsOneWidget);
+    expect(find.text('Native audio active'), findsOneWidget);
+    expect(find.text('Download Audio'), findsOneWidget);
+  });
+
+  testWidgets('shows mixed local and streaming diagnostics', (tester) async {
+    await _pumpReaderApp(tester, repository: _MixedAudioReaderRepository());
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Playback source: mixed local and backend audio.'),
+      findsOneWidget,
+    );
+    expect(find.text('Local audio 1/2'), findsOneWidget);
+    expect(find.text('Streaming 1'), findsOneWidget);
+    expect(
+      find.textContaining('The rest will stream from the backend'),
+      findsOneWidget,
+    );
+    expect(find.text('Download Remaining'), findsOneWidget);
+    expect(find.textContaining('Audio cache 2026-03-09 16:00'), findsOneWidget);
+  });
+
+  testWidgets('shows full offline audio diagnostics distinctly', (
+    tester,
+  ) async {
+    await _pumpReaderApp(tester, repository: _OfflineAudioReaderRepository());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Playback source: local cached audio.'), findsOneWidget);
+    expect(find.text('Local audio 1/1'), findsOneWidget);
+    expect(find.text('Native audio active'), findsOneWidget);
+    expect(
+      find.textContaining('All project audio is downloaded on this device'),
+      findsOneWidget,
+    );
+    expect(find.text('Remove Local Copy'), findsOneWidget);
+    expect(find.text('Streaming 1'), findsNothing);
   });
 }
