@@ -7,6 +7,7 @@ import 'package:sync_flutter/core/navigation/home_shell_controller.dart';
 import 'package:sync_flutter/core/theme/sync_theme.dart';
 import 'package:sync_flutter/features/library/state/library_import_controller.dart';
 import 'package:sync_flutter/features/reader/data/reader_location_store.dart';
+import 'package:sync_flutter/features/reader/state/reader_audio_download_controller.dart';
 import 'package:sync_flutter/features/reader/state/reader_events_provider.dart';
 import 'package:sync_flutter/features/reader/state/reader_location_provider.dart';
 import 'package:sync_flutter/features/reader/state/reader_playback_controller.dart';
@@ -187,6 +188,10 @@ class LibraryScreen extends ConsumerWidget {
     );
     final recentLocations = ref.watch(recentReaderLocationsProvider);
     final importState = ref.watch(libraryImportProvider);
+    final currentProject = ref.watch(readerProjectProvider);
+    final audioDownload = ref.watch(readerAudioDownloadProvider);
+    final audioActions = ref.read(readerAudioDownloadProvider.notifier);
+    final currentBundle = currentProject.asData?.value;
 
     final recentConnectionCount = recentConnections.asData?.value.length ?? 0;
     final recentBookCount = recentLocations.asData?.value.length ?? 0;
@@ -262,6 +267,24 @@ class LibraryScreen extends ConsumerWidget {
                       icon: const Icon(Icons.book_online_rounded),
                       label: const Text('Continue Reader'),
                     ),
+                    if ((currentBundle?.totalAudioAssets ?? 0) > 0)
+                      FilledButton.tonalIcon(
+                        onPressed: audioDownload.isBusy
+                            ? null
+                            : currentBundle?.hasCompleteOfflineAudio == true
+                            ? audioActions.removeCurrentProjectAudio
+                            : audioActions.downloadCurrentProject,
+                        icon: Icon(
+                          currentBundle?.hasCompleteOfflineAudio == true
+                              ? Icons.delete_outline_rounded
+                              : Icons.download_for_offline_rounded,
+                        ),
+                        label: Text(
+                          currentBundle?.hasCompleteOfflineAudio == true
+                              ? 'Remove Offline Audio'
+                              : 'Download Audio',
+                        ),
+                      ),
                     currentSettings.maybeWhen(
                       data: (settings) => OutlinedButton.icon(
                         onPressed: () => _forgetConnection(context, ref, settings),
@@ -321,7 +344,11 @@ class LibraryScreen extends ConsumerWidget {
                     return Column(
                       children: [
                         for (final item in items.take(6))
-                          _LibraryBookTile(snapshot: item),
+                          _LibraryBookTile(
+                            snapshot: item,
+                            onResume: () =>
+                                _resumeRecentBook(context, ref, item),
+                          ),
                       ],
                     );
                   },
@@ -425,6 +452,23 @@ class LibraryScreen extends ConsumerWidget {
         ),
       );
     }
+  }
+
+  Future<void> _resumeRecentBook(
+    BuildContext context,
+    WidgetRef ref,
+    ReaderLocationSnapshot snapshot,
+  ) async {
+    final current = await ref.read(runtimeConnectionSettingsProvider.future);
+    if (!context.mounted) {
+      return;
+    }
+    final settings = RuntimeConnectionSettings(
+      apiBaseUrl: current.apiBaseUrl,
+      projectId: snapshot.projectId,
+      authToken: current.authToken,
+    );
+    await _activateConnection(context, ref, settings);
   }
 }
 
@@ -1359,9 +1403,13 @@ class _ImportFileTile extends StatelessWidget {
 }
 
 class _LibraryBookTile extends StatelessWidget {
-  const _LibraryBookTile({required this.snapshot});
+  const _LibraryBookTile({
+    required this.snapshot,
+    required this.onResume,
+  });
 
   final ReaderLocationSnapshot snapshot;
+  final VoidCallback onResume;
 
   @override
   Widget build(BuildContext context) {
@@ -1413,9 +1461,19 @@ class _LibraryBookTile extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Text(
-            _formatMs(snapshot.positionMs),
-            style: Theme.of(context).textTheme.labelLarge,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                _formatMs(snapshot.positionMs),
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+              const SizedBox(height: 8),
+              FilledButton.tonal(
+                onPressed: onResume,
+                child: const Text('Resume'),
+              ),
+            ],
           ),
         ],
       ),

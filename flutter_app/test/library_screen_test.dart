@@ -215,6 +215,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Recent Books'), findsOneWidget);
       expect(find.textContaining('Loomings'), findsOneWidget);
+      expect(find.text('Resume'), findsOneWidget);
       await tester.scrollUntilVisible(
         find.text('Recent Server Projects'),
         220,
