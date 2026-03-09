@@ -20,6 +20,7 @@ Safe defaults:
 - GZip is enabled by default.
 - CORS is disabled by default until origins are configured.
 - trusted hosts are disabled by default until explicit hostnames or IPs are configured.
+- `JOB_EXECUTION_MODE=celery` is the default. `JOB_EXECUTION_MODE=inline` runs alignment jobs in-process and allows Redis readiness to be intentionally skipped.
 
 ## Resource Model
 
@@ -116,7 +117,7 @@ Notes:
 
 - `200 OK` means all critical checks passed or were intentionally skipped.
 - `503 Service Unavailable` means at least one critical dependency check failed.
-- `status: skipped` is reserved for environments where a dependency is intentionally not exercised, such as Redis in backend tests.
+- `status: skipped` is reserved for environments where a dependency is intentionally not exercised, such as Redis in backend tests or inline execution mode.
 - `latency_ms` is rounded and intended for automation/debugging, not billing-grade metrics.
 
 ### `POST /v1/projects`
@@ -222,6 +223,9 @@ Response:
 Notes:
 
 - In the current backend, creating a job also dispatches background processing immediately when `APP_ENV != test`.
+- Dispatch mode depends on `JOB_EXECUTION_MODE`:
+  - `celery`: enqueue through Redis/Celery and expect a worker process
+  - `inline`: execute through a FastAPI background task in the API process
 - The backend uses the project `language` as a hint for speech transcription when the underlying transcriber supports it.
 
 ### `GET /v1/projects/{project_id}`

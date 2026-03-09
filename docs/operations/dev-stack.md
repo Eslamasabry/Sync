@@ -55,6 +55,14 @@ make local-start
 make local-smoke
 ```
 
+For the lightest possible development loop, the local scripts can also target SQLite plus inline execution:
+
+```bash
+make local-bootstrap-lite
+make local-start-lite
+make local-smoke
+```
+
 ## Bootstrap
 
 ```bash
@@ -76,6 +84,8 @@ Optional worker:
 ```bash
 make worker-run
 ```
+
+Skip the worker entirely when `JOB_EXECUTION_MODE=inline`.
 
 Host-services alternative:
 
@@ -100,6 +110,7 @@ Backend baseline:
 - `TRUSTED_HOSTS`
 - `DATABASE_URL`
 - `REDIS_URL`
+- `JOB_EXECUTION_MODE`
 - `S3_ENDPOINT_URL`
 - `S3_ACCESS_KEY_ID`
 - `S3_SECRET_ACCESS_KEY`
@@ -121,6 +132,8 @@ Runtime notes:
 - `CORS_ALLOW_ORIGIN_REGEX` is useful for preview or wildcard-style subdomain deployments.
 - If neither CORS variable is set, the backend does not permit browser cross-origin calls.
 - `TRUSTED_HOSTS` accepts a comma-separated list of allowed hostnames or IPs and is recommended behind a reverse proxy.
+- `JOB_EXECUTION_MODE=celery` keeps the default worker-based path. `JOB_EXECUTION_MODE=inline` lets the API execute jobs in-process and allows Redis readiness to be skipped.
+- `DATABASE_URL=sqlite+pysqlite:///...` is supported for single-host or lightweight local runs.
 
 ## Local Endpoints
 

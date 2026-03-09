@@ -6,10 +6,11 @@ Boot the local stack, create a project with an EPUB and audio file, and run the 
 
 ## 1. Choose A Local Mode
 
-There are two viable local setups:
+There are three viable local setups:
 
 - Docker-backed infra: easiest if you want the repo defaults exactly as written.
 - Host-services infra: lighter if you already run `postgresql` and `redis-server` locally and want to avoid Docker during day-to-day work.
+- Lite infra: lightest path for open-source adoption, using SQLite and inline execution in the API process.
 
 For the Flutter app, the important variable is always the backend base URL you pass through `SYNC_API_BASE_URL`.
 
@@ -20,6 +21,13 @@ Static smoke test:
 ```bash
 cd /home/eslam/Storage/Code/Sync
 make local-full-smoke
+```
+
+Lite SQLite + inline smoke test:
+
+```bash
+cd /home/eslam/Storage/Code/Sync
+make local-full-smoke-lite
 ```
 
 Host-services smoke test:
@@ -47,6 +55,7 @@ The scripted flow uses:
 For a real public-domain quality pass instead of a synthetic smoke test, use [docs/operations/regression.md](/home/eslam/Storage/Code/Sync/docs/operations/regression.md).
 
 The scripted path starts the backend on `127.0.0.1:8000`. That is fine for desktop and simulators, but not for a physical device on your LAN.
+In lite mode, the API executes jobs in-process and the scripted path intentionally does not start a Celery worker.
 
 ## 3. Manual Path
 
@@ -81,6 +90,16 @@ Then prepare the repo:
 cd /home/eslam/Storage/Code/Sync
 cp backend/.env.example backend/.env
 make local-bootstrap-host
+```
+
+### Option C: Lite SQLite + Inline Mode
+
+This path avoids PostgreSQL, Redis, and the Celery worker:
+
+```bash
+cd /home/eslam/Storage/Code/Sync
+cp backend/.env.example backend/.env
+make local-bootstrap-lite
 ```
 
 Sanity-check infrastructure:
@@ -123,11 +142,20 @@ make local-start
 make local-status
 ```
 
+For lite mode, start only the API:
+
+```bash
+cd /home/eslam/Storage/Code/Sync
+make local-start-lite
+make local-status
+```
+
 The launcher scripts are now defensive about stale PID files:
 
 - `make local-start` removes stale PID files before starting new processes.
 - `make local-status` reports `running`, `stale`, or `stopped` for each service instead of only checking for a pid file.
 - `make local-stop` cleans stale PID files and stops only live processes.
+- `make local-start-lite` uses the same PID hygiene but skips the worker because `JOB_EXECUTION_MODE=inline` keeps job execution inside the API process.
 
 ### Create A Project
 

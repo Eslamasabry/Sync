@@ -27,6 +27,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         "app.startup",
         environment=settings.app_env,
         debug=settings.debug,
+        job_execution_mode=settings.job_execution_mode,
         gzip_enabled=settings.enable_gzip,
         cors_enabled=bool(settings.cors_origins or settings.cors_origin_regex),
         trusted_hosts_enabled=bool(settings.trusted_host_values),

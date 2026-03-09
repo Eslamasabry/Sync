@@ -3,9 +3,11 @@ import struct
 import wave
 import zipfile
 from io import BytesIO
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from pytest import MonkeyPatch
 
 from sync_backend.alignment.audio import AudioPreprocessor
 from sync_backend.alignment.matching_pipeline import build_match_artifact
@@ -13,8 +15,10 @@ from sync_backend.alignment.pipeline import run_alignment_job
 from sync_backend.alignment.sync_export import build_sync_artifact
 from sync_backend.alignment.transcription import StaticTranscriber
 from sync_backend.alignment.transcription_pipeline import transcribe_alignment_job
+from sync_backend.api.realtime import broker
 from sync_backend.config import get_settings
-from sync_backend.db import get_session_factory
+from sync_backend.db import get_session_factory, reset_db_caches
+from sync_backend.main import create_app
 from sync_backend.storage import get_object_store
 
 
@@ -223,6 +227,66 @@ def test_upload_rejects_filename_that_exceeds_storage_limit(client: TestClient) 
 
     assert upload_response.status_code == 400
     assert upload_response.json()["error"]["code"] == "asset_filename_invalid"
+
+
+def test_create_job_dispatches_inline_execution_when_configured(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "inline-dispatch.db"
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("JOB_EXECUTION_MODE", "inline")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{database_path}")
+    monkeypatch.setenv("ALIGNMENT_WORKDIR", str(tmp_path / "artifacts"))
+    get_settings.cache_clear()
+    reset_db_caches()
+    broker.reset()
+
+    inline_calls: list[tuple[str, str]] = []
+
+    def record_inline_dispatch(project_id: str, job_id: str) -> None:
+        inline_calls.append((project_id, job_id))
+
+    monkeypatch.setattr(
+        "sync_backend.api.routes.projects.run_alignment_job_inline",
+        record_inline_dispatch,
+    )
+
+    with TestClient(create_app()) as inline_client:
+        project_id = inline_client.post(
+            "/v1/projects",
+            json={"title": "Inline Dispatch Project", "language": "en"},
+        ).json()["project_id"]
+
+        book_asset_id = inline_client.post(
+            f"/v1/projects/{project_id}/assets",
+            json={
+                "kind": "epub",
+                "filename": "book.epub",
+                "content_type": "application/epub+zip",
+            },
+        ).json()["asset_id"]
+        audio_asset_id = inline_client.post(
+            f"/v1/projects/{project_id}/assets",
+            json={
+                "kind": "audio",
+                "filename": "book.wav",
+                "content_type": "audio/wav",
+            },
+        ).json()["asset_id"]
+
+        response = inline_client.post(
+            f"/v1/projects/{project_id}/jobs",
+            json={
+                "job_type": "alignment",
+                "book_asset_id": book_asset_id,
+                "audio_asset_ids": [audio_asset_id],
+            },
+        )
+
+    assert response.status_code == 201
+    job_id = response.json()["job_id"]
+    assert inline_calls == [(project_id, job_id)]
 
 
 def test_transcription_pipeline_generates_transcript_artifact(client: TestClient) -> None:

@@ -7,6 +7,13 @@ This is the host-based deployment path for the open-source project. It assumes:
 - the repo deployed under `/opt/sync`
 - the backend served behind `nginx`
 
+For a single-host lightweight deployment, you can also run with:
+
+- `DATABASE_URL=sqlite+pysqlite:////var/lib/sync/sync.db`
+- `JOB_EXECUTION_MODE=inline`
+
+That mode avoids PostgreSQL, Redis, and the separate worker service, but it trades away queue isolation and is better suited to small personal or demo deployments than multi-user production traffic.
+
 ## 1. Host Dependencies
 
 ```bash
@@ -46,6 +53,7 @@ Edit:
 
 - `DATABASE_URL`
 - `REDIS_URL`
+- `JOB_EXECUTION_MODE`
 - `CORS_ALLOW_ORIGINS`
 - `TRUSTED_HOSTS`
 - `ALIGNMENT_WORKDIR`
@@ -67,6 +75,8 @@ sudo cp /opt/sync/deploy/systemd/sync-worker.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now sync-api sync-worker
 ```
+
+If `JOB_EXECUTION_MODE=inline`, install and enable only `sync-api`. The worker service is not required in that mode.
 
 ## 7. nginx Reverse Proxy
 

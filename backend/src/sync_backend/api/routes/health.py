@@ -99,6 +99,11 @@ def readiness(
                 "status": "skipped",
                 "reason": "skipped_in_test_environment",
             }
+        if settings.use_inline_job_execution:
+            return {
+                "status": "skipped",
+                "reason": "skipped_in_inline_execution_mode",
+            }
         _redis_ready(settings)
         return {"status": "ok"}
 

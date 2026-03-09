@@ -30,18 +30,17 @@ EOF
 
 extract_json_field() {
   local field="$1"
-  python3 - "$field" <<'PY'
+  python3 -c '
 import json
 import sys
 
-field = sys.argv[1]
 payload = json.load(sys.stdin)
-value = payload[field]
+value = payload[sys.argv[1]]
 if isinstance(value, (dict, list)):
     print(json.dumps(value))
 else:
     print(value)
-PY
+' "$field"
 }
 
 require_cmd() {

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -56,7 +56,7 @@ from sync_backend.services import (
     store_uploaded_asset,
 )
 from sync_backend.storage import get_object_store
-from sync_backend.workers.pipeline import run_alignment_job_task
+from sync_backend.workers.pipeline import run_alignment_job_inline, run_alignment_job_task
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 DbSession = Annotated[Session, Depends(get_db_session)]
@@ -342,6 +342,7 @@ async def get_asset_content_route(
 async def create_job_route(
     project_id: str,
     payload: JobCreateRequest,
+    background_tasks: BackgroundTasks,
     session: DbSession,
 ) -> JobCreateResponse:
     job = create_alignment_job(
@@ -358,7 +359,10 @@ async def create_job_route(
     )
     settings = get_settings()
     if settings.app_env != "test":
-        run_alignment_job_task.delay(project_id, job.id)
+        if settings.use_inline_job_execution:
+            background_tasks.add_task(run_alignment_job_inline, project_id, job.id)
+        else:
+            run_alignment_job_task.delay(project_id, job.id)
     return JobCreateResponse(job_id=UUID(job.id), status=job.status)
 
 

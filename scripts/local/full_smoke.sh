@@ -5,6 +5,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PROVIDER="static"
 INFRA_MODE="auto"
 KEEP_RUNNING=0
+EXECUTION_MODE="celery"
+START_MODE_ARGS=()
+BOOTSTRAP_MODE_ARGS=()
 
 usage() {
   cat <<'EOF'
@@ -19,6 +22,9 @@ Options:
   --provider static|whisperx   Transcriber provider. Default: static
   --infra auto|host|docker|none
                                Infrastructure mode passed to bootstrap.
+  --execution-mode celery|inline
+                               Job execution mode passed to bootstrap.
+  --lite                       Shortcut for --execution-mode inline --infra none
   --keep-running               Leave API and worker running after the smoke run
 EOF
 }
@@ -39,6 +45,15 @@ while (($# > 0)); do
       INFRA_MODE="${2:-}"
       shift 2
       ;;
+    --execution-mode)
+      EXECUTION_MODE="${2:-}"
+      shift 2
+      ;;
+    --lite)
+      EXECUTION_MODE="inline"
+      INFRA_MODE="none"
+      shift
+      ;;
     --keep-running)
       KEEP_RUNNING=1
       shift
@@ -57,6 +72,13 @@ done
 
 trap cleanup EXIT
 
-"$ROOT_DIR/scripts/local/bootstrap.sh" --provider "$PROVIDER" --infra "$INFRA_MODE"
-"$ROOT_DIR/scripts/local/start_services.sh"
+if [[ "$EXECUTION_MODE" == "inline" ]]; then
+  START_MODE_ARGS+=(--skip-worker)
+  if [[ "$INFRA_MODE" == "none" ]]; then
+    BOOTSTRAP_MODE_ARGS+=(--database sqlite)
+  fi
+fi
+
+"$ROOT_DIR/scripts/local/bootstrap.sh" --provider "$PROVIDER" --infra "$INFRA_MODE" --execution-mode "$EXECUTION_MODE" "${BOOTSTRAP_MODE_ARGS[@]}"
+"$ROOT_DIR/scripts/local/start_services.sh" "${START_MODE_ARGS[@]}"
 "$ROOT_DIR/scripts/local/run_smoke.sh" --provider "$PROVIDER"

@@ -19,6 +19,7 @@ class Settings(BaseSettings):
         alias="DATABASE_URL",
     )
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
+    job_execution_mode: str = Field(default="celery", alias="JOB_EXECUTION_MODE")
     s3_endpoint_url: str = Field(default="http://localhost:9000", alias="S3_ENDPOINT_URL")
     s3_access_key_id: str = Field(default="minioadmin", alias="S3_ACCESS_KEY_ID")
     s3_secret_access_key: str = Field(default="minioadmin", alias="S3_SECRET_ACCESS_KEY")
@@ -74,6 +75,10 @@ class Settings(BaseSettings):
     @property
     def trusted_host_values(self) -> list[str]:
         return _parse_csv_env(self.trusted_hosts)
+
+    @property
+    def use_inline_job_execution(self) -> bool:
+        return self.job_execution_mode.strip().lower() == "inline"
 
 
 def _parse_csv_env(raw_value: str) -> list[str]:

@@ -55,6 +55,9 @@ def publish_project_event_sync(
         job_id=job_id,
         payload=payload,
     )
+    if settings.use_inline_job_execution:
+        broker.publish_from_sync(envelope)
+        return
     try:
         client = Redis.from_url(settings.redis_url, decode_responses=True)
         client.publish(_channel_name(project_id), envelope.model_dump_json())
@@ -69,6 +72,7 @@ class ProjectEventBroker:
         self._lock = asyncio.Lock()
         self._listener_task: asyncio.Task[None] | None = None
         self._redis_client: redis_async.Redis | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     async def connect(self, project_id: str, websocket: WebSocket) -> None:
         await websocket.accept()
@@ -86,7 +90,10 @@ class ProjectEventBroker:
 
     async def start(self) -> None:
         settings = get_settings()
+        self._loop = asyncio.get_running_loop()
         if settings.app_env == "test" or self._listener_task is not None:
+            return
+        if settings.use_inline_job_execution:
             return
 
         self._redis_client = redis_async.Redis.from_url(
@@ -105,6 +112,7 @@ class ProjectEventBroker:
         if self._redis_client is not None:
             await self._redis_client.aclose()
             self._redis_client = None
+        self._loop = None
 
     async def broadcast(
         self,
@@ -173,6 +181,19 @@ class ProjectEventBroker:
 
     def reset(self) -> None:
         self._connections.clear()
+        self._loop = None
+
+    def publish_from_sync(self, envelope: EventEnvelope) -> None:
+        if self._loop is None or self._loop.is_closed():
+            return
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                self._broadcast_envelope(envelope),
+                self._loop,
+            )
+            future.result(timeout=5)
+        except (RuntimeError, TimeoutError):
+            return
 
 
 broker = ProjectEventBroker()

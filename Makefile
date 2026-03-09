@@ -4,7 +4,7 @@ API_BASE_URL ?= http://localhost:8000/v1
 PROJECT_ID ?= demo-book
 TRANSCRIBER_PROVIDER ?= static
 
-.PHONY: dev-up dev-down dev-logs backend-install backend-install-alignment backend-run backend-test backend-lint backend-typecheck worker-run flutter-get flutter-run flutter-analyze flutter-test local-bootstrap local-bootstrap-host local-start local-status local-stop local-stop-host local-stop-docker local-smoke local-full-smoke local-full-smoke-host local-bootstrap-whisperx local-full-smoke-whisperx local-regression local-regression-gate local-regression-corpus local-regression-corpus-gate
+.PHONY: dev-up dev-down dev-logs backend-install backend-install-alignment backend-run backend-test backend-lint backend-typecheck worker-run flutter-get flutter-run flutter-analyze flutter-test local-bootstrap local-bootstrap-host local-bootstrap-lite local-start local-start-lite local-status local-stop local-stop-host local-stop-docker local-smoke local-full-smoke local-full-smoke-host local-full-smoke-lite local-bootstrap-whisperx local-full-smoke-whisperx local-regression local-regression-gate local-regression-corpus local-regression-corpus-gate
 
 dev-up:
 	docker compose up -d
@@ -54,11 +54,17 @@ local-bootstrap:
 local-bootstrap-host:
 	./scripts/local/bootstrap.sh --provider $(TRANSCRIBER_PROVIDER) --infra host
 
+local-bootstrap-lite:
+	./scripts/local/bootstrap.sh --provider $(TRANSCRIBER_PROVIDER) --lite
+
 local-bootstrap-whisperx:
 	./scripts/local/bootstrap.sh --provider whisperx
 
 local-start:
 	./scripts/local/start_services.sh
+
+local-start-lite:
+	./scripts/local/start_services.sh --skip-worker
 
 local-status:
 	./scripts/local/status_services.sh
@@ -80,6 +86,9 @@ local-full-smoke:
 
 local-full-smoke-host:
 	./scripts/local/full_smoke.sh --provider $(TRANSCRIBER_PROVIDER) --infra host
+
+local-full-smoke-lite:
+	./scripts/local/full_smoke.sh --provider $(TRANSCRIBER_PROVIDER) --lite
 
 local-full-smoke-whisperx:
 	./scripts/local/full_smoke.sh --provider whisperx

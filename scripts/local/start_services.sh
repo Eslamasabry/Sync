@@ -11,6 +11,7 @@ HOST="127.0.0.1"
 PORT="8000"
 READY_URL=""
 TAIL_ON_FAILURE=1
+SKIP_WORKER=0
 
 usage() {
   cat <<'EOF'
@@ -24,6 +25,7 @@ Options:
   --host HOST              Bind host. Default: 127.0.0.1
   --port PORT              Bind port. Default: 8000
   --ready-url URL          Readiness URL. Default: http://HOST:PORT/v1/ready
+  --skip-worker            Start only the API. Useful with JOB_EXECUTION_MODE=inline
   --no-tail-on-failure     Do not print log tails when startup fails
 EOF
 }
@@ -66,6 +68,25 @@ process_matches() {
   ps -p "$pid" -o args= 2>/dev/null | grep -F "$pattern" >/dev/null 2>&1
 }
 
+stop_pid_file() {
+  local pid_file="$1"
+  local pid
+  pid="$(read_pid "$pid_file")" || return 0
+  if kill -0 "$pid" >/dev/null 2>&1; then
+    kill "$pid" >/dev/null 2>&1 || true
+    for _ in {1..20}; do
+      if ! kill -0 "$pid" >/dev/null 2>&1; then
+        break
+      fi
+      sleep 1
+    done
+    if kill -0 "$pid" >/dev/null 2>&1; then
+      kill -9 "$pid" >/dev/null 2>&1 || true
+    fi
+  fi
+  rm -f "$pid_file"
+}
+
 start_background_process() {
   local pid_file="$1"
   local log_file="$2"
@@ -79,9 +100,29 @@ start_background_process() {
 
   (
     cd "$ROOT_DIR/backend"
-    nohup "${command[@]}" </dev/null >"$log_file" 2>&1 &
+    setsid "${command[@]}" </dev/null >"$log_file" 2>&1 &
     echo $! >"$pid_file"
   )
+}
+
+port_available() {
+  local host="$1"
+  local port="$2"
+  python3 - "$host" "$port" <<'PY'
+import socket
+import sys
+
+host = sys.argv[1]
+port = int(sys.argv[2])
+
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.bind((host, port))
+    except OSError:
+        raise SystemExit(1)
+raise SystemExit(0)
+PY
 }
 
 wait_for_health() {
@@ -117,6 +158,10 @@ while (($# > 0)); do
       READY_URL="${2:-}"
       shift 2
       ;;
+    --skip-worker)
+      SKIP_WORKER=1
+      shift
+      ;;
     --no-tail-on-failure)
       TAIL_ON_FAILURE=0
       shift
@@ -148,6 +193,11 @@ fi
 cleanup_stale_pid_file "$API_PID_FILE"
 cleanup_stale_pid_file "$WORKER_PID_FILE"
 
+if ! is_running "$API_PID_FILE" && ! port_available "$HOST" "$PORT"; then
+  echo "Port $HOST:$PORT is already in use by another process. Stop it or choose a different port." >&2
+  exit 1
+fi
+
 if is_running "$API_PID_FILE"; then
   echo "API already running with pid $(cat "$API_PID_FILE")"
 else
@@ -157,7 +207,14 @@ else
     .venv/bin/uvicorn sync_backend.main:app --host "$HOST" --port "$PORT"
 fi
 
-if is_running "$WORKER_PID_FILE"; then
+if [[ "$SKIP_WORKER" -eq 1 ]]; then
+  if is_running "$WORKER_PID_FILE"; then
+    echo "Stopping managed worker because --skip-worker was requested."
+    stop_pid_file "$WORKER_PID_FILE"
+  else
+    cleanup_stale_pid_file "$WORKER_PID_FILE"
+  fi
+elif is_running "$WORKER_PID_FILE"; then
   echo "Worker already running with pid $(cat "$WORKER_PID_FILE")"
 else
   start_background_process \
@@ -175,16 +232,25 @@ if ! wait_for_health "$READY_URL"; then
   exit 1
 fi
 
+sleep 1
+
 if ! process_matches "$API_PID_FILE" "uvicorn sync_backend.main:app"; then
   echo "API process did not remain attached to the expected uvicorn command." >&2
   print_log_tail "$API_LOG"
   exit 1
 fi
 
-if ! process_matches "$WORKER_PID_FILE" "celery -A sync_backend.workers.celery_app:celery_app worker"; then
+if [[ "$SKIP_WORKER" -eq 0 ]] && ! process_matches "$WORKER_PID_FILE" "celery -A sync_backend.workers.celery_app:celery_app worker"; then
   echo "Worker process did not remain attached to the expected celery command." >&2
   print_log_tail "$WORKER_LOG"
   exit 1
+fi
+
+worker_pid_output="$(cat "$WORKER_PID_FILE" 2>/dev/null || true)"
+worker_log_output="$WORKER_LOG"
+if [[ "$SKIP_WORKER" -eq 1 ]]; then
+  worker_pid_output="not-started"
+  worker_log_output="not-started"
 fi
 
 cat <<EOF
@@ -195,8 +261,8 @@ API:
   log: $API_LOG
 
 Worker:
-  pid: $(cat "$WORKER_PID_FILE")
-  log: $WORKER_LOG
+  pid: $worker_pid_output
+  log: $worker_log_output
 
 Ready URL:
   $READY_URL

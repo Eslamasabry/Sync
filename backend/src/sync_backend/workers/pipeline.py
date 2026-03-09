@@ -9,8 +9,7 @@ from sync_backend.storage import get_object_store
 from sync_backend.workers.celery_app import celery_app
 
 
-@celery_app.task(name="sync_backend.run_alignment_job")
-def run_alignment_job_task(project_id: str, job_id: str) -> None:
+def run_alignment_job_inline(project_id: str, job_id: str) -> None:
     settings = get_settings()
     object_store = get_object_store()
     preprocessor = AudioPreprocessor(
@@ -34,3 +33,8 @@ def run_alignment_job_task(project_id: str, job_id: str) -> None:
         )
     finally:
         session.close()
+
+
+@celery_app.task(name="sync_backend.run_alignment_job")
+def run_alignment_job_task(project_id: str, job_id: str) -> None:
+    run_alignment_job_inline(project_id=project_id, job_id=job_id)

@@ -24,6 +24,7 @@ Fastest scripted path from the repo root:
 
 ```bash
 make local-full-smoke
+make local-full-smoke-lite
 make local-full-smoke-whisperx
 ```
 
@@ -64,6 +65,12 @@ make backend-lint
 make backend-typecheck
 make worker-run
 ```
+
+Lightweight open-source mode:
+
+- `JOB_EXECUTION_MODE=inline` lets the API execute alignment jobs in-process through FastAPI background tasks.
+- SQLite works out of the box through `DATABASE_URL=sqlite+pysqlite:///...`.
+- `make local-bootstrap-lite` and `make local-start-lite` configure that mode automatically and avoid the Celery worker/Redis requirement.
 
 Implementation must follow:
 

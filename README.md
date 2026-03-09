@@ -101,6 +101,16 @@ make local-status
 make local-stop
 ```
 
+Recommended for the lightest local loop with SQLite and inline execution:
+
+```bash
+make local-bootstrap-lite
+make local-start-lite
+make local-smoke
+make local-status
+make local-stop
+```
+
 Supporting scripts live under [scripts/local](/home/eslam/Storage/Code/Sync/scripts/local):
 
 - [bootstrap.sh](/home/eslam/Storage/Code/Sync/scripts/local/bootstrap.sh)

@@ -65,7 +65,11 @@ for service in backend-api backend-worker; do
 done
 
 if command -v curl >/dev/null 2>&1 && curl -fsS "http://$HOST:$PORT/v1/ready" >/dev/null 2>&1; then
-  echo "api_ready: yes"
+  if is_running "$RUN_DIR/backend-api.pid"; then
+    echo "api_ready: yes"
+  else
+    echo "api_ready: yes (external_or_unmanaged_process)"
+  fi
 else
   echo "api_ready: no"
 fi
