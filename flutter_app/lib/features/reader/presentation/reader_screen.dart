@@ -1238,62 +1238,86 @@ class _ReaderLoadedViewState extends State<_ReaderLoadedView> {
       playback.displayedPositionMs,
     )?.location.locationKey;
     final maxWidth = playback.distractionFreeMode ? 760.0 : 860.0;
+    final accessibilityAnnouncement = _readerAccessibilityAnnouncement(
+      bundle,
+      playback.displayedPositionMs,
+    );
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-      child: Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: maxWidth),
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (final section in bundle.readerModel.sections) ...[
-                    if (section.title != null)
-                      Padding(
-                        padding: EdgeInsets.only(
-                          bottom: 20 * playback.paragraphSpacing,
-                        ),
-                        child: Text(
-                          section.title!,
-                          style: Theme.of(context).textTheme.headlineMedium,
-                        ),
-                      ),
-                    for (final paragraph in section.paragraphs)
-                      Padding(
-                        key: _paragraphKeys.putIfAbsent(
-                          '${section.id}:${paragraph.index}',
-                          GlobalKey.new,
-                        ),
-                        padding: EdgeInsets.only(
-                          bottom: 18 * playback.paragraphSpacing,
-                        ),
-                        child: _ParagraphBlock(
-                          section: section,
-                          paragraph: paragraph,
-                          activeLocationKey: activeLocationKey,
-                          syncIndex: syncIndex,
-                          onTokenTap: (token) {
-                            if (token != null) {
-                              widget.onTokenTap(token);
-                            }
-                          },
-                          fontScale: playback.fontScale,
-                          lineHeight: playback.lineHeight,
-                          paragraphSpacing: playback.paragraphSpacing,
-                          highContrastMode: playback.highContrastMode,
-                        ),
-                      ),
-                  ],
-                ],
+    return Stack(
+      children: [
+        SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final section in bundle.readerModel.sections) ...[
+                        if (section.title != null)
+                          Padding(
+                            padding: EdgeInsets.only(
+                              bottom: 20 * playback.paragraphSpacing,
+                            ),
+                            child: Semantics(
+                              header: true,
+                              label: 'Section ${section.title}',
+                              child: Text(
+                                section.title!,
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.headlineMedium,
+                              ),
+                            ),
+                          ),
+                        for (final paragraph in section.paragraphs)
+                          Padding(
+                            key: _paragraphKeys.putIfAbsent(
+                              '${section.id}:${paragraph.index}',
+                              GlobalKey.new,
+                            ),
+                            padding: EdgeInsets.only(
+                              bottom: 18 * playback.paragraphSpacing,
+                            ),
+                            child: _ParagraphBlock(
+                              section: section,
+                              paragraph: paragraph,
+                              activeLocationKey: activeLocationKey,
+                              syncIndex: syncIndex,
+                              onTokenTap: (token) {
+                                if (token != null) {
+                                  widget.onTokenTap(token);
+                                }
+                              },
+                              fontScale: playback.fontScale,
+                              lineHeight: playback.lineHeight,
+                              paragraphSpacing: playback.paragraphSpacing,
+                              highContrastMode: playback.highContrastMode,
+                            ),
+                          ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
         ),
-      ),
+        Positioned(
+          left: 0,
+          top: 0,
+          child: Semantics(
+            container: true,
+            liveRegion: true,
+            label: accessibilityAnnouncement,
+            child: const SizedBox(width: 1, height: 1),
+          ),
+        ),
+      ],
     );
   }
 
@@ -2513,31 +2537,39 @@ class _PlaybackStatusBanner extends StatelessWidget {
     final palette = ReaderPalette.of(context);
     final phase = _phaseLabel(playback, currentPositionMs);
     final positionLabel = playback.isScrubbing ? 'Scrubbing' : 'Playback';
+    final semanticsLabel =
+        '$positionLabel. $phase. ${playback.isPlaying ? 'Playing' : 'Paused'}. '
+        '${playback.usesNativeAudio ? 'Native audio active.' : 'Text timeline active.'}';
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: palette.backgroundBase,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: palette.borderSubtle),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              '$positionLabel • $phase',
-              style: Theme.of(context).textTheme.labelLarge,
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      label: semanticsLabel,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: palette.backgroundBase,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: palette.borderSubtle),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                '$positionLabel • $phase',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
             ),
-          ),
-          Text(
-            '${playback.isPlaying ? 'Playing' : 'Paused'} • '
-            '${playback.usesNativeAudio ? 'Native audio' : 'Text timeline'}',
-            style: Theme.of(
-              context,
-            ).textTheme.labelLarge?.copyWith(color: palette.textMuted),
-          ),
-        ],
+            Text(
+              '${playback.isPlaying ? 'Playing' : 'Paused'} • '
+              '${playback.usesNativeAudio ? 'Native audio' : 'Text timeline'}',
+              style: Theme.of(
+                context,
+              ).textTheme.labelLarge?.copyWith(color: palette.textMuted),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2805,25 +2837,38 @@ class _ParagraphBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = ReaderPalette.of(context);
-    return Wrap(
-      spacing: 6 * fontScale,
-      runSpacing: 10 * paragraphSpacing,
-      children: [
-        for (final token in paragraph.tokens)
-          _TokenPill(
-            token: token,
-            syncToken:
-                syncIndex['${section.id}:${paragraph.index}:${token.index}'],
-            isActive:
-                activeLocationKey ==
-                '${section.id}:${paragraph.index}:${token.index}',
-            onTap: onTokenTap,
-            palette: palette,
-            fontScale: fontScale,
-            lineHeight: lineHeight,
-            highContrastMode: highContrastMode,
-          ),
-      ],
+    final paragraphLabel = paragraph.tokens
+        .map((token) => token.text)
+        .join(' ');
+    final isActiveParagraph =
+        activeLocationKey != null &&
+        activeLocationKey!.startsWith('${section.id}:${paragraph.index}:');
+    return Semantics(
+      container: true,
+      label: 'Paragraph ${paragraph.index + 1}. $paragraphLabel',
+      hint: isActiveParagraph
+          ? 'Contains the current reading phrase.'
+          : 'Double tap a word to jump playback.',
+      child: Wrap(
+        spacing: 6 * fontScale,
+        runSpacing: 10 * paragraphSpacing,
+        children: [
+          for (final token in paragraph.tokens)
+            _TokenPill(
+              token: token,
+              syncToken:
+                  syncIndex['${section.id}:${paragraph.index}:${token.index}'],
+              isActive:
+                  activeLocationKey ==
+                  '${section.id}:${paragraph.index}:${token.index}',
+              onTap: onTokenTap,
+              palette: palette,
+              fontScale: fontScale,
+              lineHeight: lineHeight,
+              highContrastMode: highContrastMode,
+            ),
+        ],
+      ),
     );
   }
 }
@@ -3265,11 +3310,86 @@ int? _nextConfidentSpanStartMs(
   return null;
 }
 
+String _readerAccessibilityAnnouncement(
+  ReaderProjectBundle bundle,
+  int currentPositionMs,
+) {
+  final progress = _readingProgress(bundle, currentPositionMs);
+  final gap = bundle.syncArtifact.activeGapAt(currentPositionMs);
+  if (gap != null) {
+    return 'Reader update. ${_gapReasonAccessibilityLabel(gap.reason)}. ${progress.summary}';
+  }
+
+  final activeToken = _activeTokenAtPosition(
+    bundle.syncArtifact,
+    currentPositionMs,
+  );
+  if (activeToken == null) {
+    return 'Reader update. No synced phrase is active. ${progress.summary}';
+  }
+
+  ReaderSection? section;
+  for (final candidate in bundle.readerModel.sections) {
+    if (candidate.id == activeToken.location.sectionId) {
+      section = candidate;
+      break;
+    }
+  }
+  final phrase = _phraseExcerptForToken(bundle, activeToken);
+  final confidence = (activeToken.confidence * 100).round();
+  final sectionLabel = section?.title == null
+      ? ''
+      : ' Section ${section!.title}.';
+
+  return 'Current reading phrase.$sectionLabel $phrase Confidence $confidence percent. ${progress.summary}';
+}
+
+String _phraseExcerptForToken(
+  ReaderProjectBundle bundle,
+  SyncToken activeToken,
+) {
+  ReaderParagraph? paragraph;
+  for (final section in bundle.readerModel.sections) {
+    if (section.id != activeToken.location.sectionId) {
+      continue;
+    }
+    for (final candidate in section.paragraphs) {
+      if (candidate.index == activeToken.location.paragraphIndex) {
+        paragraph = candidate;
+        break;
+      }
+    }
+    if (paragraph != null) {
+      break;
+    }
+  }
+
+  if (paragraph == null || paragraph.tokens.isEmpty) {
+    return activeToken.text;
+  }
+
+  final centerIndex = activeToken.location.tokenIndex;
+  final start = (centerIndex - 3).clamp(0, paragraph.tokens.length - 1);
+  final end = (centerIndex + 3).clamp(start, paragraph.tokens.length - 1);
+  return paragraph.tokens
+      .sublist(start, end + 1)
+      .map((token) => token.text)
+      .join(' ');
+}
+
 String _gapReasonLabel(String reason) {
   return switch (reason) {
     'audiobook_front_matter' => 'Audiobook intro',
     'audiobook_end_matter' => 'Audiobook outro',
     _ => 'Narration mismatch',
+  };
+}
+
+String _gapReasonAccessibilityLabel(String reason) {
+  return switch (reason) {
+    'audiobook_front_matter' => 'Audiobook introduction outside the book text',
+    'audiobook_end_matter' => 'Audiobook ending outside the book text',
+    _ => 'Narration mismatch span',
   };
 }
 

@@ -431,6 +431,20 @@ void main() {
     expect(find.text('Exit Focus'), findsOneWidget);
   });
 
+  testWidgets('reader exposes accessible section and paragraph landmarks', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await _pumpReaderApp(tester, repository: _FakeReaderRepository());
+
+    expect(find.bySemanticsLabel(RegExp(r'Section Loomings')), findsWidgets);
+    expect(
+      find.bySemanticsLabel(RegExp(r'Paragraph 1\..*Call me Ishmael')),
+      findsOneWidget,
+    );
+    semantics.dispose();
+  });
+
   testWidgets('enhanced contrast changes token emphasis styling', (
     tester,
   ) async {
