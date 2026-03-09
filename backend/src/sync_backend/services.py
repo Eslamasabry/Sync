@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import io
+import wave
 from http import HTTPStatus
 from uuid import UUID, uuid4
 
@@ -79,6 +81,7 @@ def store_uploaded_asset(
     get_project_or_404(session=session, project_id=project_id)
     asset_id = str(uuid4())
     checksum = hashlib.sha256(payload).hexdigest()
+    duration_ms = _probe_asset_duration_ms(kind=kind, payload=payload)
     storage_path, size_bytes = object_store.write_bytes(
         f"projects/{project_id}/assets/{asset_id}/{filename}",
         payload,
@@ -95,11 +98,39 @@ def store_uploaded_asset(
         storage_path=storage_path,
         size_bytes=size_bytes,
         checksum_sha256=checksum,
+        duration_ms=duration_ms,
     )
     session.add(asset)
     session.commit()
     session.refresh(asset)
     return asset
+
+
+def _probe_asset_duration_ms(*, kind: str, payload: bytes) -> int | None:
+    if kind != "audio":
+        return None
+
+    try:
+        with wave.open(io.BytesIO(payload), "rb") as wav_file:
+            frame_rate = wav_file.getframerate()
+            frame_count = wav_file.getnframes()
+            if frame_rate > 0:
+                return int((frame_count / frame_rate) * 1000)
+    except (wave.Error, EOFError):
+        pass
+
+    try:
+        from mutagen import File as MutagenFile
+    except ImportError:
+        return None
+
+    audio_file = MutagenFile(io.BytesIO(payload))
+    if audio_file is None or audio_file.info is None:
+        return None
+    duration_seconds = getattr(audio_file.info, "length", None)
+    if duration_seconds is None:
+        return None
+    return int(float(duration_seconds) * 1000)
 
 
 def get_asset_or_404(*, session: Session, asset_id: str) -> Asset:

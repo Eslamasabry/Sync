@@ -21,7 +21,14 @@ class ObjectStore(Protocol):
 
     def read_json(self, relative_path: str) -> dict[str, Any]: ...
 
-    def iter_bytes(self, relative_path: str, *, chunk_size: int = 64 * 1024) -> Iterator[bytes]: ...
+    def iter_bytes(
+        self,
+        relative_path: str,
+        *,
+        start: int | None = None,
+        end: int | None = None,
+        chunk_size: int = 64 * 1024,
+    ) -> Iterator[bytes]: ...
 
     def materialize_file(self, relative_path: str) -> contextlib.AbstractContextManager[Path]: ...
 
@@ -50,10 +57,29 @@ class FileObjectStore:
     def read_json(self, relative_path: str) -> dict[str, Any]:
         return cast(dict[str, Any], json.loads(self.read_bytes(relative_path)))
 
-    def iter_bytes(self, relative_path: str, *, chunk_size: int = 64 * 1024) -> Iterator[bytes]:
+    def iter_bytes(
+        self,
+        relative_path: str,
+        *,
+        start: int | None = None,
+        end: int | None = None,
+        chunk_size: int = 64 * 1024,
+    ) -> Iterator[bytes]:
         target_path = self.base_path / relative_path
         with target_path.open("rb") as source_file:
-            while chunk := source_file.read(chunk_size):
+            if start is not None:
+                source_file.seek(start)
+
+            remaining = None if end is None else max(0, end - (start or 0) + 1)
+            while True:
+                if remaining == 0:
+                    break
+                read_size = chunk_size if remaining is None else min(chunk_size, remaining)
+                chunk = source_file.read(read_size)
+                if not chunk:
+                    break
+                if remaining is not None:
+                    remaining -= len(chunk)
                 yield chunk
 
     @contextlib.contextmanager
@@ -115,8 +141,21 @@ class S3ObjectStore:
     def read_json(self, relative_path: str) -> dict[str, Any]:
         return cast(dict[str, Any], json.loads(self.read_bytes(relative_path)))
 
-    def iter_bytes(self, relative_path: str, *, chunk_size: int = 64 * 1024) -> Iterator[bytes]:
-        response = self.client.get_object(Bucket=self.bucket, Key=relative_path)
+    def iter_bytes(
+        self,
+        relative_path: str,
+        *,
+        start: int | None = None,
+        end: int | None = None,
+        chunk_size: int = 64 * 1024,
+    ) -> Iterator[bytes]:
+        kwargs: dict[str, Any] = {"Bucket": self.bucket, "Key": relative_path}
+        if start is not None or end is not None:
+            range_start = 0 if start is None else start
+            range_end = "" if end is None else str(end)
+            kwargs["Range"] = f"bytes={range_start}-{range_end}"
+
+        response = self.client.get_object(**kwargs)
         body = response["Body"]
         try:
             yield from body.iter_chunks(chunk_size=chunk_size)

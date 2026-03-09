@@ -17,6 +17,7 @@ def clear_settings_cache(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{database_path}")
     monkeypatch.setenv("ALIGNMENT_WORKDIR", str(tmp_path / "artifacts"))
+    monkeypatch.setenv("OBJECT_STORE_MODE", "filesystem")
     get_settings.cache_clear()
     reset_db_caches()
     broker.reset()

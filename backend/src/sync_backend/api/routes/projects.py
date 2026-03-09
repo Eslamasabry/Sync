@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from http import HTTPStatus
 from typing import Annotated
 from uuid import UUID
 
@@ -75,6 +76,9 @@ def _asset_summary(asset: Asset) -> AssetSummary:
         upload_mode=asset.upload_mode,
         status=asset.status,
         size_bytes=asset.size_bytes,
+        checksum_sha256=asset.checksum_sha256,
+        duration_ms=asset.duration_ms,
+        download_url=None,
         created_at=asset.created_at,
     )
 
@@ -160,6 +164,9 @@ def _content_response(
     storage_path: str | None,
     media_type: str,
     filename: str,
+    size_bytes: int | None = None,
+    checksum_sha256: str | None = None,
+    byte_range: tuple[int, int] | None = None,
 ) -> StreamingResponse:
     if storage_path is None:
         raise ApiError(
@@ -169,11 +176,106 @@ def _content_response(
             details={"filename": filename},
         )
     object_store = get_object_store()
+    headers = {
+        "content-disposition": f'attachment; filename="{filename}"',
+        "content-encoding": "identity",
+    }
+    if size_bytes is not None:
+        headers["accept-ranges"] = "bytes"
+    if checksum_sha256 is not None:
+        headers["etag"] = f'"{checksum_sha256}"'
+
+    status_code = status.HTTP_200_OK
+    iterator_kwargs: dict[str, int] = {}
+    if byte_range is not None:
+        start, end = byte_range
+        iterator_kwargs = {"start": start, "end": end}
+        length = end - start + 1
+        headers["content-length"] = str(length)
+        if size_bytes is not None:
+            headers["content-range"] = f"bytes {start}-{end}/{size_bytes}"
+        status_code = status.HTTP_206_PARTIAL_CONTENT
+    elif size_bytes is not None:
+        headers["content-length"] = str(size_bytes)
+
     return StreamingResponse(
-        object_store.iter_bytes(storage_path),
+        object_store.iter_bytes(storage_path, **iterator_kwargs),
         media_type=media_type,
-        headers={"content-disposition": f'attachment; filename="{filename}"'},
+        headers=headers,
+        status_code=status_code,
     )
+
+
+def _parse_range_header(
+    range_header: str | None,
+    *,
+    size_bytes: int | None,
+) -> tuple[int, int] | None:
+    if range_header is None or size_bytes is None:
+        return None
+
+    value = range_header.strip()
+    if not value:
+        return None
+    if not value.startswith("bytes="):
+        raise ApiError(
+            code="asset_range_invalid",
+            message="Only byte range requests are supported for asset downloads",
+            status_code=HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE,
+            details={"range": value},
+        )
+
+    spec = value[6:]
+    if "," in spec or "-" not in spec:
+        raise ApiError(
+            code="asset_range_invalid",
+            message="Only a single byte range is supported for asset downloads",
+            status_code=HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE,
+            details={"range": value},
+        )
+
+    start_text, end_text = spec.split("-", 1)
+    if start_text == "":
+        try:
+            suffix_length = int(end_text)
+        except ValueError as exc:
+            raise ApiError(
+                code="asset_range_invalid",
+                message="Byte range header is malformed",
+                status_code=HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE,
+                details={"range": value},
+            ) from exc
+        if suffix_length <= 0:
+            raise ApiError(
+                code="asset_range_invalid",
+                message="Byte range header is malformed",
+                status_code=HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE,
+                details={"range": value},
+            )
+        if suffix_length >= size_bytes:
+            return 0, size_bytes - 1
+        return size_bytes - suffix_length, size_bytes - 1
+
+    try:
+        start = int(start_text)
+        end = size_bytes - 1 if end_text == "" else int(end_text)
+    except ValueError as exc:
+        raise ApiError(
+            code="asset_range_invalid",
+            message="Byte range header is malformed",
+            status_code=HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE,
+            details={"range": value},
+        ) from exc
+
+    if start < 0 or end < start or start >= size_bytes:
+        raise ApiError(
+            code="asset_range_invalid",
+            message="Requested byte range is outside the available asset size",
+            status_code=HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE,
+            details={"range": value, "size_bytes": size_bytes},
+        )
+
+    return start, min(end, size_bytes - 1)
 
 
 def _reader_model_response(
@@ -331,6 +433,7 @@ async def upload_asset_route(
 async def get_asset_content_route(
     project_id: str,
     asset_id: str,
+    request: Request,
     session: DbSession,
 ) -> StreamingResponse:
     asset = get_project_asset_or_404(
@@ -347,10 +450,17 @@ async def get_asset_content_route(
             status_code=status.HTTP_409_CONFLICT,
         )
 
+    byte_range = _parse_range_header(
+        request.headers.get("range"),
+        size_bytes=asset.size_bytes,
+    )
     return _content_response(
         storage_path=asset.storage_path,
         media_type=asset.content_type,
         filename=asset.filename,
+        size_bytes=asset.size_bytes,
+        checksum_sha256=asset.checksum_sha256,
+        byte_range=byte_range,
     )
 
 
@@ -387,9 +497,25 @@ async def create_job_route(
 
 
 @router.get("/{project_id}", response_model=ProjectDetailResponse)
-async def get_project_route(project_id: str, session: DbSession) -> ProjectDetailResponse:
+async def get_project_route(
+    project_id: str,
+    request: Request,
+    session: DbSession,
+) -> ProjectDetailResponse:
     project = get_project_or_404(session=session, project_id=project_id)
     latest_job = get_latest_job(session=session, project_id=project_id)
+    assets = []
+    for asset in sorted(project.assets, key=lambda asset: asset.created_at):
+        summary = _asset_summary(asset)
+        if asset.storage_path is not None:
+            summary.download_url = str(
+                request.url_for(
+                    "get_asset_content_route",
+                    project_id=project_id,
+                    asset_id=asset.id,
+                )
+            )
+        assets.append(summary)
     return ProjectDetailResponse(
         project_id=UUID(project.id),
         title=project.title,
@@ -397,10 +523,7 @@ async def get_project_route(project_id: str, session: DbSession) -> ProjectDetai
         status=project.status,
         created_at=project.created_at,
         updated_at=project.updated_at,
-        assets=[
-            _asset_summary(asset)
-            for asset in sorted(project.assets, key=lambda asset: asset.created_at)
-        ],
+        assets=assets,
         latest_job=_job_summary(latest_job) if latest_job else None,
     )
 

@@ -194,7 +194,83 @@ def test_uploaded_asset_content_can_be_downloaded(client: TestClient) -> None:
     content_response = client.get(f"/v1/projects/{project_id}/assets/{asset_id}/content")
     assert content_response.status_code == 200
     assert content_response.headers["content-type"] == "audio/wav"
+    assert content_response.headers["accept-ranges"] == "bytes"
+    assert int(content_response.headers["content-length"]) == len(payload)
     assert content_response.content == payload
+
+    project_response = client.get(f"/v1/projects/{project_id}")
+    assert project_response.status_code == 200
+    asset = project_response.json()["assets"][0]
+    assert asset["download_url"].endswith(
+        f"/v1/projects/{project_id}/assets/{asset_id}/content"
+    )
+    assert asset["size_bytes"] == len(payload)
+    assert asset["checksum_sha256"] is not None
+    assert asset["duration_ms"] == 250
+
+
+def test_uploaded_asset_supports_byte_range_requests(client: TestClient) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Range Project", "language": "en"},
+    ).json()["project_id"]
+
+    payload = make_test_wav_bytes(duration_seconds=0.5)
+    asset_id = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "audio"},
+        files={
+            "file": (
+                "clip.wav",
+                payload,
+                "audio/wav",
+            )
+        },
+    ).json()["asset_id"]
+
+    range_response = client.get(
+        f"/v1/projects/{project_id}/assets/{asset_id}/content",
+        headers={"Range": "bytes=0-31"},
+    )
+    assert range_response.status_code == 206
+    assert range_response.headers["accept-ranges"] == "bytes"
+    assert range_response.headers["content-range"] == f"bytes 0-31/{len(payload)}"
+    assert range_response.headers["content-length"] == "32"
+    assert range_response.content == payload[:32]
+
+    suffix_response = client.get(
+        f"/v1/projects/{project_id}/assets/{asset_id}/content",
+        headers={"Range": "bytes=-16"},
+    )
+    assert suffix_response.status_code == 206
+    assert suffix_response.content == payload[-16:]
+
+
+def test_uploaded_asset_rejects_invalid_byte_ranges(client: TestClient) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Invalid Range Project", "language": "en"},
+    ).json()["project_id"]
+
+    payload = make_test_wav_bytes(duration_seconds=0.5)
+    asset_id = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "audio"},
+        files={
+            "file": (
+                "clip.wav",
+                payload,
+                "audio/wav",
+            )
+        },
+    ).json()["asset_id"]
+
+    invalid_response = client.get(
+        f"/v1/projects/{project_id}/assets/{asset_id}/content",
+        headers={"Range": f"bytes={len(payload)}-{len(payload) + 10}"},
+    )
+    assert invalid_response.status_code == 416
+    assert invalid_response.json()["error"]["code"] == "asset_range_invalid"
 
 
 def test_upload_rejects_empty_payload(client: TestClient) -> None:

@@ -49,6 +49,9 @@ class AssetSummary(BaseModel):
     upload_mode: str
     status: str
     size_bytes: int | None = Field(default=None, ge=0)
+    checksum_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    duration_ms: int | None = Field(default=None, ge=0)
+    download_url: str | None = None
     created_at: datetime
 
 

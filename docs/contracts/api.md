@@ -197,6 +197,11 @@ Response:
 
 Streams the raw uploaded asset content for local development and playback.
 
+Notes:
+
+- Audio asset downloads support single `Range: bytes=...` requests and return `206 Partial Content` when a byte range is requested.
+- Responses include `Accept-Ranges: bytes` when asset size is known.
+
 ### `POST /v1/projects/{project_id}/jobs`
 
 Creates an alignment job after required assets exist.
@@ -231,6 +236,39 @@ Notes:
 ### `GET /v1/projects/{project_id}`
 
 Returns project metadata and latest job summary.
+
+Response shape:
+
+```json
+{
+  "project_id": "uuid",
+  "title": "Moby-Dick",
+  "language": "en",
+  "status": "created",
+  "assets": [
+    {
+      "asset_id": "uuid",
+      "kind": "audio",
+      "filename": "chapter-01.mp3",
+      "content_type": "audio/mpeg",
+      "upload_mode": "multipart",
+      "status": "uploaded",
+      "size_bytes": 10485760,
+      "checksum_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "duration_ms": 612000,
+      "download_url": "http://localhost:8000/v1/projects/uuid/assets/uuid/content",
+      "created_at": "2026-03-09T00:00:00Z"
+    }
+  ],
+  "latest_job": null
+}
+```
+
+Notes:
+
+- `download_url` is the stable audio and EPUB asset fetch surface the Flutter client should use for offline download and playback preparation.
+- `checksum_sha256` and `size_bytes` are intended for client-side cache validation.
+- `duration_ms` is populated for uploaded audio assets when the backend can determine duration safely at ingest time.
 
 ### `GET /v1/projects/{project_id}/jobs/{job_id}`
 
