@@ -574,9 +574,7 @@ void main() {
   testWidgets('renders reader shell and playback controls', (tester) async {
     await _pumpReaderApp(tester, repository: _FakeReaderRepository());
 
-    expect(find.text('Session'), findsOneWidget);
     expect(find.text('Live API'), findsOneWidget);
-    expect(find.text('Sync'), findsAtLeastNWidgets(1));
     expect(find.text('Moby-Dick'), findsAtLeastNWidgets(1));
     expect(find.text('Speed'), findsOneWidget);
     expect(find.text('Download Audio'), findsOneWidget);
@@ -589,7 +587,7 @@ void main() {
   ) async {
     await _pumpReaderApp(tester, repository: _FakeReaderRepository());
 
-    await tester.tap(find.text('Focus'));
+    await tester.tap(find.byTooltip('Enter focus mode'));
     await tester.pumpAndSettle();
 
     expect(find.text('Connection'), findsNothing);
@@ -653,7 +651,7 @@ void main() {
     await tester.tap(find.text('Left-handed HUD'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Focus'));
+    await tester.tap(find.byTooltip('Enter focus mode'));
     await tester.pumpAndSettle();
 
     final positioned = tester.widgetList<Positioned>(
@@ -728,9 +726,11 @@ void main() {
     await tester.tap(find.text('Save and Reload'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Project private-book'), findsOneWidget);
-    expect(find.text('Server sync.example.ts.net'), findsOneWidget);
-    expect(find.text('Auth enabled'), findsOneWidget);
+    final saved = await settingsStorage.load();
+    expect(saved?.apiBaseUrl, 'https://sync.example.ts.net/v1');
+    expect(saved?.projectId, 'private-book');
+    expect(saved?.authToken, 'secret-token');
+    expect(find.text('sync.example.ts.net'), findsAtLeastNWidgets(1));
   });
 
   testWidgets('shows recent connections and localhost guidance', (
@@ -864,7 +864,7 @@ void main() {
   testWidgets('opens the sync inspector and lists gap spans', (tester) async {
     await _pumpReaderApp(tester, repository: _FakeReaderRepository());
 
-    await tester.tap(find.text('Sync Inspector'));
+    await tester.tap(find.text('Inspector'));
     await tester.pumpAndSettle();
 
     expect(find.text('Sync Inspector'), findsAtLeastNWidgets(1));

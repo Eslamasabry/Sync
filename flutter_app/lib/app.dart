@@ -119,16 +119,28 @@ class _ShellDock extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = ReaderPalette.of(context);
     final theme = Theme.of(context);
+    final bundle = project.asData?.value;
+    final settings = connection.asData?.value ?? defaultConnectionSettings;
+    final sourceLabel = switch (bundle?.source) {
+      ReaderContentSource.api => 'Live API',
+      ReaderContentSource.offlineCache => 'Offline cache',
+      ReaderContentSource.artifactPending => 'Pending artifacts',
+      ReaderContentSource.projectError => 'Incomplete artifacts',
+      ReaderContentSource.demoFallback => 'Demo content',
+      null => 'Connecting',
+    };
+    final title = bundle?.readerModel.title ?? settings.normalizedProjectId;
+    final modeLabel = selectedIndex == 0 ? 'Library' : 'Reader';
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(26),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            palette.backgroundElevated.withValues(alpha: 0.96),
-            palette.backgroundChrome.withValues(alpha: 0.96),
+            palette.backgroundElevated.withValues(alpha: 0.95),
+            palette.backgroundBase.withValues(alpha: 0.95),
           ],
         ),
         border: Border.all(color: palette.borderSubtle.withValues(alpha: 0.9)),
@@ -145,12 +157,36 @@ class _ShellDock extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _ShellSessionRail(
-              connection: connection,
-              project: project,
-              selectedIndex: selectedIndex,
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+              decoration: BoxDecoration(
+                color: palette.backgroundBase.withValues(alpha: 0.9),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: palette.borderSubtle),
+              ),
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    modeLabel,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: palette.accentPrimary,
+                    ),
+                  ),
+                  Text(
+                    title,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelLarge,
+                  ),
+                  _ShellRailChip(label: sourceLabel),
+                  _ShellRailChip(label: settings.shortHost),
+                ],
+              ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
@@ -197,67 +233,6 @@ class _ShellDock extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _ShellSessionRail extends StatelessWidget {
-  const _ShellSessionRail({
-    required this.connection,
-    required this.project,
-    required this.selectedIndex,
-  });
-
-  final AsyncValue<RuntimeConnectionSettings> connection;
-  final AsyncValue<ReaderProjectBundle> project;
-  final int selectedIndex;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = ReaderPalette.of(context);
-    final settings =
-        connection.asData?.value ?? defaultConnectionSettings;
-    final bundle = project.asData?.value;
-    final sourceLabel = switch (bundle?.source) {
-      ReaderContentSource.api => 'Live API',
-      ReaderContentSource.offlineCache => 'Offline cache',
-      ReaderContentSource.artifactPending => 'Pending artifacts',
-      ReaderContentSource.projectError => 'Incomplete artifacts',
-      ReaderContentSource.demoFallback => 'Demo content',
-      null => 'Connecting',
-    };
-    final title = bundle?.readerModel.title ?? settings.normalizedProjectId;
-    final modeLabel = selectedIndex == 0 ? 'Library' : 'Reader';
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: palette.backgroundBase.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: palette.borderSubtle),
-      ),
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Text(
-            'Session',
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: palette.textMuted,
-            ),
-          ),
-          _ShellRailChip(label: modeLabel),
-          _ShellRailChip(label: settings.shortHost),
-          _ShellRailChip(label: sourceLabel),
-          Text(
-            title,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.labelLarge,
-          ),
-        ],
       ),
     );
   }

@@ -115,7 +115,7 @@ class ReaderScreen extends ConsumerWidget {
                 child: Column(
                   children: [
                     if (!playback.distractionFreeMode) ...[
-                      _ReaderHero(
+                      _ReaderHeroBar(
                         project: project,
                         settings: activeSettings,
                         playback: playback,
@@ -145,7 +145,7 @@ class ReaderScreen extends ConsumerWidget {
                               recentConnections.asData?.value ?? const [],
                             ),
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 10),
                       _ReaderStateStrip(
                         project: project,
                         settings: activeSettings,
@@ -553,14 +553,10 @@ class _ReaderStateStrip extends StatelessWidget {
         );
       },
       loading: () => _ReaderTransitionCard(
-        title: 'Opening reader workspace',
+        title: 'Opening reader',
         message:
-            'Connecting to ${settings.shortHost} and loading the normalized book model plus sync timeline for ${settings.normalizedProjectId}.',
-        chips: const [
-          'Connect to backend',
-          'Load reader model',
-          'Load sync timeline',
-        ],
+            'Connecting to ${settings.shortHost} and loading ${settings.normalizedProjectId}.',
+        chips: const ['Backend', 'Reader model', 'Sync timeline'],
       ),
       error: (_, _) => const SizedBox.shrink(),
     );
@@ -669,9 +665,7 @@ class _ReaderTransitionCard extends StatelessWidget {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: [
-              for (final chip in chips) _DiagnosticsChip(label: chip),
-            ],
+            children: [for (final chip in chips) _DiagnosticsChip(label: chip)],
           ),
         ],
       ),
@@ -679,8 +673,8 @@ class _ReaderTransitionCard extends StatelessWidget {
   }
 }
 
-class _ReaderHero extends StatelessWidget {
-  const _ReaderHero({
+class _ReaderHeroBar extends StatelessWidget {
+  const _ReaderHeroBar({
     required this.project,
     required this.settings,
     required this.playback,
@@ -708,12 +702,14 @@ class _ReaderHero extends StatelessWidget {
     final theme = Theme.of(context);
     final title = project.maybeWhen(
       data: (bundle) => bundle.readerModel.title,
-      orElse: () => 'Word-level audiobook sync',
+      orElse: () => 'Reader',
     );
     final subtitle = project.when(
       data: (bundle) => bundle.source == ReaderContentSource.demoFallback
           ? 'Demo reader loaded while the backend is unavailable.'
-          : 'Live reader workspace for ${bundle.projectId}.',
+          : bundle.readerModel.sections.isEmpty
+          ? 'The project is connected, but reader artifacts are still thin.'
+          : 'Synchronized reading for ${bundle.projectId}.',
       loading: () => 'Connecting to ${settings.shortHost}',
       error: (_, _) =>
           'The app can start from GitHub releases and point at your own backend at runtime.',
@@ -724,7 +720,7 @@ class _ReaderHero extends StatelessWidget {
         ? '--'
         : '${(sync.matchConfidence * 100).round()}%';
     final audioState = bundle == null
-        ? 'No audio'
+        ? 'Connecting'
         : bundle!.hasCompleteOfflineAudio
         ? 'Offline audio'
         : bundle!.audioUrls.isNotEmpty
@@ -733,14 +729,13 @@ class _ReaderHero extends StatelessWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(32),
+        borderRadius: BorderRadius.circular(26),
         border: Border.all(color: palette.borderSubtle),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
             palette.backgroundElevated.withValues(alpha: 0.94),
-            palette.backgroundElevated,
             palette.backgroundBase.withValues(alpha: 0.98),
           ],
         ),
@@ -753,176 +748,88 @@ class _ReaderHero extends StatelessWidget {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 22),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+        child: Wrap(
+          spacing: 16,
+          runSpacing: 16,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          alignment: WrapAlignment.spaceBetween,
           children: [
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _DiagnosticsChip(label: audioState),
+                      _DiagnosticsChip(label: 'Coverage $coverage'),
+                      _DiagnosticsChip(label: 'Confidence $confidence'),
+                      _DiagnosticsChip(label: settings.shortHost),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    title,
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      color: palette.textPrimary,
+                      height: 1.0,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    subtitle,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: palette.textMuted,
+                      height: 1.42,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             Wrap(
-              spacing: 18,
-              runSpacing: 18,
-              crossAxisAlignment: WrapCrossAlignment.start,
-              alignment: WrapAlignment.spaceBetween,
+              spacing: 10,
+              runSpacing: 10,
               children: [
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 700),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: palette.accentPrimary.withValues(
-                                alpha: 0.12,
-                              ),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              'Sync',
-                              style: theme.textTheme.labelLarge?.copyWith(
-                                color: palette.accentPrimary,
-                                letterSpacing: 1.1,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          _DiagnosticsChip(label: audioState),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        title,
-                        style: theme.textTheme.displaySmall?.copyWith(
-                          color: palette.textPrimary,
-                          height: 1.0,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 620),
-                        child: Text(
-                          subtitle,
-                          style: theme.textTheme.bodyLarge?.copyWith(
-                            color: palette.textMuted,
-                            height: 1.45,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          _DiagnosticsChip(
-                            label: 'Project ${settings.projectId}',
-                          ),
-                          _DiagnosticsChip(
-                            label: 'Server ${settings.shortHost}',
-                          ),
-                          _DiagnosticsChip(
-                            label: settings.hasAuthToken
-                                ? 'Auth enabled'
-                                : 'Auth open',
-                          ),
-                          _DiagnosticsChip(
-                            label: settings.isLocalhostTarget
-                                ? 'Localhost target'
-                                : settings.usesHttp
-                                ? 'HTTP dev link'
-                                : 'Remote host',
-                          ),
-                          _DiagnosticsChip(
-                            label: playback.themeMode == ThemeMode.light
-                                ? 'Paper theme'
-                                : 'Night theme',
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                FilledButton.icon(
+                  onPressed: onOpenNavigation,
+                  icon: const Icon(Icons.auto_stories_rounded),
+                  label: const Text('Navigate'),
                 ),
-                SizedBox(
-                  width: 320,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _HeroStat(
-                              label: 'Coverage',
-                              value: coverage,
-                              icon: Icons.align_horizontal_left_rounded,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _HeroStat(
-                              label: 'Confidence',
-                              value: confidence,
-                              icon: Icons.graphic_eq_rounded,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      FilledButton.icon(
-                        onPressed: onOpenNavigation,
-                        icon: const Icon(Icons.auto_stories_rounded),
-                        label: const Text('Navigate'),
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          FilledButton.tonalIcon(
-                            onPressed: onOpenConnectionSettings,
-                            icon: const Icon(
-                              Icons.settings_input_component_rounded,
-                            ),
-                            label: const Text('Connection'),
-                          ),
-                          FilledButton.tonalIcon(
-                            onPressed: onOpenGapInspector,
-                            icon: const Icon(Icons.radar_rounded),
-                            label: const Text('Sync Inspector'),
-                          ),
-                          FilledButton.tonalIcon(
-                            onPressed: onToggleTheme,
-                            icon: Icon(
-                              playback.themeMode == ThemeMode.light
-                                  ? Icons.nightlight_round
-                                  : Icons.wb_sunny_outlined,
-                            ),
-                            label: Text(
-                              playback.themeMode == ThemeMode.light
-                                  ? 'Night'
-                                  : 'Paper',
-                            ),
-                          ),
-                          FilledButton.tonalIcon(
-                            onPressed: onToggleDistractionFree,
-                            icon: Icon(
-                              playback.distractionFreeMode
-                                  ? Icons.center_focus_strong_rounded
-                                  : Icons.center_focus_weak_rounded,
-                            ),
-                            label: Text(
-                              playback.distractionFreeMode
-                                  ? 'Exit Focus'
-                                  : 'Focus',
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                FilledButton.tonalIcon(
+                  onPressed: onOpenConnectionSettings,
+                  icon: const Icon(Icons.tune_rounded),
+                  label: const Text('Connection'),
+                ),
+                if (onOpenGapInspector != null)
+                  FilledButton.tonalIcon(
+                    onPressed: onOpenGapInspector,
+                    icon: const Icon(Icons.radar_rounded),
+                    label: const Text('Inspector'),
                   ),
+                IconButton.filledTonal(
+                  onPressed: onToggleTheme,
+                  icon: Icon(
+                    playback.themeMode == ThemeMode.light
+                        ? Icons.nightlight_round
+                        : Icons.wb_sunny_outlined,
+                  ),
+                  tooltip: playback.themeMode == ThemeMode.light
+                      ? 'Switch to night theme'
+                      : 'Switch to paper theme',
+                ),
+                IconButton.filledTonal(
+                  onPressed: onToggleDistractionFree,
+                  icon: Icon(
+                    playback.distractionFreeMode
+                        ? Icons.center_focus_strong_rounded
+                        : Icons.center_focus_weak_rounded,
+                  ),
+                  tooltip: playback.distractionFreeMode
+                      ? 'Exit focus mode'
+                      : 'Enter focus mode',
                 ),
               ],
             ),
@@ -1374,65 +1281,6 @@ class _ControlDock extends StatelessWidget {
   }
 }
 
-class _HeroStat extends StatelessWidget {
-  const _HeroStat({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = ReaderPalette.of(context);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-      decoration: BoxDecoration(
-        color: palette.backgroundBase,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: palette.borderSubtle),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: palette.accentPrimary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(icon, color: palette.accentPrimary),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  value,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  label,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _DockHeader extends StatelessWidget {
   const _DockHeader({
     required this.bundle,
@@ -1465,12 +1313,15 @@ class _DockHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Session dock', style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            'Playback and reading controls',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           const SizedBox(height: 6),
           Text(
             bundle == null
                 ? 'Connect a project to unlock playback, diagnostics, and study controls.'
-                : 'Keep playback, sync quality, and study actions close without covering the page.',
+                : 'Keep transport, sync quality, and reading adjustments close without overwhelming the page.',
             style: Theme.of(
               context,
             ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
@@ -1547,15 +1398,10 @@ class _DockSection extends StatelessWidget {
 }
 
 class _ReaderPageHeader extends StatelessWidget {
-  const _ReaderPageHeader({
-    required this.bundle,
-    required this.playback,
-    required this.activeLocationKey,
-  });
+  const _ReaderPageHeader({required this.bundle, required this.playback});
 
   final ReaderProjectBundle bundle;
   final ReaderPlaybackState playback;
-  final String? activeLocationKey;
 
   @override
   Widget build(BuildContext context) {
@@ -1578,23 +1424,21 @@ class _ReaderPageHeader extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      padding: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: palette.backgroundBase.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: palette.borderSubtle),
+        border: Border(bottom: BorderSide(color: palette.borderSubtle)),
       ),
       child: Wrap(
         alignment: WrapAlignment.spaceBetween,
-        runSpacing: 12,
-        spacing: 12,
-        crossAxisAlignment: WrapCrossAlignment.center,
+        runSpacing: 10,
+        spacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.end,
         children: [
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Reading stage',
+                'Now reading',
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
                   color: palette.accentPrimary,
                   letterSpacing: 0.7,
@@ -1611,9 +1455,11 @@ class _ReaderPageHeader extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _DiagnosticsChip(label: 'Live word $activeWord'),
-              if (activeLocationKey != null)
-                _DiagnosticsChip(label: 'Anchor $activeLocationKey'),
+              _DiagnosticsChip(label: activeWord),
+              _DiagnosticsChip(
+                label:
+                    '${(bundle.syncArtifact.coverage * 100).round()}% aligned',
+              ),
             ],
           ),
         ],
@@ -1803,10 +1649,12 @@ class _ConnectionSettingsSheetState
   }
 
   Future<void> _removeRecent(RuntimeConnectionSettings recent) async {
-    await ref.read(runtimeConnectionSettingsProvider.notifier).removeRecent(
-      recent,
+    await ref
+        .read(runtimeConnectionSettingsProvider.notifier)
+        .removeRecent(recent);
+    final replacement = await ref.read(
+      runtimeConnectionSettingsProvider.future,
     );
-    final replacement = await ref.read(runtimeConnectionSettingsProvider.future);
     if (!mounted) {
       return;
     }
@@ -2014,75 +1862,55 @@ class _ReaderLoadedViewState extends State<_ReaderLoadedView> {
             alignment: Alignment.topCenter,
             child: ConstrainedBox(
               constraints: BoxConstraints(maxWidth: maxWidth),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: palette.backgroundElevated.withValues(alpha: 0.96),
-                  borderRadius: BorderRadius.circular(32),
-                  border: Border.all(color: palette.borderSubtle),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 28,
-                      offset: const Offset(0, 18),
-                    ),
-                  ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(26, 28, 26, 28),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _ReaderPageHeader(
-                        bundle: bundle,
-                        playback: playback,
-                        activeLocationKey: activeLocationKey,
-                      ),
-                      const SizedBox(height: 22),
-                      for (final section in bundle.readerModel.sections) ...[
-                        if (section.title != null)
-                          Padding(
-                            padding: EdgeInsets.only(
-                              bottom: 20 * playback.paragraphSpacing,
-                            ),
-                            child: Semantics(
-                              header: true,
-                              label: 'Section ${section.title}',
-                              child: Text(
-                                section.title!,
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.headlineMedium,
-                              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(26, 26, 26, 28),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _ReaderPageHeader(bundle: bundle, playback: playback),
+                    const SizedBox(height: 22),
+                    for (final section in bundle.readerModel.sections) ...[
+                      if (section.title != null)
+                        Padding(
+                          padding: EdgeInsets.only(
+                            bottom: 20 * playback.paragraphSpacing,
+                          ),
+                          child: Semantics(
+                            header: true,
+                            label: 'Section ${section.title}',
+                            child: Text(
+                              section.title!,
+                              style: Theme.of(context).textTheme.headlineMedium,
                             ),
                           ),
-                        for (final paragraph in section.paragraphs)
-                          Padding(
-                            key: _paragraphKeys.putIfAbsent(
-                              '${section.id}:${paragraph.index}',
-                              GlobalKey.new,
-                            ),
-                            padding: EdgeInsets.only(
-                              bottom: 18 * playback.paragraphSpacing,
-                            ),
-                            child: _ParagraphBlock(
-                              section: section,
-                              paragraph: paragraph,
-                              activeLocationKey: activeLocationKey,
-                              syncIndex: syncIndex,
-                              onTokenTap: (token) {
-                                if (token != null) {
-                                  widget.onTokenTap(token);
-                                }
-                              },
-                              fontScale: playback.fontScale,
-                              lineHeight: playback.lineHeight,
-                              paragraphSpacing: playback.paragraphSpacing,
-                              highContrastMode: playback.highContrastMode,
-                            ),
+                        ),
+                      for (final paragraph in section.paragraphs)
+                        Padding(
+                          key: _paragraphKeys.putIfAbsent(
+                            '${section.id}:${paragraph.index}',
+                            GlobalKey.new,
                           ),
-                      ],
+                          padding: EdgeInsets.only(
+                            bottom: 18 * playback.paragraphSpacing,
+                          ),
+                          child: _ParagraphBlock(
+                            section: section,
+                            paragraph: paragraph,
+                            activeLocationKey: activeLocationKey,
+                            syncIndex: syncIndex,
+                            onTokenTap: (token) {
+                              if (token != null) {
+                                widget.onTokenTap(token);
+                              }
+                            },
+                            fontScale: playback.fontScale,
+                            lineHeight: playback.lineHeight,
+                            paragraphSpacing: playback.paragraphSpacing,
+                            highContrastMode: playback.highContrastMode,
+                          ),
+                        ),
                     ],
-                  ),
+                  ],
                 ),
               ),
             ),
