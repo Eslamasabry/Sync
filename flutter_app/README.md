@@ -11,12 +11,14 @@ Constraints:
 Current baseline:
 
 - typed API client for reader model and sync artifact
+- typed API client for project creation, asset upload, and alignment job kickoff
 - Riverpod async project loading with demo fallback only for the default `demo-book` project
 - on-device caching for reader-model and sync artifact JSON after successful real-project loads
 - on-device audio download and cache management for real projects
 - local playback/theme controller separated from remote content loading
 - sync-driven token highlighting UI scaffold
 - app-shell navigation with a device-local library surface for recent books and recent backend targets
+- staged import workflow in the library tab for creating projects and uploading EPUB plus audio from the device
 
 ## CI Expectations
 
