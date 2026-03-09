@@ -29,7 +29,7 @@ Run those locally before opening a release-facing PR.
 
 ## Runtime Inputs
 
-The app ships with compile-time defaults, but the release APK no longer depends on them. Users can open the in-app `Connection` sheet and save these values locally on the device:
+The app ships with compile-time defaults, but the release APK no longer depends on them. Users can open the in-app `Connection` sheet and save these values locally on the device. The sheet also keeps a short recent-connection list for fast switching between self-hosted environments:
 
 - `SYNC_API_BASE_URL`: backend API root, default `http://localhost:8000/v1`
 - `SYNC_PROJECT_ID`: project UUID or the fallback `demo-book`

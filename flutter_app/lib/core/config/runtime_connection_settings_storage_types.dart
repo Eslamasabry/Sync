@@ -5,6 +5,8 @@ abstract class RuntimeConnectionSettingsStorage {
 
   Future<RuntimeConnectionSettings?> load();
 
+  Future<List<RuntimeConnectionSettings>> loadRecent();
+
   Future<void> store(RuntimeConnectionSettings settings);
 
   Future<void> clear();

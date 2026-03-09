@@ -12,5 +12,8 @@ class FileRuntimeConnectionSettingsStorage
   Future<RuntimeConnectionSettings?> load() async => null;
 
   @override
+  Future<List<RuntimeConnectionSettings>> loadRecent() async => const [];
+
+  @override
   Future<void> store(RuntimeConnectionSettings settings) async {}
 }

@@ -20,6 +20,9 @@ class ReaderScreen extends ConsumerWidget {
     final project = ref.watch(readerProjectProvider);
     final bundle = project.asData?.value;
     final connectionSettings = ref.watch(runtimeConnectionSettingsProvider);
+    final recentConnections = ref.watch(
+      recentRuntimeConnectionSettingsProvider,
+    );
     final activeSettings =
         connectionSettings.asData?.value ?? defaultConnectionSettings;
     final playback = ref.watch(readerPlaybackProvider);
@@ -68,8 +71,11 @@ class ReaderScreen extends ConsumerWidget {
                   settings: activeSettings,
                   playback: playback,
                   onToggleTheme: controller.toggleTheme,
-                  onOpenConnectionSettings: () =>
-                      _showConnectionSettingsSheet(context, activeSettings),
+                  onOpenConnectionSettings: () => _showConnectionSettingsSheet(
+                    context,
+                    activeSettings,
+                    recentConnections.asData?.value ?? const [],
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Expanded(
@@ -115,6 +121,14 @@ class ReaderScreen extends ConsumerWidget {
                                 playback: playback,
                                 onRetry: () =>
                                     ref.invalidate(readerProjectProvider),
+                                settings: activeSettings,
+                                onOpenConnectionSettings: () =>
+                                    _showConnectionSettingsSheet(
+                                      context,
+                                      activeSettings,
+                                      recentConnections.asData?.value ??
+                                          const [],
+                                    ),
                                 onTokenTap: (token) =>
                                     controller.seekTo(token.startMs),
                               ),
@@ -141,6 +155,13 @@ class ReaderScreen extends ConsumerWidget {
                               playback: playback,
                               onRetry: () =>
                                   ref.invalidate(readerProjectProvider),
+                              settings: activeSettings,
+                              onOpenConnectionSettings: () =>
+                                  _showConnectionSettingsSheet(
+                                    context,
+                                    activeSettings,
+                                    recentConnections.asData?.value ?? const [],
+                                  ),
                               onTokenTap: (token) =>
                                   controller.seekTo(token.startMs),
                             ),
@@ -180,13 +201,17 @@ class ReaderScreen extends ConsumerWidget {
 Future<void> _showConnectionSettingsSheet(
   BuildContext context,
   RuntimeConnectionSettings settings,
+  List<RuntimeConnectionSettings> recentConnections,
 ) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
     backgroundColor: Theme.of(context).colorScheme.surface,
-    builder: (context) => _ConnectionSettingsSheet(initialSettings: settings),
+    builder: (context) => _ConnectionSettingsSheet(
+      initialSettings: settings,
+      recentConnections: recentConnections,
+    ),
   );
 }
 
@@ -217,7 +242,7 @@ class _ReaderHero extends StatelessWidget {
       data: (bundle) => bundle.source == ReaderContentSource.demoFallback
           ? 'Demo reader loaded while the backend is unavailable.'
           : 'Live reader workspace for ${bundle.projectId}.',
-      loading: () => 'Connecting to ${_shortHost(settings.apiBaseUrl)}',
+      loading: () => 'Connecting to ${settings.shortHost}',
       error: (_, _) =>
           'The app can start from GitHub releases and point at your own backend at runtime.',
     );
@@ -294,11 +319,16 @@ class _ReaderHero extends StatelessWidget {
               runSpacing: 10,
               children: [
                 _DiagnosticsChip(label: 'Project ${settings.projectId}'),
-                _DiagnosticsChip(
-                  label: 'Server ${_shortHost(settings.apiBaseUrl)}',
-                ),
+                _DiagnosticsChip(label: 'Server ${settings.shortHost}'),
                 _DiagnosticsChip(
                   label: settings.hasAuthToken ? 'Auth enabled' : 'Auth open',
+                ),
+                _DiagnosticsChip(
+                  label: settings.isLocalhostTarget
+                      ? 'Localhost target'
+                      : settings.usesHttp
+                      ? 'HTTP dev link'
+                      : 'Remote host',
                 ),
                 _DiagnosticsChip(
                   label: playback.themeMode == ThemeMode.light
@@ -319,12 +349,16 @@ class _ReaderStage extends StatelessWidget {
     required this.project,
     required this.playback,
     required this.onRetry,
+    required this.settings,
+    required this.onOpenConnectionSettings,
     required this.onTokenTap,
   });
 
   final AsyncValue<ReaderProjectBundle> project;
   final ReaderPlaybackState playback;
   final VoidCallback onRetry;
+  final RuntimeConnectionSettings settings;
+  final VoidCallback onOpenConnectionSettings;
   final ValueChanged<SyncToken> onTokenTap;
 
   @override
@@ -337,9 +371,13 @@ class _ReaderStage extends StatelessWidget {
           playback: playback,
           onTokenTap: onTokenTap,
         ),
-        loading: () => const _ReaderLoadingView(),
-        error: (error, _) =>
-            _ReaderErrorView(message: error.toString(), onRetry: onRetry),
+        loading: () => _ReaderLoadingView(settings: settings),
+        error: (error, _) => _ReaderErrorView(
+          message: error.toString(),
+          settings: settings,
+          onRetry: onRetry,
+          onOpenConnectionSettings: onOpenConnectionSettings,
+        ),
       ),
     );
   }
@@ -549,9 +587,13 @@ class _ControlDock extends StatelessWidget {
 }
 
 class _ConnectionSettingsSheet extends ConsumerStatefulWidget {
-  const _ConnectionSettingsSheet({required this.initialSettings});
+  const _ConnectionSettingsSheet({
+    required this.initialSettings,
+    required this.recentConnections,
+  });
 
   final RuntimeConnectionSettings initialSettings;
+  final List<RuntimeConnectionSettings> recentConnections;
 
   @override
   ConsumerState<_ConnectionSettingsSheet> createState() =>
@@ -592,6 +634,11 @@ class _ConnectionSettingsSheetState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final currentDraft = RuntimeConnectionSettings(
+      apiBaseUrl: _apiBaseUrlController.text.trim(),
+      projectId: _projectIdController.text.trim(),
+      authToken: _authTokenController.text.trim(),
+    );
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + bottomInset),
@@ -608,6 +655,34 @@ class _ConnectionSettingsSheetState
                 'These values stay on this device only. Point the release APK at your own server, token, and project without rebuilding.',
                 style: theme.textTheme.bodyMedium,
               ),
+              if (_connectionHint(currentDraft) case final hint?) ...[
+                const SizedBox(height: 16),
+                _ConnectionHintBanner(message: hint),
+              ],
+              if (widget.recentConnections.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                Text('Recent Connections', style: theme.textTheme.titleMedium),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (final recent in widget.recentConnections)
+                      ActionChip(
+                        label: Text(
+                          '${recent.shortHost} • ${recent.normalizedProjectId}',
+                        ),
+                        avatar: Icon(
+                          recent.hasAuthToken
+                              ? Icons.lock_outline_rounded
+                              : Icons.public_outlined,
+                          size: 18,
+                        ),
+                        onPressed: () => _applyRecent(recent),
+                      ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 20),
               TextFormField(
                 controller: _apiBaseUrlController,
@@ -629,6 +704,7 @@ class _ConnectionSettingsSheetState
                   }
                   return null;
                 },
+                onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 14),
               TextFormField(
@@ -640,6 +716,7 @@ class _ConnectionSettingsSheetState
                   }
                   return null;
                 },
+                onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 14),
               TextFormField(
@@ -649,6 +726,12 @@ class _ConnectionSettingsSheetState
                   hintText: 'Optional bearer token',
                 ),
                 obscureText: true,
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Privacy: server URL, project ID, and token stay on this device. They are never committed or uploaded by the app.',
+                style: theme.textTheme.bodySmall,
               ),
               const SizedBox(height: 18),
               Wrap(
@@ -672,6 +755,13 @@ class _ConnectionSettingsSheetState
         ),
       ),
     );
+  }
+
+  void _applyRecent(RuntimeConnectionSettings recent) {
+    _apiBaseUrlController.text = recent.normalizedApiBaseUrl;
+    _projectIdController.text = recent.normalizedProjectId;
+    _authTokenController.text = recent.authToken;
+    setState(() {});
   }
 
   Future<void> _save() async {
@@ -716,12 +806,27 @@ class _ConnectionSettingsSheetState
   }
 }
 
-String _shortHost(String apiBaseUrl) {
-  final uri = Uri.tryParse(apiBaseUrl);
-  if (uri == null || uri.host.isEmpty) {
-    return apiBaseUrl;
+String? _connectionHint(RuntimeConnectionSettings settings) {
+  if (settings.normalizedApiBaseUrl.isEmpty) {
+    return null;
   }
-  return uri.hasPort ? '${uri.host}:${uri.port}' : uri.host;
+  if (settings.isLocalhostTarget) {
+    return 'This target uses localhost. On a physical phone, localhost points to the phone itself, not your laptop. Use your LAN or Tailscale host instead.';
+  }
+  if (settings.usesHttp) {
+    return 'This target uses HTTP. That is fine for local development, but deployed environments should use HTTPS so WebSocket traffic upgrades to WSS.';
+  }
+  return null;
+}
+
+String _errorHelp(RuntimeConnectionSettings settings) {
+  if (settings.isLocalhostTarget) {
+    return 'If this is a physical device, replace localhost with your laptop host or Tailscale address, then retry.';
+  }
+  if (!settings.hasAuthToken) {
+    return 'Check that the backend URL and project ID are correct. If your server is protected, add the auth token in Connection settings.';
+  }
+  return 'Check that the backend URL, project ID, and auth token are all correct, then retry the request.';
 }
 
 class _ReaderLoadedView extends StatelessWidget {
@@ -739,31 +844,32 @@ class _ReaderLoadedView extends StatelessWidget {
   Widget build(BuildContext context) {
     if (bundle.readerModel.sections.isEmpty) {
       final palette = ReaderPalette.of(context);
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    bundle.statusMessage ??
-                        'Reader content is not available yet.',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'The backend is reachable, but there is no normalized reader model to render yet.',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
-                  ),
-                ],
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(28, 30, 28, 30),
+          decoration: BoxDecoration(
+            color: palette.backgroundElevated,
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: palette.borderSubtle),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                bundle.statusMessage ?? 'Reader content is not available yet.',
+                style: Theme.of(context).textTheme.headlineSmall,
               ),
-            ),
+              const SizedBox(height: 12),
+              Text(
+                'The backend is reachable, but there is no normalized reader model to render yet. This usually means alignment is still processing or the latest artifact is incomplete.',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+              ),
+            ],
           ),
         ),
       );
@@ -833,39 +939,141 @@ class _ReaderLoadedView extends StatelessWidget {
 }
 
 class _ReaderLoadingView extends StatelessWidget {
-  const _ReaderLoadingView();
+  const _ReaderLoadingView({required this.settings});
+
+  final RuntimeConnectionSettings settings;
 
   @override
   Widget build(BuildContext context) {
-    return const Center(child: CircularProgressIndicator());
+    final palette = ReaderPalette.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(28, 30, 28, 30),
+        decoration: BoxDecoration(
+          color: palette.backgroundElevated,
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: palette.borderSubtle),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 18),
+            Text(
+              'Opening reader workspace',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Connecting to ${settings.shortHost} for project ${settings.normalizedProjectId}.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+            ),
+            if (_connectionHint(settings) case final hint?) ...[
+              const SizedBox(height: 16),
+              _ConnectionHintBanner(message: hint),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
 
 class _ReaderErrorView extends StatelessWidget {
-  const _ReaderErrorView({required this.message, required this.onRetry});
+  const _ReaderErrorView({
+    required this.message,
+    required this.settings,
+    required this.onRetry,
+    required this.onOpenConnectionSettings,
+  });
 
   final String message;
+  final RuntimeConnectionSettings settings;
   final VoidCallback onRetry;
+  final VoidCallback onOpenConnectionSettings;
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
+    final palette = ReaderPalette.of(context);
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(28, 30, 28, 30),
+        decoration: BoxDecoration(
+          color: palette.backgroundElevated,
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: palette.borderSubtle),
+        ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
               'Reader failed to load',
-              style: Theme.of(context).textTheme.headlineMedium,
+              style: Theme.of(context).textTheme.headlineSmall,
             ),
-            const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center),
+            const SizedBox(height: 10),
+            Text(
+              'Current target: ${settings.shortHost} • ${settings.normalizedProjectId}',
+              style: Theme.of(
+                context,
+              ).textTheme.labelLarge?.copyWith(color: palette.textMuted),
+            ),
             const SizedBox(height: 16),
-            FilledButton(onPressed: onRetry, child: const Text('Retry')),
+            Text(message),
+            const SizedBox(height: 16),
+            Text(
+              _errorHelp(settings),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+            ),
+            if (_connectionHint(settings) case final hint?) ...[
+              const SizedBox(height: 16),
+              _ConnectionHintBanner(message: hint),
+            ],
+            const SizedBox(height: 18),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                FilledButton(onPressed: onRetry, child: const Text('Retry')),
+                FilledButton.tonal(
+                  onPressed: onOpenConnectionSettings,
+                  child: const Text('Open Connection'),
+                ),
+              ],
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ConnectionHintBanner extends StatelessWidget {
+  const _ConnectionHintBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: palette.accentSoft,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Text(message, style: Theme.of(context).textTheme.bodyMedium),
     );
   }
 }

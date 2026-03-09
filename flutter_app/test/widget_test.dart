@@ -64,21 +64,31 @@ class _FakePlaybackDriver implements PlaybackDriver {
 
 class _MemoryRuntimeConnectionSettingsStorage
     implements RuntimeConnectionSettingsStorage {
-  _MemoryRuntimeConnectionSettingsStorage();
+  _MemoryRuntimeConnectionSettingsStorage({
+    List<RuntimeConnectionSettings>? recent,
+  }) : _recent = [...?recent];
 
   RuntimeConnectionSettings? _settings = defaultConnectionSettings;
+  final List<RuntimeConnectionSettings> _recent;
 
   @override
   Future<void> clear() async {
     _settings = null;
+    _recent.clear();
   }
 
   @override
   Future<RuntimeConnectionSettings?> load() async => _settings;
 
   @override
+  Future<List<RuntimeConnectionSettings>> loadRecent() async => [..._recent];
+
+  @override
   Future<void> store(RuntimeConnectionSettings settings) async {
     _settings = settings;
+    _recent
+      ..removeWhere((item) => item.identityKey == settings.identityKey)
+      ..insert(0, settings);
   }
 }
 
@@ -371,6 +381,42 @@ void main() {
     expect(find.text('Project private-book'), findsOneWidget);
     expect(find.text('Server sync.example.ts.net'), findsOneWidget);
     expect(find.text('Auth enabled'), findsOneWidget);
+  });
+
+  testWidgets('shows recent connections and localhost guidance', (
+    tester,
+  ) async {
+    final settingsStorage = _MemoryRuntimeConnectionSettingsStorage(
+      recent: const [
+        RuntimeConnectionSettings(
+          apiBaseUrl: 'http://100.64.0.2:8000/v1',
+          projectId: 'tailscale-book',
+          authToken: 'token',
+        ),
+        RuntimeConnectionSettings(
+          apiBaseUrl: 'http://localhost:8000/v1',
+          projectId: 'local-book',
+          authToken: '',
+        ),
+      ],
+    );
+
+    await _pumpReaderApp(
+      tester,
+      repository: _FakeReaderRepository(),
+      settingsStorage: settingsStorage,
+    );
+
+    await tester.tap(find.text('Connection'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Recent Connections'), findsOneWidget);
+    expect(find.text('100.64.0.2:8000 • tailscale-book'), findsOneWidget);
+    expect(find.text('localhost:8000 • local-book'), findsOneWidget);
+    expect(
+      find.textContaining('localhost points to the phone itself'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('shows start book affordance when sync has front matter', (

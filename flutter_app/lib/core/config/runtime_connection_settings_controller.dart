@@ -8,6 +8,26 @@ final runtimeConnectionSettingsStorageProvider =
       (ref) => const FileRuntimeConnectionSettingsStorage(),
     );
 
+final runtimeConnectionSettingsRevisionProvider =
+    NotifierProvider<RuntimeConnectionSettingsRevisionController, int>(
+      RuntimeConnectionSettingsRevisionController.new,
+    );
+
+class RuntimeConnectionSettingsRevisionController extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void bump() {
+    state += 1;
+  }
+}
+
+final recentRuntimeConnectionSettingsProvider =
+    FutureProvider<List<RuntimeConnectionSettings>>((ref) async {
+      ref.watch(runtimeConnectionSettingsRevisionProvider);
+      return ref.watch(runtimeConnectionSettingsStorageProvider).loadRecent();
+    });
+
 final runtimeConnectionSettingsProvider =
     AsyncNotifierProvider<
       RuntimeConnectionSettingsController,
@@ -27,10 +47,12 @@ class RuntimeConnectionSettingsController
   Future<void> save(RuntimeConnectionSettings settings) async {
     state = AsyncData(settings);
     await ref.watch(runtimeConnectionSettingsStorageProvider).store(settings);
+    ref.read(runtimeConnectionSettingsRevisionProvider.notifier).bump();
   }
 
   Future<void> reset() async {
     state = const AsyncData(defaultConnectionSettings);
     await ref.watch(runtimeConnectionSettingsStorageProvider).clear();
+    ref.read(runtimeConnectionSettingsRevisionProvider.notifier).bump();
   }
 }

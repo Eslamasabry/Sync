@@ -9,7 +9,42 @@ class RuntimeConnectionSettings {
   final String projectId;
   final String authToken;
 
+  String get normalizedApiBaseUrl => apiBaseUrl.trim();
+
+  String get normalizedProjectId => projectId.trim();
+
   bool get hasAuthToken => authToken.trim().isNotEmpty;
+
+  bool get isLocalhostTarget {
+    final uri = Uri.tryParse(normalizedApiBaseUrl);
+    if (uri == null) {
+      return false;
+    }
+
+    switch (uri.host) {
+      case 'localhost':
+      case '127.0.0.1':
+      case '::1':
+        return true;
+    }
+    return false;
+  }
+
+  bool get usesHttp {
+    final uri = Uri.tryParse(normalizedApiBaseUrl);
+    return uri?.scheme == 'http';
+  }
+
+  String get shortHost {
+    final uri = Uri.tryParse(normalizedApiBaseUrl);
+    if (uri == null || uri.host.isEmpty) {
+      return normalizedApiBaseUrl;
+    }
+    return uri.hasPort ? '${uri.host}:${uri.port}' : uri.host;
+  }
+
+  String get identityKey =>
+      '${normalizedApiBaseUrl.toLowerCase()}|$normalizedProjectId';
 
   RuntimeConnectionSettings copyWith({
     String? apiBaseUrl,
@@ -17,8 +52,8 @@ class RuntimeConnectionSettings {
     String? authToken,
   }) {
     return RuntimeConnectionSettings(
-      apiBaseUrl: apiBaseUrl ?? this.apiBaseUrl,
-      projectId: projectId ?? this.projectId,
+      apiBaseUrl: apiBaseUrl ?? normalizedApiBaseUrl,
+      projectId: projectId ?? normalizedProjectId,
       authToken: authToken ?? this.authToken,
     );
   }
