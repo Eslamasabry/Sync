@@ -269,7 +269,8 @@ class LibraryScreen extends ConsumerWidget {
                     ),
                     currentSettings.maybeWhen(
                       data: (settings) => OutlinedButton.icon(
-                        onPressed: () => _forgetConnection(context, ref, settings),
+                        onPressed: () =>
+                            _forgetConnection(context, ref, settings),
                         icon: const Icon(Icons.delete_outline_rounded),
                         label: const Text('Forget Target'),
                       ),
@@ -283,7 +284,7 @@ class LibraryScreen extends ConsumerWidget {
                     children: [
                       _ProjectTargetSummary(
                         settings: settings,
-                        onOpen: () => _activateConnection(context, ref, settings),
+                        onOpen: () => _openConnection(context, ref, settings),
                       ),
                       const SizedBox(height: 14),
                       _CurrentTargetOfflineManager(
@@ -312,8 +313,12 @@ class LibraryScreen extends ConsumerWidget {
                 child: recentConnections.when(
                   data: (items) => _ProcessingQueueList(
                     connections: items.take(6).toList(growable: false),
+                    currentIdentityKey:
+                        currentSettings.asData?.value.identityKey,
+                    onSetTarget: (settings) =>
+                        _setConnectionTarget(context, ref, settings),
                     onOpen: (settings) =>
-                        _activateConnection(context, ref, settings),
+                        _openConnection(context, ref, settings),
                   ),
                   loading: () => const Padding(
                     padding: EdgeInsets.symmetric(vertical: 12),
@@ -373,8 +378,11 @@ class LibraryScreen extends ConsumerWidget {
                         for (final item in items.take(6))
                           _ProjectSnapshotTile(
                             settings: item,
-                            onOpen: () =>
-                                _activateConnection(context, ref, item),
+                            currentIdentityKey:
+                                currentSettings.asData?.value.identityKey,
+                            onSetTarget: () =>
+                                _setConnectionTarget(context, ref, item),
+                            onOpen: () => _openConnection(context, ref, item),
                             onForget: () =>
                                 _forgetConnection(context, ref, item),
                           ),
@@ -396,11 +404,13 @@ class LibraryScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _activateConnection(
+  Future<void> _applyConnection(
     BuildContext context,
     WidgetRef ref,
-    RuntimeConnectionSettings settings,
-  ) async {
+    RuntimeConnectionSettings settings, {
+    required bool showReader,
+    required String feedback,
+  }) async {
     await ref.read(runtimeConnectionSettingsProvider.notifier).save(settings);
     ref.invalidate(projectIdProvider);
     ref.invalidate(syncApiClientProvider);
@@ -409,17 +419,46 @@ class LibraryScreen extends ConsumerWidget {
     ref.invalidate(readerProjectProvider);
     ref.invalidate(projectEventsProvider);
     ref.invalidate(latestProjectEventProvider);
+    ref.invalidate(libraryOfflineSnapshotProvider(settings));
     ref.read(readerPlaybackProvider.notifier).resetForProject();
-    ref.read(homeTabProvider.notifier).showReader();
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Opened ${settings.normalizedProjectId} on ${settings.shortHost}.',
-          ),
-        ),
-      );
+    if (showReader) {
+      ref.read(homeTabProvider.notifier).showReader();
     }
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(feedback)));
+    }
+  }
+
+  Future<void> _openConnection(
+    BuildContext context,
+    WidgetRef ref,
+    RuntimeConnectionSettings settings,
+  ) async {
+    await _applyConnection(
+      context,
+      ref,
+      settings,
+      showReader: true,
+      feedback:
+          'Opened ${settings.normalizedProjectId} on ${settings.shortHost}.',
+    );
+  }
+
+  Future<void> _setConnectionTarget(
+    BuildContext context,
+    WidgetRef ref,
+    RuntimeConnectionSettings settings,
+  ) async {
+    await _applyConnection(
+      context,
+      ref,
+      settings,
+      showReader: false,
+      feedback:
+          'Set ${settings.normalizedProjectId} on ${settings.shortHost} as the current target.',
+    );
   }
 
   Future<void> _forgetConnection(
@@ -463,7 +502,7 @@ class LibraryScreen extends ConsumerWidget {
       projectId: snapshot.projectId,
       authToken: current.authToken,
     );
-    await _activateConnection(context, ref, settings);
+    await _openConnection(context, ref, settings);
   }
 }
 
@@ -954,45 +993,42 @@ class _ImportWorkflowRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = ReaderPalette.of(context);
-    final steps = <({
-      String label,
-      String description,
-      bool complete,
-      bool active,
-    })>[
-      (
-        label: 'Draft',
-        description: 'Attach EPUB and audio',
-        complete: state.epubFile != null && state.audioFiles.isNotEmpty,
-        active:
-            state.status == LibraryImportStatus.idle ||
-            state.status == LibraryImportStatus.picking ||
-            state.status == LibraryImportStatus.ready ||
-            state.status == LibraryImportStatus.failed,
-      ),
-      (
-        label: 'Project',
-        description: 'Create the project shell',
-        complete:
-            state.projectId != null &&
-            state.status.index > LibraryImportStatus.creatingProject.index,
-        active: state.status == LibraryImportStatus.creatingProject,
-      ),
-      (
-        label: 'Upload',
-        description: 'Send EPUB and audio assets',
-        complete: state.status.index > LibraryImportStatus.uploadingAudio.index,
-        active:
-            state.status == LibraryImportStatus.uploadingEpub ||
-            state.status == LibraryImportStatus.uploadingAudio,
-      ),
-      (
-        label: 'Align',
-        description: 'Start the sync job',
-        complete: state.status == LibraryImportStatus.completed,
-        active: state.status == LibraryImportStatus.startingJob,
-      ),
-    ];
+    final steps =
+        <({String label, String description, bool complete, bool active})>[
+          (
+            label: 'Draft',
+            description: 'Attach EPUB and audio',
+            complete: state.epubFile != null && state.audioFiles.isNotEmpty,
+            active:
+                state.status == LibraryImportStatus.idle ||
+                state.status == LibraryImportStatus.picking ||
+                state.status == LibraryImportStatus.ready ||
+                state.status == LibraryImportStatus.failed,
+          ),
+          (
+            label: 'Project',
+            description: 'Create the project shell',
+            complete:
+                state.projectId != null &&
+                state.status.index > LibraryImportStatus.creatingProject.index,
+            active: state.status == LibraryImportStatus.creatingProject,
+          ),
+          (
+            label: 'Upload',
+            description: 'Send EPUB and audio assets',
+            complete:
+                state.status.index > LibraryImportStatus.uploadingAudio.index,
+            active:
+                state.status == LibraryImportStatus.uploadingEpub ||
+                state.status == LibraryImportStatus.uploadingAudio,
+          ),
+          (
+            label: 'Align',
+            description: 'Start the sync job',
+            complete: state.status == LibraryImportStatus.completed,
+            active: state.status == LibraryImportStatus.startingJob,
+          ),
+        ];
 
     return Container(
       width: double.infinity,
@@ -1119,7 +1155,8 @@ class _ImportCompletionBanner extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = ReaderPalette.of(context);
     final connection = ref.watch(runtimeConnectionSettingsProvider);
-    final importedSettings = connection.asData?.value == null || state.projectId == null
+    final importedSettings =
+        connection.asData?.value == null || state.projectId == null
         ? null
         : RuntimeConnectionSettings(
             apiBaseUrl: connection.asData!.value.apiBaseUrl,
@@ -1232,16 +1269,8 @@ class _ImportStepRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final steps = [
-      (
-        title: 'Book',
-        caption: 'Name the project and set language.',
-        index: 0,
-      ),
-      (
-        title: 'Files',
-        caption: 'Attach EPUB and audiobook sources.',
-        index: 1,
-      ),
+      (title: 'Book', caption: 'Name the project and set language.', index: 0),
+      (title: 'Files', caption: 'Attach EPUB and audiobook sources.', index: 1),
       (
         title: 'Align',
         caption: 'Create the project and start syncing.',
@@ -1398,10 +1427,7 @@ class _ImportFileTile extends StatelessWidget {
 }
 
 class _LibraryBookTile extends StatelessWidget {
-  const _LibraryBookTile({
-    required this.snapshot,
-    required this.onResume,
-  });
+  const _LibraryBookTile({required this.snapshot, required this.onResume});
 
   final ReaderLocationSnapshot snapshot;
   final VoidCallback onResume;
@@ -1494,9 +1520,9 @@ class _ProjectTargetSummary extends ConsumerWidget {
           const SizedBox(height: 8),
           Text(
             value.statusNarrative,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: ReaderPalette.of(context).textMuted),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: ReaderPalette.of(context).textMuted,
+            ),
           ),
           if (value.latestJobPercent != null) ...[
             const SizedBox(height: 12),
@@ -1614,7 +1640,9 @@ class _CurrentTargetOfflineManager extends ConsumerWidget {
           onPressed: downloadState.isBusy ? null : onDownload,
           icon: const Icon(Icons.download_for_offline_rounded),
           label: Text(
-            bundle.cachedAudioAssets > 0 ? 'Download Remaining' : 'Download Audio',
+            bundle.cachedAudioAssets > 0
+                ? 'Download Remaining'
+                : 'Download Audio',
           ),
         ),
       ];
@@ -1631,7 +1659,10 @@ class _CurrentTargetOfflineManager extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Offline Manager', style: Theme.of(context).textTheme.labelLarge),
+          Text(
+            'Offline Manager',
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
           const SizedBox(height: 8),
           Text(
             message,
@@ -1648,7 +1679,8 @@ class _CurrentTargetOfflineManager extends ConsumerWidget {
               ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
             ),
           ],
-          if (downloadState.status == ReaderAudioDownloadStatus.downloading) ...[
+          if (downloadState.status ==
+              ReaderAudioDownloadStatus.downloading) ...[
             const SizedBox(height: 12),
             LinearProgressIndicator(value: downloadState.progress),
           ],
@@ -1658,15 +1690,14 @@ class _CurrentTargetOfflineManager extends ConsumerWidget {
             runSpacing: 8,
             children: [
               ...offline.maybeWhen(
-                data: (value) => _offlineStatusChips(
-                  value,
-                  bundle?.totalAudioAssets ?? 0,
-                ),
+                data: (value) =>
+                    _offlineStatusChips(value, bundle?.totalAudioAssets ?? 0),
                 orElse: () => const <Widget>[],
               ),
               if (bundle != null)
                 _LibraryStatusChip(
-                  label: 'Audio ${bundle.cachedAudioAssets}/${bundle.totalAudioAssets}',
+                  label:
+                      'Audio ${bundle.cachedAudioAssets}/${bundle.totalAudioAssets}',
                 ),
             ],
           ),
@@ -1681,9 +1712,16 @@ class _CurrentTargetOfflineManager extends ConsumerWidget {
 }
 
 class _ProcessingQueueList extends StatelessWidget {
-  const _ProcessingQueueList({required this.connections, required this.onOpen});
+  const _ProcessingQueueList({
+    required this.connections,
+    required this.currentIdentityKey,
+    required this.onSetTarget,
+    required this.onOpen,
+  });
 
   final List<RuntimeConnectionSettings> connections;
+  final String? currentIdentityKey;
+  final ValueChanged<RuntimeConnectionSettings> onSetTarget;
   final ValueChanged<RuntimeConnectionSettings> onOpen;
 
   @override
@@ -1699,6 +1737,8 @@ class _ProcessingQueueList extends StatelessWidget {
         for (final connection in connections)
           _QueueSnapshotTile(
             settings: connection,
+            isCurrentTarget: connection.identityKey == currentIdentityKey,
+            onSetTarget: () => onSetTarget(connection),
             onOpen: () => onOpen(connection),
           ),
       ],
@@ -1707,9 +1747,16 @@ class _ProcessingQueueList extends StatelessWidget {
 }
 
 class _QueueSnapshotTile extends ConsumerWidget {
-  const _QueueSnapshotTile({required this.settings, required this.onOpen});
+  const _QueueSnapshotTile({
+    required this.settings,
+    required this.isCurrentTarget,
+    required this.onSetTarget,
+    required this.onOpen,
+  });
 
   final RuntimeConnectionSettings settings;
+  final bool isCurrentTarget;
+  final VoidCallback onSetTarget;
   final VoidCallback onOpen;
 
   @override
@@ -1756,9 +1803,9 @@ class _QueueSnapshotTile extends ConsumerWidget {
                     const SizedBox(height: 6),
                     Text(
                       value.statusHeadline,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.labelLarge?.copyWith(color: palette.textPrimary),
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: palette.textPrimary,
+                      ),
                     ),
                     if (value.latestJobPercent != null) ...[
                       const SizedBox(height: 10),
@@ -1771,11 +1818,37 @@ class _QueueSnapshotTile extends ConsumerWidget {
                         percent: value.latestJobPercent!,
                       ),
                     ],
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        if (isCurrentTarget)
+                          const _LibraryStatusChip(label: 'Current target'),
+                        _LibraryStatusChip(
+                          label:
+                              '${value.audioAssetCount} audio • ${value.epubAssetCount} EPUB',
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
               const SizedBox(width: 12),
-              FilledButton.tonal(onPressed: onOpen, child: const Text('Open')),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (!isCurrentTarget)
+                    TextButton(
+                      onPressed: onSetTarget,
+                      child: const Text('Set Target'),
+                    ),
+                  FilledButton.tonal(
+                    onPressed: onOpen,
+                    child: const Text('Reader'),
+                  ),
+                ],
+              ),
             ],
           ),
         );
@@ -1789,11 +1862,15 @@ class _QueueSnapshotTile extends ConsumerWidget {
 class _ProjectSnapshotTile extends ConsumerWidget {
   const _ProjectSnapshotTile({
     required this.settings,
+    required this.currentIdentityKey,
+    required this.onSetTarget,
     required this.onOpen,
     required this.onForget,
   });
 
   final RuntimeConnectionSettings settings;
+  final String? currentIdentityKey;
+  final VoidCallback onSetTarget;
   final VoidCallback onOpen;
   final VoidCallback onForget;
 
@@ -1807,6 +1884,8 @@ class _ProjectSnapshotTile extends ConsumerWidget {
         settings: settings,
         value: value,
         offline: offline,
+        isCurrentTarget: settings.identityKey == currentIdentityKey,
+        onSetTarget: onSetTarget,
         onOpen: onOpen,
         onForget: onForget,
       ),
@@ -1841,6 +1920,8 @@ class _ProjectSnapshotCard extends StatelessWidget {
     required this.settings,
     required this.value,
     required this.offline,
+    required this.isCurrentTarget,
+    required this.onSetTarget,
     required this.onOpen,
     required this.onForget,
   });
@@ -1848,6 +1929,8 @@ class _ProjectSnapshotCard extends StatelessWidget {
   final RuntimeConnectionSettings settings;
   final LibraryProjectSnapshot value;
   final AsyncValue<LibraryOfflineSnapshot> offline;
+  final bool isCurrentTarget;
+  final VoidCallback onSetTarget;
   final VoidCallback onOpen;
   final VoidCallback onForget;
 
@@ -1908,9 +1991,9 @@ class _ProjectSnapshotCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       value.statusNarrative,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: palette.textMuted,
+                      ),
                     ),
                   ],
                 ),
@@ -1922,6 +2005,8 @@ class _ProjectSnapshotCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
+              if (isCurrentTarget)
+                const _LibraryStatusChip(label: 'Current target'),
               _LibraryStatusChip(label: value.projectStatusLabel),
               if (value.latestJobLabel case final jobLabel?)
                 _LibraryStatusChip(label: jobLabel),
@@ -1935,6 +2020,8 @@ class _ProjectSnapshotCard extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          _ProjectSnapshotSummaryRow(value: value, offline: offline),
           if (value.latestJobPercent != null) ...[
             const SizedBox(height: 12),
             _LibraryProgressMeter(
@@ -1950,16 +2037,124 @@ class _ProjectSnapshotCard extends StatelessWidget {
           Row(
             children: [
               TextButton(
-                onPressed: () => _showProjectDetailsSheet(context, value),
+                onPressed: () => _showProjectDetailsSheet(
+                  context,
+                  value,
+                  isCurrentTarget: isCurrentTarget,
+                  onSetTarget: onSetTarget,
+                  onOpenReader: onOpen,
+                ),
                 child: const Text('Workspace'),
               ),
-              TextButton(
-                onPressed: onForget,
-                child: const Text('Forget'),
-              ),
+              if (!isCurrentTarget)
+                TextButton(
+                  onPressed: onSetTarget,
+                  child: const Text('Set Target'),
+                ),
+              TextButton(onPressed: onForget, child: const Text('Forget')),
               const Spacer(),
-              FilledButton.tonal(onPressed: onOpen, child: const Text('Open')),
+              FilledButton.tonal(
+                onPressed: onOpen,
+                child: const Text('Reader'),
+              ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProjectSnapshotSummaryRow extends StatelessWidget {
+  const _ProjectSnapshotSummaryRow({
+    required this.value,
+    required this.offline,
+  });
+
+  final LibraryProjectSnapshot value;
+  final AsyncValue<LibraryOfflineSnapshot> offline;
+
+  @override
+  Widget build(BuildContext context) {
+    final offlineValue = offline.asData?.value;
+    final cards = <Widget>[
+      _ProjectMicroStat(
+        label: 'Server payload',
+        value: _formatBytes(value.totalSizeBytes),
+        hint: '${value.assetCount} assets on backend',
+      ),
+      _ProjectMicroStat(
+        label: 'Offline footprint',
+        value: offlineValue == null
+            ? 'Checking...'
+            : offlineValue.cachedAudioBytes > 0
+            ? _formatBytes(offlineValue.cachedAudioBytes)
+            : offlineValue.hasTextCache
+            ? 'Text only'
+            : 'Not cached',
+        hint: offlineValue == null
+            ? 'Inspecting local device state'
+            : offlineValue.offlineNarrative(value.audioAssetCount),
+      ),
+      _ProjectMicroStat(
+        label: 'Last movement',
+        value: value.updatedAt == null
+            ? 'Unknown'
+            : _formatTimestamp(value.updatedAt!),
+        hint: value.latestJobStatus == null
+            ? 'No recorded alignment attempt'
+            : value.statusHeadline,
+      ),
+    ];
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: cards
+          .map((card) => SizedBox(width: 180, child: card))
+          .toList(growable: false),
+    );
+  }
+}
+
+class _ProjectMicroStat extends StatelessWidget {
+  const _ProjectMicroStat({
+    required this.label,
+    required this.value,
+    required this.hint,
+  });
+
+  final String label;
+  final String value;
+  final String hint;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      decoration: BoxDecoration(
+        color: palette.backgroundElevated,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.labelMedium?.copyWith(color: palette.textMuted),
+          ),
+          const SizedBox(height: 6),
+          Text(value, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 6),
+          Text(
+            hint,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
           ),
         ],
       ),
@@ -2033,21 +2228,37 @@ class _LibraryProgressMeter extends StatelessWidget {
 
 Future<void> _showProjectDetailsSheet(
   BuildContext context,
-  LibraryProjectSnapshot snapshot,
-) {
+  LibraryProjectSnapshot snapshot, {
+  required bool isCurrentTarget,
+  required VoidCallback onSetTarget,
+  required VoidCallback onOpenReader,
+}) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
     backgroundColor: Theme.of(context).colorScheme.surface,
-    builder: (context) => _ProjectDetailsSheet(snapshot: snapshot),
+    builder: (context) => _ProjectDetailsSheet(
+      snapshot: snapshot,
+      isCurrentTarget: isCurrentTarget,
+      onSetTarget: onSetTarget,
+      onOpenReader: onOpenReader,
+    ),
   );
 }
 
 class _ProjectDetailsSheet extends StatelessWidget {
-  const _ProjectDetailsSheet({required this.snapshot});
+  const _ProjectDetailsSheet({
+    required this.snapshot,
+    required this.isCurrentTarget,
+    required this.onSetTarget,
+    required this.onOpenReader,
+  });
 
   final LibraryProjectSnapshot snapshot;
+  final bool isCurrentTarget;
+  final VoidCallback onSetTarget;
+  final VoidCallback onOpenReader;
 
   @override
   Widget build(BuildContext context) {
@@ -2059,7 +2270,6 @@ class _ProjectDetailsSheet extends StatelessWidget {
         );
         final jobs = ref.watch(libraryProjectJobsProvider(snapshot.settings));
         final theme = Theme.of(context);
-        final homeTab = ref.read(homeTabProvider.notifier);
         return DraggableScrollableSheet(
           expand: false,
           initialChildSize: 0.84,
@@ -2132,9 +2342,8 @@ class _ProjectDetailsSheet extends StatelessWidget {
                       padding: EdgeInsets.symmetric(vertical: 12),
                       child: LinearProgressIndicator(),
                     ),
-                    error: (error, _) => Text(
-                      'Could not load job history. $error',
-                    ),
+                    error: (error, _) =>
+                        Text('Could not load job history. $error'),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -2143,19 +2352,8 @@ class _ProjectDetailsSheet extends StatelessWidget {
                   runSpacing: 10,
                   children: [
                     FilledButton.tonalIcon(
-                      onPressed: () async {
-                        await ref
-                            .read(runtimeConnectionSettingsProvider.notifier)
-                            .save(snapshot.settings);
-                        ref.invalidate(projectIdProvider);
-                        ref.invalidate(syncApiClientProvider);
-                        ref.invalidate(projectEventsClientProvider);
-                        ref.invalidate(readerRepositoryProvider);
-                        ref.invalidate(readerProjectProvider);
-                        ref.invalidate(projectEventsProvider);
-                        ref.invalidate(latestProjectEventProvider);
-                        ref.read(readerPlaybackProvider.notifier).resetForProject();
-                        homeTab.showReader();
+                      onPressed: () {
+                        onOpenReader();
                         if (context.mounted) {
                           Navigator.of(context).pop();
                         }
@@ -2163,6 +2361,17 @@ class _ProjectDetailsSheet extends StatelessWidget {
                       icon: const Icon(Icons.chrome_reader_mode_rounded),
                       label: const Text('Open In Reader'),
                     ),
+                    if (!isCurrentTarget)
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          onSetTarget();
+                          if (context.mounted) {
+                            Navigator.of(context).pop();
+                          }
+                        },
+                        icon: const Icon(Icons.radio_button_checked_rounded),
+                        label: const Text('Set As Current Target'),
+                      ),
                     OutlinedButton.icon(
                       onPressed: () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
@@ -2195,10 +2404,7 @@ class _ProjectDetailHero extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            palette.backgroundElevated,
-            palette.backgroundBase,
-          ],
+          colors: [palette.backgroundElevated, palette.backgroundBase],
         ),
         border: Border.all(color: palette.borderSubtle),
       ),
@@ -2214,7 +2420,9 @@ class _ProjectDetailHero extends StatelessWidget {
                 _LibraryStatusChip(label: jobLabel),
               _LibraryStatusChip(label: '${snapshot.assetCount} assets'),
               if (snapshot.latestJobAttempt != null)
-                _LibraryStatusChip(label: 'Attempt ${snapshot.latestJobAttempt}'),
+                _LibraryStatusChip(
+                  label: 'Attempt ${snapshot.latestJobAttempt}',
+                ),
             ],
           ),
           const SizedBox(height: 14),
@@ -2291,7 +2499,8 @@ class _ProjectMetadataGrid extends StatelessWidget {
       ),
       _ProjectMetaCard(
         label: 'Assets',
-        value: '${snapshot.epubAssetCount} EPUB / ${snapshot.audioAssetCount} audio',
+        value:
+            '${snapshot.epubAssetCount} EPUB / ${snapshot.audioAssetCount} audio',
         hint: _formatBytes(snapshot.totalSizeBytes),
       ),
       _ProjectMetaCard(
@@ -2321,12 +2530,7 @@ class _ProjectMetadataGrid extends StatelessWidget {
       spacing: 12,
       runSpacing: 12,
       children: cards
-          .map(
-            (card) => SizedBox(
-              width: 240,
-              child: card,
-            ),
-          )
+          .map((card) => SizedBox(width: 240, child: card))
           .toList(growable: false),
     );
   }
@@ -2416,10 +2620,7 @@ class _ProjectStatusStory extends StatelessWidget {
 }
 
 class _ProjectOfflineStory extends StatelessWidget {
-  const _ProjectOfflineStory({
-    required this.snapshot,
-    required this.offline,
-  });
+  const _ProjectOfflineStory({required this.snapshot, required this.offline});
 
   final LibraryProjectSnapshot snapshot;
   final LibraryOfflineSnapshot offline;
@@ -2672,6 +2873,26 @@ extension on LibraryProjectSnapshot {
       return '$normalizedStatus • $percent%';
     }
     return normalizedStatus;
+  }
+}
+
+extension on LibraryOfflineSnapshot {
+  String offlineNarrative(int expectedAudioAssets) {
+    if (!hasTextCache && cachedAudioAssets == 0) {
+      return 'No device cache yet';
+    }
+    if (expectedAudioAssets <= 0) {
+      return hasTextCache ? 'Reader data saved locally' : 'No audio in project';
+    }
+    if (cachedAudioAssets >= expectedAudioAssets) {
+      return 'Full text and audio offline';
+    }
+    if (cachedAudioAssets > 0) {
+      return '$cachedAudioAssets of $expectedAudioAssets audio files saved';
+    }
+    return hasTextCache
+        ? 'Text saved, audio still streaming'
+        : 'Audio still streaming';
   }
 }
 

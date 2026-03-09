@@ -34,6 +34,11 @@ class _MemoryRuntimeConnectionSettingsStorage
       projectId: 'demo-book',
       authToken: '',
     ),
+    RuntimeConnectionSettings(
+      apiBaseUrl: 'http://sync.example.test/v1',
+      projectId: 'mars-book',
+      authToken: '',
+    ),
   ];
 
   @override
@@ -77,7 +82,9 @@ class _FakeLibraryProjectSummaryLoader implements LibraryProjectSummaryLoader {
   ) async {
     return LibraryProjectSnapshot(
       settings: settings,
-      title: 'Demo Project',
+      title: settings.projectId == 'mars-book'
+          ? 'Mars Project'
+          : 'Demo Project',
       language: 'en',
       projectStatus: 'ready',
       assetCount: 2,
@@ -226,10 +233,18 @@ void main() {
       expect(find.textContaining('Running'), findsWidgets);
       expect(find.text('Text cached'), findsWidgets);
       expect(find.text('Audio offline'), findsWidgets);
-      expect(find.text('Workspace'), findsOneWidget);
-      expect(find.text('Forget'), findsOneWidget);
+      expect(find.text('Current target'), findsWidgets);
+      expect(find.text('Workspace'), findsWidgets);
+      expect(find.text('Forget'), findsWidgets);
+      expect(find.text('Set Target'), findsWidgets);
 
-      await tester.tap(find.text('Workspace').first);
+      await tester.scrollUntilVisible(
+        find.text('Workspace').first,
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Workspace').first, warnIfMissed: false);
       await tester.pumpAndSettle();
 
       expect(find.text('Overview'), findsOneWidget);
