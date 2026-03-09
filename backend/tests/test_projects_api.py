@@ -21,7 +21,8 @@ from sync_backend.api.realtime import broker
 from sync_backend.config import get_settings
 from sync_backend.db import get_session_factory, reset_db_caches
 from sync_backend.main import create_app
-from sync_backend.models import AlignmentJob
+from sync_backend.models import AlignmentJob, TranscriptArtifact
+from sync_backend.services import cancel_job
 from sync_backend.storage import get_object_store
 
 
@@ -83,6 +84,37 @@ def make_test_wav_bytes(duration_seconds: float = 1.2, sample_rate: int = 16_000
     return buffer.getvalue()
 
 
+def upload_test_epub_asset(
+    client: TestClient,
+    *,
+    project_id: str,
+    filename: str = "book.epub",
+) -> str:
+    response = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "epub"},
+        files={"file": (filename, make_test_epub_bytes(), "application/epub+zip")},
+    )
+    assert response.status_code == 201
+    return response.json()["asset_id"]
+
+
+def upload_test_audio_asset(
+    client: TestClient,
+    *,
+    project_id: str,
+    filename: str = "audio.wav",
+    duration_seconds: float = 1.2,
+) -> str:
+    response = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "audio"},
+        files={"file": (filename, make_test_wav_bytes(duration_seconds), "audio/wav")},
+    )
+    assert response.status_code == 201
+    return response.json()["asset_id"]
+
+
 def test_project_asset_job_flow(client: TestClient) -> None:
     project_response = client.post(
         "/v1/projects",
@@ -91,27 +123,16 @@ def test_project_asset_job_flow(client: TestClient) -> None:
     assert project_response.status_code == 201
     project_id = project_response.json()["project_id"]
 
-    epub_response = client.post(
-        f"/v1/projects/{project_id}/assets",
-        json={
-            "kind": "epub",
-            "filename": "moby-dick.epub",
-            "content_type": "application/epub+zip",
-        },
+    epub_asset_id = upload_test_epub_asset(
+        client,
+        project_id=project_id,
+        filename="moby-dick.epub",
     )
-    assert epub_response.status_code == 201
-    epub_asset_id = epub_response.json()["asset_id"]
-
-    audio_response = client.post(
-        f"/v1/projects/{project_id}/assets",
-        json={
-            "kind": "audio",
-            "filename": "moby-dick.mp3",
-            "content_type": "audio/mpeg",
-        },
+    audio_asset_id = upload_test_audio_asset(
+        client,
+        project_id=project_id,
+        filename="moby-dick.wav",
     )
-    assert audio_response.status_code == 201
-    audio_asset_id = audio_response.json()["asset_id"]
 
     job_response = client.post(
         f"/v1/projects/{project_id}/jobs",
@@ -157,31 +178,22 @@ def test_project_job_history_returns_reverse_chronological_jobs(client: TestClie
         json={"title": "History Project", "language": "en"},
     ).json()["project_id"]
 
-    epub_asset_id = client.post(
-        f"/v1/projects/{project_id}/assets",
-        json={
-            "kind": "epub",
-            "filename": "history.epub",
-            "content_type": "application/epub+zip",
-        },
-    ).json()["asset_id"]
+    epub_asset_id = upload_test_epub_asset(
+        client,
+        project_id=project_id,
+        filename="history.epub",
+    )
 
-    first_audio_asset_id = client.post(
-        f"/v1/projects/{project_id}/assets",
-        json={
-            "kind": "audio",
-            "filename": "history-1.mp3",
-            "content_type": "audio/mpeg",
-        },
-    ).json()["asset_id"]
-    second_audio_asset_id = client.post(
-        f"/v1/projects/{project_id}/assets",
-        json={
-            "kind": "audio",
-            "filename": "history-2.mp3",
-            "content_type": "audio/mpeg",
-        },
-    ).json()["asset_id"]
+    first_audio_asset_id = upload_test_audio_asset(
+        client,
+        project_id=project_id,
+        filename="history-1.wav",
+    )
+    second_audio_asset_id = upload_test_audio_asset(
+        client,
+        project_id=project_id,
+        filename="history-2.wav",
+    )
 
     first_job_id = client.post(
         f"/v1/projects/{project_id}/jobs",
@@ -415,22 +427,16 @@ def test_create_job_dispatches_inline_execution_when_configured(
             json={"title": "Inline Dispatch Project", "language": "en"},
         ).json()["project_id"]
 
-        book_asset_id = inline_client.post(
-            f"/v1/projects/{project_id}/assets",
-            json={
-                "kind": "epub",
-                "filename": "book.epub",
-                "content_type": "application/epub+zip",
-            },
-        ).json()["asset_id"]
-        audio_asset_id = inline_client.post(
-            f"/v1/projects/{project_id}/assets",
-            json={
-                "kind": "audio",
-                "filename": "book.wav",
-                "content_type": "audio/wav",
-            },
-        ).json()["asset_id"]
+        book_asset_id = upload_test_epub_asset(
+            inline_client,
+            project_id=project_id,
+            filename="book.epub",
+        )
+        audio_asset_id = upload_test_audio_asset(
+            inline_client,
+            project_id=project_id,
+            filename="book.wav",
+        )
 
         response = inline_client.post(
             f"/v1/projects/{project_id}/jobs",
@@ -475,22 +481,16 @@ def test_duplicate_job_request_reuses_existing_job_without_redispatch(
             json={"title": "Idempotent Dispatch Project", "language": "en"},
         ).json()["project_id"]
 
-        book_asset_id = inline_client.post(
-            f"/v1/projects/{project_id}/assets",
-            json={
-                "kind": "epub",
-                "filename": "book.epub",
-                "content_type": "application/epub+zip",
-            },
-        ).json()["asset_id"]
-        audio_asset_id = inline_client.post(
-            f"/v1/projects/{project_id}/assets",
-            json={
-                "kind": "audio",
-                "filename": "book.wav",
-                "content_type": "audio/wav",
-            },
-        ).json()["asset_id"]
+        book_asset_id = upload_test_epub_asset(
+            inline_client,
+            project_id=project_id,
+            filename="book.epub",
+        )
+        audio_asset_id = upload_test_audio_asset(
+            inline_client,
+            project_id=project_id,
+            filename="book.wav",
+        )
 
         payload = {
             "job_type": "alignment",
@@ -515,22 +515,16 @@ def test_failed_job_request_creates_retry_attempt(client: TestClient) -> None:
         "/v1/projects",
         json={"title": "Retry Project", "language": "en"},
     ).json()["project_id"]
-    book_asset_id = client.post(
-        f"/v1/projects/{project_id}/assets",
-        json={
-            "kind": "epub",
-            "filename": "book.epub",
-            "content_type": "application/epub+zip",
-        },
-    ).json()["asset_id"]
-    audio_asset_id = client.post(
-        f"/v1/projects/{project_id}/assets",
-        json={
-            "kind": "audio",
-            "filename": "book.wav",
-            "content_type": "audio/wav",
-        },
-    ).json()["asset_id"]
+    book_asset_id = upload_test_epub_asset(
+        client,
+        project_id=project_id,
+        filename="book.epub",
+    )
+    audio_asset_id = upload_test_audio_asset(
+        client,
+        project_id=project_id,
+        filename="book.wav",
+    )
 
     payload = {
         "job_type": "alignment",
@@ -577,28 +571,16 @@ def test_transcription_pipeline_generates_transcript_artifact(client: TestClient
         json={"title": "Audio Project", "language": "en"},
     ).json()["project_id"]
 
-    epub_asset_id = client.post(
-        f"/v1/projects/{project_id}/assets",
-        json={
-            "kind": "epub",
-            "filename": "book.epub",
-            "content_type": "application/epub+zip",
-        },
-    ).json()["asset_id"]
-
-    audio_upload = client.post(
-        f"/v1/projects/{project_id}/assets/upload",
-        data={"kind": "audio"},
-        files={
-            "file": (
-                "narration.wav",
-                make_test_wav_bytes(),
-                "audio/wav",
-            )
-        },
+    epub_asset_id = upload_test_epub_asset(
+        client,
+        project_id=project_id,
+        filename="book.epub",
     )
-    assert audio_upload.status_code == 201
-    audio_asset_id = audio_upload.json()["asset_id"]
+    audio_asset_id = upload_test_audio_asset(
+        client,
+        project_id=project_id,
+        filename="narration.wav",
+    )
 
     job_id = client.post(
         f"/v1/projects/{project_id}/jobs",
@@ -967,6 +949,14 @@ def test_artifact_routes_expose_download_urls_and_content(client: TestClient) ->
     assert transcript_content.status_code == 200
     assert match_content.status_code == 200
     assert sync_content.status_code == 200
+    assert int(reader_model_content.headers["content-length"]) > 0
+    assert int(transcript_content.headers["content-length"]) > 0
+    assert int(match_content.headers["content-length"]) > 0
+    assert int(sync_content.headers["content-length"]) > 0
+    assert reader_model_content.headers["accept-ranges"] == "bytes"
+    assert transcript_content.headers["accept-ranges"] == "bytes"
+    assert match_content.headers["accept-ranges"] == "bytes"
+    assert sync_content.headers["accept-ranges"] == "bytes"
 
     assert reader_model_content.json()["book_id"] == project_id
     assert transcript_content.json()["job_id"] == job_id
@@ -981,6 +971,65 @@ def test_sync_route_distinguishes_missing_project_from_missing_artifact(
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "project_not_found"
+
+
+def test_artifact_routes_return_typed_error_when_blob_is_missing(client: TestClient) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Missing Blob Project", "language": "en"},
+    ).json()["project_id"]
+
+    upload_test_epub_asset(client, project_id=project_id, filename="book.epub")
+    audio_asset_id = upload_test_audio_asset(
+        client,
+        project_id=project_id,
+        filename="narration.wav",
+    )
+
+    project_detail = client.get(f"/v1/projects/{project_id}").json()
+    book_asset_id = next(
+        asset["asset_id"] for asset in project_detail["assets"] if asset["kind"] == "epub"
+    )
+    job_id = client.post(
+        f"/v1/projects/{project_id}/jobs",
+        json={
+            "job_type": "alignment",
+            "book_asset_id": book_asset_id,
+            "audio_asset_ids": [audio_asset_id],
+        },
+    ).json()["job_id"]
+
+    settings = get_settings()
+    session = get_session_factory()()
+    try:
+        transcribe_alignment_job(
+            session=session,
+            project_id=project_id,
+            job_id=job_id,
+            object_store=get_object_store(),
+            preprocessor=AudioPreprocessor(
+                object_store=get_object_store(),
+                ffmpeg_bin=settings.ffmpeg_bin,
+                ffprobe_bin=settings.ffprobe_bin,
+                chunk_duration_ms=500,
+            ),
+            transcriber=StaticTranscriber("call me ishmael"),
+        )
+        transcript_artifact = session.query(TranscriptArtifact).filter_by(job_id=job_id).one()
+        with get_object_store().materialize_file(transcript_artifact.storage_path) as blob_path:
+            blob_path.unlink()
+    finally:
+        session.close()
+
+    transcript_response = client.get(f"/v1/projects/{project_id}/jobs/{job_id}/transcript")
+    transcript_content_response = client.get(
+        f"/v1/projects/{project_id}/jobs/{job_id}/transcript/content"
+    )
+
+    assert transcript_response.status_code == 409
+    assert transcript_content_response.status_code == 409
+    assert transcript_response.json()["error"]["code"] == "artifact_content_missing"
+    assert transcript_content_response.json()["error"]["code"] == "artifact_content_missing"
 
 
 def test_alignment_pipeline_completes_job_and_offsets_multiple_audio_assets(
@@ -1077,10 +1126,10 @@ def test_job_creation_requires_epub_asset(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "asset_missing"
 
 
-def test_job_events_stream_over_websocket(client: TestClient) -> None:
+def test_job_creation_requires_uploaded_assets(client: TestClient) -> None:
     project_id = client.post(
         "/v1/projects",
-        json={"title": "Realtime Project"},
+        json={"title": "Pending Upload Project"},
     ).json()["project_id"]
     epub_asset_id = client.post(
         f"/v1/projects/{project_id}/assets",
@@ -1090,14 +1139,41 @@ def test_job_events_stream_over_websocket(client: TestClient) -> None:
             "content_type": "application/epub+zip",
         },
     ).json()["asset_id"]
-    audio_asset_id = client.post(
-        f"/v1/projects/{project_id}/assets",
+    audio_asset_id = upload_test_audio_asset(
+        client,
+        project_id=project_id,
+        filename="track.wav",
+    )
+
+    response = client.post(
+        f"/v1/projects/{project_id}/jobs",
         json={
-            "kind": "audio",
-            "filename": "book.mp3",
-            "content_type": "audio/mpeg",
+            "job_type": "alignment",
+            "book_asset_id": epub_asset_id,
+            "audio_asset_ids": [audio_asset_id],
         },
-    ).json()["asset_id"]
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "asset_not_ready"
+    assert response.json()["error"]["details"]["role"] == "book"
+
+
+def test_job_events_stream_over_websocket(client: TestClient) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Realtime Project"},
+    ).json()["project_id"]
+    epub_asset_id = upload_test_epub_asset(
+        client,
+        project_id=project_id,
+        filename="book.epub",
+    )
+    audio_asset_id = upload_test_audio_asset(
+        client,
+        project_id=project_id,
+        filename="book.wav",
+    )
 
     with client.websocket_connect(f"/v1/ws/projects/{project_id}") as websocket:
         create_response = client.post(
@@ -1140,22 +1216,16 @@ def test_project_websocket_requires_auth_when_configured(
             json={"title": "Realtime Auth Project"},
         ).json()["project_id"]
         epub_asset_id = auth_client.post(
-            f"/v1/projects/{project_id}/assets",
+            f"/v1/projects/{project_id}/assets/upload",
             headers={"Authorization": "Bearer secret-token"},
-            json={
-                "kind": "epub",
-                "filename": "book.epub",
-                "content_type": "application/epub+zip",
-            },
+            data={"kind": "epub"},
+            files={"file": ("book.epub", make_test_epub_bytes(), "application/epub+zip")},
         ).json()["asset_id"]
         audio_asset_id = auth_client.post(
-            f"/v1/projects/{project_id}/assets",
+            f"/v1/projects/{project_id}/assets/upload",
             headers={"Authorization": "Bearer secret-token"},
-            json={
-                "kind": "audio",
-                "filename": "book.mp3",
-                "content_type": "audio/mpeg",
-            },
+            data={"kind": "audio"},
+            files={"file": ("book.wav", make_test_wav_bytes(), "audio/wav")},
         ).json()["asset_id"]
 
         with pytest.raises(WebSocketDisconnect), auth_client.websocket_connect(
@@ -1186,22 +1256,16 @@ def test_cancel_job_is_idempotent_for_already_cancelled_job(client: TestClient) 
         "/v1/projects",
         json={"title": "Cancel Idempotency Project"},
     ).json()["project_id"]
-    epub_asset_id = client.post(
-        f"/v1/projects/{project_id}/assets",
-        json={
-            "kind": "epub",
-            "filename": "book.epub",
-            "content_type": "application/epub+zip",
-        },
-    ).json()["asset_id"]
-    audio_asset_id = client.post(
-        f"/v1/projects/{project_id}/assets",
-        json={
-            "kind": "audio",
-            "filename": "book.mp3",
-            "content_type": "audio/mpeg",
-        },
-    ).json()["asset_id"]
+    epub_asset_id = upload_test_epub_asset(
+        client,
+        project_id=project_id,
+        filename="book.epub",
+    )
+    audio_asset_id = upload_test_audio_asset(
+        client,
+        project_id=project_id,
+        filename="book.wav",
+    )
 
     job_id = client.post(
         f"/v1/projects/{project_id}/jobs",
@@ -1218,6 +1282,99 @@ def test_cancel_job_is_idempotent_for_already_cancelled_job(client: TestClient) 
     assert first_cancel_response.status_code == 200
     assert second_cancel_response.status_code == 200
     assert second_cancel_response.json()["status"] == "cancelled"
+
+
+def test_cancelled_job_does_not_finish_pipeline_or_emit_artifacts(client: TestClient) -> None:
+    class CancellingTranscriber:
+        def __init__(self, *, project_id: str, job_id: str) -> None:
+            self.project_id = project_id
+            self.job_id = job_id
+            self._cancelled = False
+
+        def set_preferred_language(self, language: str | None) -> None:
+            return
+
+        def transcribe_segment(self, segment: PreparedAudioSegment) -> list[TranscriptWord]:
+            if not self._cancelled:
+                session = get_session_factory()()
+                try:
+                    cancel_job(
+                        session=session,
+                        project_id=self.project_id,
+                        job_id=self.job_id,
+                    )
+                finally:
+                    session.close()
+                self._cancelled = True
+            return [
+                TranscriptWord(
+                    text="call",
+                    start_ms=0,
+                    end_ms=min(100, segment.duration_ms),
+                    confidence=0.9,
+                )
+            ]
+
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Cancellation Project", "language": "en"},
+    ).json()["project_id"]
+
+    client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "epub"},
+        files={"file": ("book.epub", make_test_epub_bytes(), "application/epub+zip")},
+    )
+    audio_asset_id = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "audio"},
+        files={"file": ("narration.wav", make_test_wav_bytes(), "audio/wav")},
+    ).json()["asset_id"]
+
+    project_detail = client.get(f"/v1/projects/{project_id}").json()
+    book_asset_id = next(
+        asset["asset_id"] for asset in project_detail["assets"] if asset["kind"] == "epub"
+    )
+    job_id = client.post(
+        f"/v1/projects/{project_id}/jobs",
+        json={
+            "job_type": "alignment",
+            "book_asset_id": book_asset_id,
+            "audio_asset_ids": [audio_asset_id],
+        },
+    ).json()["job_id"]
+
+    settings = get_settings()
+    session = get_session_factory()()
+    try:
+        run_alignment_job(
+            session=session,
+            project_id=project_id,
+            job_id=job_id,
+            object_store=get_object_store(),
+            preprocessor=AudioPreprocessor(
+                object_store=get_object_store(),
+                ffmpeg_bin=settings.ffmpeg_bin,
+                ffprobe_bin=settings.ffprobe_bin,
+                chunk_duration_ms=400,
+            ),
+            transcriber=CancellingTranscriber(project_id=project_id, job_id=job_id),
+        )
+    finally:
+        session.close()
+
+    job_response = client.get(f"/v1/projects/{project_id}/jobs/{job_id}")
+    assert job_response.status_code == 200
+    assert job_response.json()["status"] == "cancelled"
+    assert job_response.json()["terminal_reason"] == "cancelled_by_request"
+
+    transcript_response = client.get(f"/v1/projects/{project_id}/jobs/{job_id}/transcript")
+    match_response = client.get(f"/v1/projects/{project_id}/jobs/{job_id}/matches")
+    sync_response = client.get(f"/v1/projects/{project_id}/sync")
+
+    assert transcript_response.status_code == 404
+    assert match_response.status_code == 404
+    assert sync_response.status_code == 404
 
 
 def test_failed_alignment_job_persists_terminal_reason(client: TestClient) -> None:

@@ -2,6 +2,7 @@ import math
 import struct
 import sys
 import wave
+import zipfile
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -35,6 +36,48 @@ def make_test_wav_bytes(duration_seconds: float = 0.25, sample_rate: int = 16_00
     return buffer.getvalue()
 
 
+def make_test_epub_bytes() -> bytes:
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
+        archive.writestr(
+            "META-INF/container.xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+            <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+              <rootfiles>
+                <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+              </rootfiles>
+            </container>""",
+        )
+        archive.writestr(
+            "OEBPS/content.opf",
+            """<?xml version="1.0" encoding="utf-8"?>
+            <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid">
+              <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+                <dc:identifier id="bookid">bookid</dc:identifier>
+                <dc:title>Test Book</dc:title>
+                <dc:language>en</dc:language>
+              </metadata>
+              <manifest>
+                <item id="chapter1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
+              </manifest>
+              <spine>
+                <itemref idref="chapter1"/>
+              </spine>
+            </package>""",
+        )
+        archive.writestr(
+            "OEBPS/chapter1.xhtml",
+            """<?xml version="1.0" encoding="utf-8"?>
+            <html xmlns="http://www.w3.org/1999/xhtml">
+              <body>
+                <p>Call me Ishmael.</p>
+              </body>
+            </html>""",
+        )
+    return buffer.getvalue()
+
+
 class RecordingTranscriber:
     def __init__(self) -> None:
         self.preferred_language: str | None = None
@@ -62,12 +105,9 @@ def test_transcription_pipeline_passes_project_language_to_transcriber(
     ).json()["project_id"]
 
     epub_asset_id = client.post(
-        f"/v1/projects/{project_id}/assets",
-        json={
-            "kind": "epub",
-            "filename": "book.epub",
-            "content_type": "application/epub+zip",
-        },
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "epub"},
+        files={"file": ("book.epub", make_test_epub_bytes(), "application/epub+zip")},
     ).json()["asset_id"]
 
     audio_asset_id = client.post(
@@ -158,12 +198,9 @@ def test_transcription_pipeline_persists_transcriber_resolved_language(
     ).json()["project_id"]
 
     epub_asset_id = client.post(
-        f"/v1/projects/{project_id}/assets",
-        json={
-            "kind": "epub",
-            "filename": "book.epub",
-            "content_type": "application/epub+zip",
-        },
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "epub"},
+        files={"file": ("book.epub", make_test_epub_bytes(), "application/epub+zip")},
     ).json()["asset_id"]
 
     audio_asset_id = client.post(
@@ -218,21 +255,15 @@ def test_transcription_pipeline_progress_uses_audio_duration_weighting(
     ).json()["project_id"]
 
     epub_asset_id = client.post(
-        f"/v1/projects/{project_id}/assets",
-        json={
-            "kind": "epub",
-            "filename": "book.epub",
-            "content_type": "application/epub+zip",
-        },
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "epub"},
+        files={"file": ("book.epub", make_test_epub_bytes(), "application/epub+zip")},
     ).json()["asset_id"]
 
     audio_asset_id = client.post(
-        f"/v1/projects/{project_id}/assets",
-        json={
-            "kind": "audio",
-            "filename": "clip.wav",
-            "content_type": "audio/wav",
-        },
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "audio"},
+        files={"file": ("clip.wav", make_test_wav_bytes(), "audio/wav")},
     ).json()["asset_id"]
 
     job_id = client.post(

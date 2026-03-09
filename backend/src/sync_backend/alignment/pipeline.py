@@ -8,7 +8,7 @@ from sync_backend.alignment.sync_export import build_sync_artifact
 from sync_backend.alignment.transcription import SegmentTranscriber
 from sync_backend.alignment.transcription_pipeline import transcribe_alignment_job
 from sync_backend.api.realtime import publish_project_event_sync
-from sync_backend.services import get_job_or_404
+from sync_backend.services import JobCancelledError, get_job_or_404, raise_if_job_cancelled
 from sync_backend.storage import ObjectStore
 
 
@@ -22,6 +22,7 @@ def run_alignment_job(
     transcriber: SegmentTranscriber,
 ) -> None:
     try:
+        raise_if_job_cancelled(session=session, project_id=project_id, job_id=job_id)
         transcribe_alignment_job(
             session=session,
             project_id=project_id,
@@ -30,18 +31,23 @@ def run_alignment_job(
             preprocessor=preprocessor,
             transcriber=transcriber,
         )
+        raise_if_job_cancelled(session=session, project_id=project_id, job_id=job_id)
         build_match_artifact(
             session=session,
             project_id=project_id,
             job_id=job_id,
             object_store=object_store,
         )
+        raise_if_job_cancelled(session=session, project_id=project_id, job_id=job_id)
         build_sync_artifact(
             session=session,
             project_id=project_id,
             job_id=job_id,
             object_store=object_store,
         )
+    except JobCancelledError:
+        session.rollback()
+        return
     except Exception as exc:
         session.rollback()
         job = get_job_or_404(session=session, project_id=project_id, job_id=job_id)
@@ -58,6 +64,7 @@ def run_alignment_job(
         )
         raise
 
+    raise_if_job_cancelled(session=session, project_id=project_id, job_id=job_id)
     job = get_job_or_404(session=session, project_id=project_id, job_id=job_id)
     job.status = "completed"
     job.progress_stage = "completed"

@@ -232,6 +232,7 @@ Response:
 Notes:
 
 - In the current backend, creating a job also dispatches background processing immediately when `APP_ENV != test`.
+- Alignment inputs must already be uploaded. Placeholder assets created through `POST /v1/projects/{project_id}/assets` return `asset_not_ready` until blob content exists.
 - Duplicate alignment requests for the same project, EPUB asset, and ordered audio asset list reuse an existing `queued`, `running`, or `completed` job instead of scheduling duplicate work.
 - If the latest matching job is `failed` or `cancelled`, the backend creates a new retry attempt and exposes the previous job id in `retry_of_job_id`.
 - Dispatch mode depends on `JOB_EXECUTION_MODE`:
@@ -442,12 +443,15 @@ Response shape:
 - `GET /v1/projects/{project_id}/reader-model/content`
 - `GET /v1/projects/{project_id}/jobs/{job_id}/transcript/content`
 - `GET /v1/projects/{project_id}/jobs/{job_id}/matches/content`
+- Stored artifact downloads return explicit `Content-Length` and `Accept-Ranges: bytes` headers so clients can reason about transfer size consistently.
 
 These routes stream the persisted JSON artifact files with `application/json` content type. They exist so clients and operators can fetch the canonical stored artifact without depending on inline metadata payloads.
 
 ### `POST /v1/projects/{project_id}/jobs/{job_id}/cancel`
 
 Requests cancellation for a running or queued job.
+
+- Cancellation is terminal. Once a worker observes the cancelled state, it stops the remaining pipeline stages and does not emit new transcript, match, or sync artifacts for that job.
 
 ## WebSocket
 

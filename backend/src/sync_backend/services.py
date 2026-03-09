@@ -30,6 +30,10 @@ class AlignmentJobCreateResult:
     reused_existing: bool
 
 
+class JobCancelledError(RuntimeError):
+    """Raised when a running pipeline observes a job cancellation request."""
+
+
 def create_project(*, session: Session, title: str, language: str | None) -> Project:
     project = Project(
         id=str(uuid4()),
@@ -233,6 +237,22 @@ def build_alignment_request_fingerprint(
     return hashlib.sha256(fingerprint_source.encode("utf-8")).hexdigest()
 
 
+def _ensure_alignment_asset_ready(*, asset: Asset, role: str) -> None:
+    if asset.status == "uploaded" and asset.storage_path:
+        return
+    raise ApiError(
+        code="asset_not_ready",
+        message="All alignment assets must be uploaded before creating a job",
+        status_code=HTTPStatus.CONFLICT,
+        details={
+            "asset_id": asset.id,
+            "role": role,
+            "status": asset.status,
+            "storage_path": asset.storage_path,
+        },
+    )
+
+
 def create_alignment_job(
     *,
     session: Session,
@@ -254,6 +274,7 @@ def create_alignment_job(
             status_code=HTTPStatus.BAD_REQUEST,
             details={"book_asset_id": book_asset_id},
         )
+    _ensure_alignment_asset_ready(asset=book_asset, role="book")
 
     for audio_asset in audio_assets:
         if audio_asset.project_id != project_id or audio_asset.kind != "audio":
@@ -263,6 +284,7 @@ def create_alignment_job(
                 status_code=HTTPStatus.BAD_REQUEST,
                 details={"audio_asset_id": audio_asset.id},
             )
+        _ensure_alignment_asset_ready(asset=audio_asset, role="audio")
 
     request_fingerprint = build_alignment_request_fingerprint(
         project_id=project_id,
@@ -334,6 +356,13 @@ def cancel_job(*, session: Session, project_id: str, job_id: str) -> AlignmentJo
     session.commit()
     session.refresh(job)
     return job
+
+
+def raise_if_job_cancelled(*, session: Session, project_id: str, job_id: str) -> None:
+    session.expire_all()
+    job = get_job_or_404(session=session, project_id=project_id, job_id=job_id)
+    if job.status == "cancelled":
+        raise JobCancelledError(f"Alignment job {job_id} was cancelled")
 
 
 def get_latest_job(*, session: Session, project_id: str) -> AlignmentJob | None:

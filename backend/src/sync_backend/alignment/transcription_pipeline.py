@@ -17,6 +17,7 @@ from sync_backend.services import (
     get_asset_or_404,
     get_job_or_404,
     get_project_or_404,
+    raise_if_job_cancelled,
 )
 from sync_backend.storage import ObjectStore
 
@@ -56,6 +57,7 @@ def transcribe_alignment_job(
     prepared_assets = []
     total_assets = max(1, len(job.audio_asset_ids))
     for asset_index, audio_asset_id in enumerate(job.audio_asset_ids, start=1):
+        raise_if_job_cancelled(session=session, project_id=project_id, job_id=job_id)
         asset = get_asset_or_404(session=session, asset_id=audio_asset_id)
         segments = preprocessor.prepare_asset(project_id=project_id, asset=asset)
         prepared_assets.append((audio_asset_id, segments))
@@ -74,6 +76,7 @@ def transcribe_alignment_job(
         asset_duration_ms = 0
 
         for segment in segments:
+            raise_if_job_cancelled(session=session, project_id=project_id, job_id=job_id)
             words = [
                 TranscriptWord(
                     text=word.text,
@@ -83,6 +86,7 @@ def transcribe_alignment_job(
                 )
                 for word in transcriber.transcribe_segment(segment)
             ]
+            raise_if_job_cancelled(session=session, project_id=project_id, job_id=job_id)
             transcript_segments.append(
                 TranscriptSegment(
                     asset_id=segment.asset_id,
@@ -104,6 +108,7 @@ def transcribe_alignment_job(
         timeline_offset_ms += asset_duration_ms
 
     transcript_language = getattr(transcriber, "resolved_language", None) or project.language
+    raise_if_job_cancelled(session=session, project_id=project_id, job_id=job_id)
     payload = transcript_payload(
         project_id=project_id,
         job_id=job_id,

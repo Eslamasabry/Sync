@@ -184,6 +184,15 @@ def _download_url(
     return str(request.url_for(route_name, **route_params))
 
 
+def _artifact_storage_missing_error(*, storage_path: str | None, filename: str) -> ApiError:
+    return ApiError(
+        code="artifact_content_missing",
+        message="Artifact content is not available for download",
+        status_code=status.HTTP_409_CONFLICT,
+        details={"filename": filename, "storage_path": storage_path},
+    )
+
+
 def _content_response(
     *,
     storage_path: str | None,
@@ -194,13 +203,10 @@ def _content_response(
     byte_range: tuple[int, int] | None = None,
 ) -> StreamingResponse:
     if storage_path is None:
-        raise ApiError(
-            code="artifact_content_missing",
-            message="Artifact content is not available for download",
-            status_code=status.HTTP_409_CONFLICT,
-            details={"filename": filename},
-        )
+        raise _artifact_storage_missing_error(storage_path=storage_path, filename=filename)
     object_store = get_object_store()
+    if not object_store.exists(storage_path):
+        raise _artifact_storage_missing_error(storage_path=storage_path, filename=filename)
     headers = {
         "content-disposition": f'attachment; filename="{filename}"',
         "content-encoding": "identity",
@@ -310,6 +316,12 @@ def _reader_model_response(
     artifact: ReaderModelArtifact,
 ) -> ReaderModelResponse:
     object_store = get_object_store()
+    if not object_store.exists(artifact.storage_path):
+        raise _artifact_storage_missing_error(
+            storage_path=artifact.storage_path,
+            filename=f"reader-model-{project_id}.json",
+        )
+    model = object_store.read_json(artifact.storage_path)
     return ReaderModelResponse(
         project_id=UUID(project_id),
         asset_id=UUID(artifact.asset_id),
@@ -320,7 +332,7 @@ def _reader_model_response(
             "download_reader_model_route",
             project_id=project_id,
         ),
-        model=object_store.read_json(artifact.storage_path),
+        model=model,
     )
 
 
@@ -331,6 +343,12 @@ def _transcript_response(
     artifact: TranscriptArtifact,
 ) -> TranscriptArtifactResponse:
     object_store = get_object_store()
+    if not object_store.exists(artifact.storage_path):
+        raise _artifact_storage_missing_error(
+            storage_path=artifact.storage_path,
+            filename=f"transcript-{artifact.job_id}.json",
+        )
+    payload = object_store.read_json(artifact.storage_path)
     return TranscriptArtifactResponse(
         project_id=UUID(project_id),
         job_id=UUID(artifact.job_id),
@@ -345,7 +363,7 @@ def _transcript_response(
         language=artifact.language,
         segment_count=artifact.segment_count,
         word_count=artifact.word_count,
-        payload=object_store.read_json(artifact.storage_path),
+        payload=payload,
     )
 
 
@@ -356,6 +374,12 @@ def _match_response(
     artifact: MatchArtifact,
 ) -> MatchArtifactResponse:
     object_store = get_object_store()
+    if not object_store.exists(artifact.storage_path):
+        raise _artifact_storage_missing_error(
+            storage_path=artifact.storage_path,
+            filename=f"match-{artifact.job_id}.json",
+        )
+    payload = object_store.read_json(artifact.storage_path)
     return MatchArtifactResponse(
         project_id=UUID(project_id),
         job_id=UUID(artifact.job_id),
@@ -370,7 +394,7 @@ def _match_response(
         match_count=artifact.match_count,
         gap_count=artifact.gap_count,
         average_confidence=artifact.average_confidence,
-        payload=object_store.read_json(artifact.storage_path),
+        payload=payload,
     )
 
 
@@ -658,6 +682,7 @@ async def download_sync_route(project_id: str, session: DbSession) -> StreamingR
         storage_path=artifact.storage_path,
         media_type="application/json",
         filename=f"sync-{project_id}.json",
+        size_bytes=artifact.size_bytes,
     )
 
 
@@ -672,6 +697,7 @@ async def download_reader_model_route(
         storage_path=artifact.storage_path,
         media_type="application/json",
         filename=f"reader-model-{project_id}.json",
+        size_bytes=artifact.size_bytes,
     )
 
 
@@ -694,6 +720,7 @@ async def download_transcript_route(
         storage_path=artifact.storage_path,
         media_type="application/json",
         filename=f"transcript-{job_id}.json",
+        size_bytes=artifact.size_bytes,
     )
 
 
@@ -713,6 +740,7 @@ async def download_match_route(
         storage_path=artifact.storage_path,
         media_type="application/json",
         filename=f"match-{job_id}.json",
+        size_bytes=artifact.size_bytes,
     )
 
 

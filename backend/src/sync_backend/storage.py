@@ -13,6 +13,8 @@ from sync_backend.config import get_settings
 class ObjectStore(Protocol):
     def ensure_ready(self) -> None: ...
 
+    def exists(self, relative_path: str) -> bool: ...
+
     def write_bytes(self, relative_path: str, payload: bytes) -> tuple[str, int]: ...
 
     def write_json(self, relative_path: str, payload: dict[str, Any]) -> tuple[str, int]: ...
@@ -39,6 +41,9 @@ class FileObjectStore:
 
     def ensure_ready(self) -> None:
         self.base_path.mkdir(parents=True, exist_ok=True)
+
+    def exists(self, relative_path: str) -> bool:
+        return (self.base_path / relative_path).exists()
 
     def write_bytes(self, relative_path: str, payload: bytes) -> tuple[str, int]:
         target_path = self.base_path / relative_path
@@ -107,7 +112,7 @@ class S3ObjectStore:
     def client(self) -> Any:
         if self._client is None:
             try:
-                import boto3
+                import boto3  # type: ignore[import-untyped]
             except ImportError as exc:  # pragma: no cover - exercised in runtime only
                 raise RuntimeError(
                     "boto3 is required for OBJECT_STORE_MODE=s3"
@@ -126,16 +131,41 @@ class S3ObjectStore:
         except Exception:
             self.client.create_bucket(Bucket=self.bucket)
 
+    @staticmethod
+    def _is_missing_error(exc: Exception) -> bool:
+        response = getattr(exc, "response", None)
+        error = response.get("Error", {}) if isinstance(response, dict) else {}
+        code = str(error.get("Code", "")).lower()
+        if isinstance(response, dict):
+            status = str(response.get("ResponseMetadata", {}).get("HTTPStatusCode", ""))
+        else:
+            status = ""
+        return code in {"nosuchkey", "404", "notfound"} or status == "404"
+
     def write_bytes(self, relative_path: str, payload: bytes) -> tuple[str, int]:
         self.client.put_object(Bucket=self.bucket, Key=relative_path, Body=payload)
         return relative_path, len(payload)
+
+    def exists(self, relative_path: str) -> bool:
+        try:
+            self.client.head_object(Bucket=self.bucket, Key=relative_path)
+            return True
+        except Exception as exc:
+            if self._is_missing_error(exc):
+                return False
+            raise
 
     def write_json(self, relative_path: str, payload: dict[str, Any]) -> tuple[str, int]:
         encoded = json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
         return self.write_bytes(relative_path, encoded)
 
     def read_bytes(self, relative_path: str) -> bytes:
-        response = self.client.get_object(Bucket=self.bucket, Key=relative_path)
+        try:
+            response = self.client.get_object(Bucket=self.bucket, Key=relative_path)
+        except Exception as exc:
+            if self._is_missing_error(exc):
+                raise FileNotFoundError(relative_path) from exc
+            raise
         return cast(bytes, response["Body"].read())
 
     def read_json(self, relative_path: str) -> dict[str, Any]:
@@ -155,7 +185,12 @@ class S3ObjectStore:
             range_end = "" if end is None else str(end)
             kwargs["Range"] = f"bytes={range_start}-{range_end}"
 
-        response = self.client.get_object(**kwargs)
+        try:
+            response = self.client.get_object(**kwargs)
+        except Exception as exc:
+            if self._is_missing_error(exc):
+                raise FileNotFoundError(relative_path) from exc
+            raise
         body = response["Body"]
         try:
             yield from body.iter_chunks(chunk_size=chunk_size)

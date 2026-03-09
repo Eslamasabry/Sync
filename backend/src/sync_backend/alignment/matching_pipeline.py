@@ -11,6 +11,7 @@ from sync_backend.services import (
     get_job_or_404,
     get_reader_model_artifact_or_404,
     get_transcript_artifact_or_404,
+    raise_if_job_cancelled,
 )
 from sync_backend.storage import ObjectStore
 
@@ -23,6 +24,7 @@ def build_match_artifact(
     object_store: ObjectStore,
 ) -> MatchArtifact:
     job = get_job_or_404(session=session, project_id=project_id, job_id=job_id)
+    raise_if_job_cancelled(session=session, project_id=project_id, job_id=job_id)
     reader_model_artifact = get_reader_model_artifact_or_404(session=session, project_id=project_id)
     transcript_artifact = get_transcript_artifact_or_404(
         session=session,
@@ -36,6 +38,7 @@ def build_match_artifact(
         transcript_payload=transcript_payload,
         reader_model=reader_model,
     )
+    raise_if_job_cancelled(session=session, project_id=project_id, job_id=job_id)
 
     artifact_id = str(uuid4())
     storage_path, size_bytes = object_store.write_json(

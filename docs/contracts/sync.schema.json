@@ -37,6 +37,57 @@
         "additionalProperties": false
       }
     },
+    "content_start_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "content_end_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "stats": {
+      "type": "object",
+      "required": [
+        "matched_word_count",
+        "unmatched_word_count",
+        "transcript_word_count",
+        "low_confidence_token_count",
+        "content_duration_ms"
+      ],
+      "properties": {
+        "matched_word_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unmatched_word_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "transcript_word_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "coverage_ratio": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "average_confidence": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "low_confidence_token_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "content_duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
     "tokens": {
       "type": "array",
       "items": {
