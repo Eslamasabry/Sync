@@ -90,6 +90,19 @@ systemctl status sync-api --no-pager
 systemctl status sync-worker --no-pager
 ```
 
+After the first successful alignment job on the host, verify artifact delivery directly:
+
+```bash
+curl -f http://127.0.0.1:8000/v1/projects/<project-id>/reader-model
+curl -f http://127.0.0.1:8000/v1/projects/<project-id>/sync
+curl -f -OJ http://127.0.0.1:8000/v1/projects/<project-id>/reader-model/content
+curl -f -OJ http://127.0.0.1:8000/v1/projects/<project-id>/sync/content
+curl -f -OJ http://127.0.0.1:8000/v1/projects/<project-id>/jobs/<job-id>/transcript/content
+curl -f -OJ http://127.0.0.1:8000/v1/projects/<project-id>/jobs/<job-id>/matches/content
+```
+
+The metadata routes expose `download_url` fields for the stored JSON artifacts. That is the contract the Flutter client and external tooling should prefer instead of assuming inline artifact payloads are always present.
+
 ## 9. Release Validation
 
 After deployment, run a real regression gate from the host:

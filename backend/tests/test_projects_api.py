@@ -520,6 +520,114 @@ def test_sync_export_generates_sync_artifact(client: TestClient) -> None:
     assert payload["gaps"] == []
 
 
+def test_artifact_routes_expose_download_urls_and_content(client: TestClient) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Artifact Download Project", "language": "en"},
+    ).json()["project_id"]
+
+    client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "epub"},
+        files={"file": ("book.epub", make_test_epub_bytes(), "application/epub+zip")},
+    )
+    audio_asset_id = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "audio"},
+        files={"file": ("narration.wav", make_test_wav_bytes(), "audio/wav")},
+    ).json()["asset_id"]
+
+    project_detail = client.get(f"/v1/projects/{project_id}").json()
+    book_asset_id = next(
+        asset["asset_id"] for asset in project_detail["assets"] if asset["kind"] == "epub"
+    )
+    job_id = client.post(
+        f"/v1/projects/{project_id}/jobs",
+        json={
+            "job_type": "alignment",
+            "book_asset_id": book_asset_id,
+            "audio_asset_ids": [audio_asset_id],
+        },
+    ).json()["job_id"]
+
+    settings = get_settings()
+    session = get_session_factory()()
+    try:
+        transcribe_alignment_job(
+            session=session,
+            project_id=project_id,
+            job_id=job_id,
+            object_store=get_object_store(),
+            preprocessor=AudioPreprocessor(
+                object_store=get_object_store(),
+                ffmpeg_bin=settings.ffmpeg_bin,
+                ffprobe_bin=settings.ffprobe_bin,
+                chunk_duration_ms=5_000,
+            ),
+            transcriber=StaticTranscriber("call me ishmael some years ago"),
+        )
+        build_match_artifact(
+            session=session,
+            project_id=project_id,
+            job_id=job_id,
+            object_store=get_object_store(),
+        )
+        build_sync_artifact(
+            session=session,
+            project_id=project_id,
+            job_id=job_id,
+            object_store=get_object_store(),
+        )
+    finally:
+        session.close()
+
+    reader_model_response = client.get(f"/v1/projects/{project_id}/reader-model")
+    transcript_response = client.get(f"/v1/projects/{project_id}/jobs/{job_id}/transcript")
+    match_response = client.get(f"/v1/projects/{project_id}/jobs/{job_id}/matches")
+    sync_response = client.get(f"/v1/projects/{project_id}/sync")
+
+    assert reader_model_response.status_code == 200
+    assert transcript_response.status_code == 200
+    assert match_response.status_code == 200
+    assert sync_response.status_code == 200
+
+    assert reader_model_response.json()["download_url"].endswith(
+        f"/v1/projects/{project_id}/reader-model/content"
+    )
+    assert transcript_response.json()["download_url"].endswith(
+        f"/v1/projects/{project_id}/jobs/{job_id}/transcript/content"
+    )
+    assert match_response.json()["download_url"].endswith(
+        f"/v1/projects/{project_id}/jobs/{job_id}/matches/content"
+    )
+    assert sync_response.json()["download_url"].endswith(
+        f"/v1/projects/{project_id}/sync/content"
+    )
+
+    reader_model_content = client.get(
+        f"/v1/projects/{project_id}/reader-model/content"
+    )
+    transcript_content = client.get(
+        f"/v1/projects/{project_id}/jobs/{job_id}/transcript/content"
+    )
+    match_content = client.get(
+        f"/v1/projects/{project_id}/jobs/{job_id}/matches/content"
+    )
+    sync_content = client.get(
+        f"/v1/projects/{project_id}/sync/content"
+    )
+
+    assert reader_model_content.status_code == 200
+    assert transcript_content.status_code == 200
+    assert match_content.status_code == 200
+    assert sync_content.status_code == 200
+
+    assert reader_model_content.json()["book_id"] == project_id
+    assert transcript_content.json()["job_id"] == job_id
+    assert match_content.json()["match_count"] >= 5
+    assert sync_content.json()["book_id"] == project_id
+
+
 def test_sync_route_distinguishes_missing_project_from_missing_artifact(
     client: TestClient,
 ) -> None:

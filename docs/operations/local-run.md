@@ -123,6 +123,12 @@ make local-start
 make local-status
 ```
 
+The launcher scripts are now defensive about stale PID files:
+
+- `make local-start` removes stale PID files before starting new processes.
+- `make local-status` reports `running`, `stale`, or `stopped` for each service instead of only checking for a pid file.
+- `make local-stop` cleans stale PID files and stops only live processes.
+
 ### Create A Project
 
 ```bash
@@ -177,6 +183,8 @@ curl -X POST http://localhost:8000/v1/projects/<project-id>/jobs \
 curl http://localhost:8000/v1/projects/<project-id>/reader-model
 curl http://localhost:8000/v1/projects/<project-id>/sync
 curl http://localhost:8000/v1/projects/<project-id>/jobs/<job-id>
+curl http://localhost:8000/v1/projects/<project-id>/jobs/<job-id>/transcript
+curl http://localhost:8000/v1/projects/<project-id>/jobs/<job-id>/matches
 ```
 
 Audio files are streamed back to the client from:
@@ -184,6 +192,17 @@ Audio files are streamed back to the client from:
 ```text
 GET /v1/projects/{project_id}/assets/{asset_id}/content
 ```
+
+Canonical JSON artifacts can also be fetched directly from their content routes:
+
+```bash
+curl -OJ http://localhost:8000/v1/projects/<project-id>/reader-model/content
+curl -OJ http://localhost:8000/v1/projects/<project-id>/sync/content
+curl -OJ http://localhost:8000/v1/projects/<project-id>/jobs/<job-id>/transcript/content
+curl -OJ http://localhost:8000/v1/projects/<project-id>/jobs/<job-id>/matches/content
+```
+
+The metadata routes expose these URLs through each artifact's `download_url` field. That is the safer contract for clients because some deployments may choose not to inline the full JSON payload.
 
 ### Run The Flutter App
 

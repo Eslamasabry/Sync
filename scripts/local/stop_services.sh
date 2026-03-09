@@ -41,6 +41,18 @@ stop_pid_file() {
   rm -f "$pid_file"
 }
 
+cleanup_stale_pid_file() {
+  local pid_file="$1"
+  if [[ ! -f "$pid_file" ]]; then
+    return 0
+  fi
+  local pid
+  pid="$(cat "$pid_file")"
+  if ! kill -0 "$pid" >/dev/null 2>&1; then
+    rm -f "$pid_file"
+  fi
+}
+
 while (($# > 0)); do
   case "$1" in
     --stop-host-infra)
@@ -63,6 +75,8 @@ while (($# > 0)); do
   esac
 done
 
+cleanup_stale_pid_file "$RUN_DIR/backend-api.pid"
+cleanup_stale_pid_file "$RUN_DIR/backend-worker.pid"
 stop_pid_file "$RUN_DIR/backend-api.pid"
 stop_pid_file "$RUN_DIR/backend-worker.pid"
 

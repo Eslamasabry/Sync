@@ -24,6 +24,12 @@ is_running() {
   kill -0 "$pid" >/dev/null 2>&1
 }
 
+read_pid() {
+  local pid_file="$1"
+  [[ -f "$pid_file" ]] || return 1
+  cat "$pid_file"
+}
+
 while (($# > 0)); do
   case "$1" in
     --host)
@@ -51,6 +57,8 @@ for service in backend-api backend-worker; do
   log_file="$RUN_DIR/$service.log"
   if is_running "$pid_file"; then
     echo "$service: running pid=$(cat "$pid_file") log=$log_file"
+  elif [[ -f "$pid_file" ]]; then
+    echo "$service: stale pid=$(read_pid "$pid_file") log=$log_file"
   else
     echo "$service: stopped"
   fi

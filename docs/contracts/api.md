@@ -271,17 +271,88 @@ Response shape in dev mode:
 }
 ```
 
+Notes:
+
+- `download_url` points to `GET /v1/projects/{project_id}/sync/content` when the artifact is stored as a file instead of returned inline.
+- `inline_payload` is primarily a development convenience. Clients should be prepared to fetch `download_url` instead of assuming the full sync artifact is embedded in the metadata response.
+
 ### `GET /v1/projects/{project_id}/jobs/{job_id}/transcript`
 
 Returns the latest transcript artifact generated for the job.
+
+Response shape:
+
+```json
+{
+  "project_id": "uuid",
+  "job_id": "uuid",
+  "version": "1.0",
+  "status": "generated",
+  "download_url": "http://localhost:8000/v1/projects/uuid/jobs/uuid/transcript/content",
+  "language": "en",
+  "segment_count": 12,
+  "word_count": 834,
+  "payload": {
+    "segments": []
+  }
+}
+```
+
+Notes:
+
+- `download_url` always points to the artifact content route even when `payload` is embedded for convenience.
 
 ### `GET /v1/projects/{project_id}/jobs/{job_id}/matches`
 
 Returns the latest transcript-to-reader-model match artifact for the job.
 
+Response shape:
+
+```json
+{
+  "project_id": "uuid",
+  "job_id": "uuid",
+  "version": "1.0",
+  "status": "generated",
+  "download_url": "http://localhost:8000/v1/projects/uuid/jobs/uuid/matches/content",
+  "match_count": 788,
+  "gap_count": 46,
+  "average_confidence": 0.9834,
+  "payload": {
+    "matches": [],
+    "gaps": []
+  }
+}
+```
+
 ### `GET /v1/projects/{project_id}/reader-model`
 
 Returns the canonical backend-generated reader model for the project.
+
+Response shape:
+
+```json
+{
+  "project_id": "uuid",
+  "asset_id": "uuid",
+  "version": "1.0",
+  "status": "generated",
+  "download_url": "http://localhost:8000/v1/projects/uuid/reader-model/content",
+  "model": {
+    "title": "Moby-Dick",
+    "sections": []
+  }
+}
+```
+
+### Artifact Content Endpoints
+
+- `GET /v1/projects/{project_id}/sync/content`
+- `GET /v1/projects/{project_id}/reader-model/content`
+- `GET /v1/projects/{project_id}/jobs/{job_id}/transcript/content`
+- `GET /v1/projects/{project_id}/jobs/{job_id}/matches/content`
+
+These routes stream the persisted JSON artifact files with `application/json` content type. They exist so clients and operators can fetch the canonical stored artifact without depending on inline metadata payloads.
 
 ### `POST /v1/projects/{project_id}/jobs/{job_id}/cancel`
 

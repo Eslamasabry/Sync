@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -142,8 +142,22 @@ def _sync_response(project_id: str, artifact: SyncArtifact) -> SyncArtifactRespo
     )
 
 
+def _download_url(
+    request: Request,
+    route_name: str,
+    *,
+    project_id: str,
+    job_id: str | None = None,
+) -> str:
+    route_params: dict[str, str] = {"project_id": project_id}
+    if job_id is not None:
+        route_params["job_id"] = job_id
+    return str(request.url_for(route_name, **route_params))
+
+
 def _reader_model_response(
     *,
+    request: Request,
     project_id: str,
     artifact: ReaderModelArtifact,
 ) -> ReaderModelResponse:
@@ -153,12 +167,18 @@ def _reader_model_response(
         asset_id=UUID(artifact.asset_id),
         version=artifact.version,
         status=artifact.status,
+        download_url=_download_url(
+            request,
+            "download_reader_model_route",
+            project_id=project_id,
+        ),
         model=object_store.read_json(artifact.storage_path),
     )
 
 
 def _transcript_response(
     *,
+    request: Request,
     project_id: str,
     artifact: TranscriptArtifact,
 ) -> TranscriptArtifactResponse:
@@ -168,6 +188,12 @@ def _transcript_response(
         job_id=UUID(artifact.job_id),
         version=artifact.version,
         status=artifact.status,
+        download_url=_download_url(
+            request,
+            "download_transcript_route",
+            project_id=project_id,
+            job_id=artifact.job_id,
+        ),
         language=artifact.language,
         segment_count=artifact.segment_count,
         word_count=artifact.word_count,
@@ -177,6 +203,7 @@ def _transcript_response(
 
 def _match_response(
     *,
+    request: Request,
     project_id: str,
     artifact: MatchArtifact,
 ) -> MatchArtifactResponse:
@@ -186,6 +213,12 @@ def _match_response(
         job_id=UUID(artifact.job_id),
         version=artifact.version,
         status=artifact.status,
+        download_url=_download_url(
+            request,
+            "download_match_route",
+            project_id=project_id,
+            job_id=artifact.job_id,
+        ),
         match_count=artifact.match_count,
         gap_count=artifact.gap_count,
         average_confidence=artifact.average_confidence,
@@ -361,6 +394,7 @@ async def get_job_route(project_id: str, job_id: str, session: DbSession) -> Job
 async def get_transcript_route(
     project_id: str,
     job_id: str,
+    request: Request,
     session: DbSession,
 ) -> TranscriptArtifactResponse:
     get_job_or_404(session=session, project_id=project_id, job_id=job_id)
@@ -369,7 +403,7 @@ async def get_transcript_route(
         project_id=project_id,
         job_id=job_id,
     )
-    return _transcript_response(project_id=project_id, artifact=artifact)
+    return _transcript_response(request=request, project_id=project_id, artifact=artifact)
 
 
 @router.get(
@@ -379,6 +413,7 @@ async def get_transcript_route(
 async def get_match_route(
     project_id: str,
     job_id: str,
+    request: Request,
     session: DbSession,
 ) -> MatchArtifactResponse:
     get_job_or_404(session=session, project_id=project_id, job_id=job_id)
@@ -387,21 +422,103 @@ async def get_match_route(
         project_id=project_id,
         job_id=job_id,
     )
-    return _match_response(project_id=project_id, artifact=artifact)
+    return _match_response(request=request, project_id=project_id, artifact=artifact)
 
 
 @router.get("/{project_id}/sync", response_model=SyncArtifactResponse)
-async def get_sync_route(project_id: str, session: DbSession) -> SyncArtifactResponse:
+async def get_sync_route(
+    project_id: str,
+    request: Request,
+    session: DbSession,
+) -> SyncArtifactResponse:
     get_project_or_404(session=session, project_id=project_id)
     artifact = get_latest_sync_artifact(session=session, project_id=project_id)
-    return _sync_response(project_id, artifact)
+    response = _sync_response(project_id, artifact)
+    if response.download_url is None and artifact.storage_path is not None:
+        response.download_url = _download_url(
+            request,
+            "download_sync_route",
+            project_id=project_id,
+        )
+    return response
 
 
 @router.get("/{project_id}/reader-model", response_model=ReaderModelResponse)
-async def get_reader_model_route(project_id: str, session: DbSession) -> ReaderModelResponse:
+async def get_reader_model_route(
+    project_id: str,
+    request: Request,
+    session: DbSession,
+) -> ReaderModelResponse:
     get_project_or_404(session=session, project_id=project_id)
     artifact = get_reader_model_artifact_or_404(session=session, project_id=project_id)
-    return _reader_model_response(project_id=project_id, artifact=artifact)
+    return _reader_model_response(request=request, project_id=project_id, artifact=artifact)
+
+
+@router.get("/{project_id}/sync/content", name="download_sync_route")
+async def download_sync_route(project_id: str, session: DbSession) -> FileResponse:
+    get_project_or_404(session=session, project_id=project_id)
+    artifact = get_latest_sync_artifact(session=session, project_id=project_id)
+    object_store = get_object_store()
+    return FileResponse(
+        path=object_store.absolute_path(artifact.storage_path),
+        media_type="application/json",
+        filename=f"sync-{project_id}.json",
+    )
+
+
+@router.get("/{project_id}/reader-model/content", name="download_reader_model_route")
+async def download_reader_model_route(project_id: str, session: DbSession) -> FileResponse:
+    get_project_or_404(session=session, project_id=project_id)
+    artifact = get_reader_model_artifact_or_404(session=session, project_id=project_id)
+    object_store = get_object_store()
+    return FileResponse(
+        path=object_store.absolute_path(artifact.storage_path),
+        media_type="application/json",
+        filename=f"reader-model-{project_id}.json",
+    )
+
+
+@router.get(
+    "/{project_id}/jobs/{job_id}/transcript/content",
+    name="download_transcript_route",
+)
+async def download_transcript_route(
+    project_id: str,
+    job_id: str,
+    session: DbSession,
+) -> FileResponse:
+    get_job_or_404(session=session, project_id=project_id, job_id=job_id)
+    artifact = get_transcript_artifact_or_404(
+        session=session,
+        project_id=project_id,
+        job_id=job_id,
+    )
+    object_store = get_object_store()
+    return FileResponse(
+        path=object_store.absolute_path(artifact.storage_path),
+        media_type="application/json",
+        filename=f"transcript-{job_id}.json",
+    )
+
+
+@router.get("/{project_id}/jobs/{job_id}/matches/content", name="download_match_route")
+async def download_match_route(
+    project_id: str,
+    job_id: str,
+    session: DbSession,
+) -> FileResponse:
+    get_job_or_404(session=session, project_id=project_id, job_id=job_id)
+    artifact = get_match_artifact_or_404(
+        session=session,
+        project_id=project_id,
+        job_id=job_id,
+    )
+    object_store = get_object_store()
+    return FileResponse(
+        path=object_store.absolute_path(artifact.storage_path),
+        media_type="application/json",
+        filename=f"match-{job_id}.json",
+    )
 
 
 @router.post("/{project_id}/jobs/{job_id}/cancel", response_model=JobCreateResponse)

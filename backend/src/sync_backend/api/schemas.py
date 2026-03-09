@@ -110,6 +110,7 @@ class ReaderModelResponse(BaseModel):
     asset_id: UUID
     version: str
     status: str
+    download_url: str | None = None
     model: dict[str, Any]
 
 
@@ -118,6 +119,7 @@ class TranscriptArtifactResponse(BaseModel):
     job_id: UUID
     version: str
     status: str
+    download_url: str | None = None
     language: str | None
     segment_count: int = Field(ge=0)
     word_count: int = Field(ge=0)
@@ -129,6 +131,7 @@ class MatchArtifactResponse(BaseModel):
     job_id: UUID
     version: str
     status: str
+    download_url: str | None = None
     match_count: int = Field(ge=0)
     gap_count: int = Field(ge=0)
     average_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
