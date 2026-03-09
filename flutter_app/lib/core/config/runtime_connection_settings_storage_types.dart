@@ -9,5 +9,7 @@ abstract class RuntimeConnectionSettingsStorage {
 
   Future<void> store(RuntimeConnectionSettings settings);
 
+  Future<void> remove(RuntimeConnectionSettings settings);
+
   Future<void> clear();
 }

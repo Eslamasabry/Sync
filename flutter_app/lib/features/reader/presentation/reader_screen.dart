@@ -1704,7 +1704,7 @@ class _ConnectionSettingsSheetState
                   runSpacing: 10,
                   children: [
                     for (final recent in widget.recentConnections)
-                      ActionChip(
+                      InputChip(
                         label: Text(
                           '${recent.shortHost} • ${recent.normalizedProjectId}',
                         ),
@@ -1715,6 +1715,8 @@ class _ConnectionSettingsSheetState
                           size: 18,
                         ),
                         onPressed: () => _applyRecent(recent),
+                        onDeleted: () => _removeRecent(recent),
+                        deleteIcon: const Icon(Icons.close_rounded, size: 18),
                       ),
                   ],
                 ),
@@ -1798,6 +1800,17 @@ class _ConnectionSettingsSheetState
     _projectIdController.text = recent.normalizedProjectId;
     _authTokenController.text = recent.authToken;
     setState(() {});
+  }
+
+  Future<void> _removeRecent(RuntimeConnectionSettings recent) async {
+    await ref.read(runtimeConnectionSettingsProvider.notifier).removeRecent(
+      recent,
+    );
+    final replacement = await ref.read(runtimeConnectionSettingsProvider.future);
+    if (!mounted) {
+      return;
+    }
+    _applyRecent(replacement);
   }
 
   Future<void> _save() async {

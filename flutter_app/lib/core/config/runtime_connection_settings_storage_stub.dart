@@ -16,4 +16,7 @@ class FileRuntimeConnectionSettingsStorage
 
   @override
   Future<void> store(RuntimeConnectionSettings settings) async {}
+
+  @override
+  Future<void> remove(RuntimeConnectionSettings settings) async {}
 }

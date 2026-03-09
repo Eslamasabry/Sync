@@ -50,6 +50,15 @@ class RuntimeConnectionSettingsController
     ref.read(runtimeConnectionSettingsRevisionProvider.notifier).bump();
   }
 
+  Future<void> removeRecent(RuntimeConnectionSettings settings) async {
+    final current = state.asData?.value;
+    if (current != null && current.identityKey == settings.identityKey) {
+      state = const AsyncData(defaultConnectionSettings);
+    }
+    await ref.watch(runtimeConnectionSettingsStorageProvider).remove(settings);
+    ref.read(runtimeConnectionSettingsRevisionProvider.notifier).bump();
+  }
+
   Future<void> reset() async {
     state = const AsyncData(defaultConnectionSettings);
     await ref.watch(runtimeConnectionSettingsStorageProvider).clear();

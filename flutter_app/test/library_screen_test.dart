@@ -38,6 +38,9 @@ class _MemoryRuntimeConnectionSettingsStorage
 
   @override
   Future<void> store(RuntimeConnectionSettings settings) async {}
+
+  @override
+  Future<void> remove(RuntimeConnectionSettings settings) async {}
 }
 
 class _MemoryReaderLocationStore implements ReaderLocationStore {
@@ -223,6 +226,7 @@ void main() {
       expect(find.text('Text cached'), findsWidgets);
       expect(find.text('Audio offline'), findsWidgets);
       expect(find.text('Workspace'), findsOneWidget);
+      expect(find.text('Forget'), findsOneWidget);
 
       await tester.tap(find.text('Workspace').first);
       await tester.pumpAndSettle();

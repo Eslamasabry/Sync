@@ -34,6 +34,13 @@ class _MemoryRuntimeConnectionSettingsStorage
   Future<void> store(RuntimeConnectionSettings settings) async {
     _settings = settings;
   }
+
+  @override
+  Future<void> remove(RuntimeConnectionSettings settings) async {
+    if (_settings?.identityKey == settings.identityKey) {
+      _settings = null;
+    }
+  }
 }
 
 class _FakeImportFilePicker implements ImportFilePicker {

@@ -101,6 +101,14 @@ class _MemoryRuntimeConnectionSettingsStorage
       ..removeWhere((item) => item.identityKey == settings.identityKey)
       ..insert(0, settings);
   }
+
+  @override
+  Future<void> remove(RuntimeConnectionSettings settings) async {
+    _recent.removeWhere((item) => item.identityKey == settings.identityKey);
+    if (_settings?.identityKey == settings.identityKey) {
+      _settings = _recent.isEmpty ? null : _recent.first;
+    }
+  }
 }
 
 class _MemoryReaderLocationStore implements ReaderLocationStore {
@@ -759,6 +767,11 @@ void main() {
       find.textContaining('localhost points to the phone itself'),
       findsOneWidget,
     );
+
+    await tester.tap(find.byIcon(Icons.close_rounded).first);
+    await tester.pumpAndSettle();
+
+    expect((await settingsStorage.loadRecent()).length, 1);
   });
 
   testWidgets('shows start book affordance when sync has front matter', (

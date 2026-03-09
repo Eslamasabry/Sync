@@ -72,6 +72,43 @@ class FileRuntimeConnectionSettingsStorage
   }
 
   @override
+  Future<void> remove(RuntimeConnectionSettings settings) async {
+    final file = await _settingsFile();
+    final payload = await _readPayload();
+    if (payload == null) {
+      return;
+    }
+
+    final active = await load();
+    final remainingRecent = [
+      for (final item in await loadRecent())
+        if (item.identityKey != settings.identityKey) item,
+    ];
+
+    final nextActive =
+        active != null && active.identityKey == settings.identityKey
+        ? remainingRecent.isEmpty
+              ? null
+              : remainingRecent.first
+        : active;
+
+    final nextPayload = <String, dynamic>{
+      'recent_connections': [
+        for (final item in remainingRecent.take(_maxRecentConnections))
+          item.toJson(),
+      ],
+    };
+    if (nextActive != null) {
+      nextPayload['active_settings'] = nextActive.toJson();
+    }
+
+    await file.parent.create(recursive: true);
+    await file.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(nextPayload),
+    );
+  }
+
+  @override
   Future<void> clear() async {
     final file = await _settingsFile();
     if (await file.exists()) {

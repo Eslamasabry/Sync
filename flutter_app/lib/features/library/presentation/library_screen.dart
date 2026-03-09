@@ -252,11 +252,25 @@ class LibraryScreen extends ConsumerWidget {
                 description:
                     'Your active project connection, local cache state, and the fastest path back into the reader.',
                 icon: Icons.radio_button_checked_rounded,
-                footer: FilledButton.tonalIcon(
-                  onPressed: () =>
-                      ref.read(homeTabProvider.notifier).showReader(),
-                  icon: const Icon(Icons.book_online_rounded),
-                  label: const Text('Continue Reader'),
+                footer: Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    FilledButton.tonalIcon(
+                      onPressed: () =>
+                          ref.read(homeTabProvider.notifier).showReader(),
+                      icon: const Icon(Icons.book_online_rounded),
+                      label: const Text('Continue Reader'),
+                    ),
+                    currentSettings.maybeWhen(
+                      data: (settings) => OutlinedButton.icon(
+                        onPressed: () => _forgetConnection(context, ref, settings),
+                        icon: const Icon(Icons.delete_outline_rounded),
+                        label: const Text('Forget Target'),
+                      ),
+                      orElse: () => const SizedBox.shrink(),
+                    ),
+                  ],
                 ),
                 child: currentSettings.when(
                   data: (settings) => _ProjectTargetSummary(
@@ -339,6 +353,8 @@ class LibraryScreen extends ConsumerWidget {
                             settings: item,
                             onOpen: () =>
                                 _activateConnection(context, ref, item),
+                            onForget: () =>
+                                _forgetConnection(context, ref, item),
                           ),
                       ],
                     );
@@ -378,6 +394,33 @@ class LibraryScreen extends ConsumerWidget {
         SnackBar(
           content: Text(
             'Opened ${settings.normalizedProjectId} on ${settings.shortHost}.',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _forgetConnection(
+    BuildContext context,
+    WidgetRef ref,
+    RuntimeConnectionSettings settings,
+  ) async {
+    await ref
+        .read(runtimeConnectionSettingsProvider.notifier)
+        .removeRecent(settings);
+    ref.invalidate(projectIdProvider);
+    ref.invalidate(syncApiClientProvider);
+    ref.invalidate(projectEventsClientProvider);
+    ref.invalidate(readerRepositoryProvider);
+    ref.invalidate(readerProjectProvider);
+    ref.invalidate(projectEventsProvider);
+    ref.invalidate(latestProjectEventProvider);
+    ref.read(readerPlaybackProvider.notifier).resetForProject();
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Forgot ${settings.normalizedProjectId} on ${settings.shortHost}.',
           ),
         ),
       );
@@ -1564,10 +1607,15 @@ class _QueueSnapshotTile extends ConsumerWidget {
 }
 
 class _ProjectSnapshotTile extends ConsumerWidget {
-  const _ProjectSnapshotTile({required this.settings, required this.onOpen});
+  const _ProjectSnapshotTile({
+    required this.settings,
+    required this.onOpen,
+    required this.onForget,
+  });
 
   final RuntimeConnectionSettings settings;
   final VoidCallback onOpen;
+  final VoidCallback onForget;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1580,6 +1628,7 @@ class _ProjectSnapshotTile extends ConsumerWidget {
         value: value,
         offline: offline,
         onOpen: onOpen,
+        onForget: onForget,
       ),
       loading: () => ListTile(
         contentPadding: EdgeInsets.zero,
@@ -1613,12 +1662,14 @@ class _ProjectSnapshotCard extends StatelessWidget {
     required this.value,
     required this.offline,
     required this.onOpen,
+    required this.onForget,
   });
 
   final RuntimeConnectionSettings settings;
   final LibraryProjectSnapshot value;
   final AsyncValue<LibraryOfflineSnapshot> offline;
   final VoidCallback onOpen;
+  final VoidCallback onForget;
 
   @override
   Widget build(BuildContext context) {
@@ -1721,6 +1772,10 @@ class _ProjectSnapshotCard extends StatelessWidget {
               TextButton(
                 onPressed: () => _showProjectDetailsSheet(context, value),
                 child: const Text('Workspace'),
+              ),
+              TextButton(
+                onPressed: onForget,
+                child: const Text('Forget'),
               ),
               const Spacer(),
               FilledButton.tonal(onPressed: onOpen, child: const Text('Open')),
