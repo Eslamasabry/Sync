@@ -223,16 +223,17 @@ void main() {
     expect(find.text('Retry'), findsOneWidget);
   });
 
-  testWidgets('shows the repository status banner for incomplete backend audio', (
-    tester,
-  ) async {
-    await _pumpReaderApp(tester, repository: _FakeReaderRepository());
+  testWidgets(
+    'shows the repository status banner for incomplete backend audio',
+    (tester) async {
+      await _pumpReaderApp(tester, repository: _FakeReaderRepository());
 
-    expect(
-      find.textContaining('no playable audio asset was returned'),
-      findsOneWidget,
-    );
-  });
+      expect(
+        find.textContaining('no playable audio asset was returned'),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('shows a backend pending state instead of demo fallback', (
     tester,
@@ -240,10 +241,7 @@ void main() {
     await _pumpReaderApp(tester, repository: _PendingReaderRepository());
     await tester.pumpAndSettle();
 
-    expect(
-      find.textContaining('still processing'),
-      findsAtLeastNWidgets(1),
-    );
+    expect(find.textContaining('still processing'), findsAtLeastNWidgets(1));
     expect(
       find.textContaining('there is no normalized reader model to render yet'),
       findsOneWidget,

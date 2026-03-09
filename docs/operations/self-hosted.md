@@ -84,6 +84,7 @@ sudo systemctl enable --now sync-api sync-worker
 ```
 
 If `JOB_EXECUTION_MODE=inline`, install and enable only `sync-api`. The worker service is not required in that mode.
+If `OBJECT_STORE_MODE=s3`, keep `ALIGNMENT_WORKDIR` on local disk for temporary processing files while uploaded assets and generated artifacts persist in the configured bucket.
 
 ## 7. nginx Reverse Proxy
 

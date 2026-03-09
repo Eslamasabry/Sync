@@ -225,8 +225,10 @@ class ReaderScreen extends ConsumerWidget {
                               const SizedBox(width: 12),
                               Expanded(
                                 child: FilledButton.icon(
-                                  onPressed: bundle != null &&
-                                          bundle.syncArtifact.totalDurationMs > 0
+                                  onPressed:
+                                      bundle != null &&
+                                          bundle.syncArtifact.totalDurationMs >
+                                              0
                                       ? () => controller.togglePlayback(
                                           bundle.syncArtifact.totalDurationMs,
                                         )
@@ -314,15 +316,16 @@ class _ReaderLoadedView extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    bundle.statusMessage ?? 'Reader content is not available yet.',
+                    bundle.statusMessage ??
+                        'Reader content is not available yet.',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 12),
                   Text(
                     'The backend is reachable, but there is no normalized reader model to render yet.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: palette.textMuted,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
                   ),
                 ],
               ),

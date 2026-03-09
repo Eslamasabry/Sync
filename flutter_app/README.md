@@ -107,6 +107,7 @@ For a complete smoke run, prefer the repo scripts documented in [local-run.md](/
 - real audio playback is used when the backend project loads and the sync artifact references uploaded audio assets
 - demo fallback stays available when the API is offline, but uses the simulated timeline instead of `just_audio`
 - real projects now respect backend artifact `download_url` values for both reader-model and sync payload loading
+- real backend project ids no longer silently fall back to demo content for HTTP artifact errors; the app now shows a reader-state message for processing, missing, or failed backend artifacts
 
 ## Production-Adjacent Usage Notes
 
