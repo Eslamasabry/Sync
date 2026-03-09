@@ -4,7 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from sync_backend.api.dependencies import get_db_session
@@ -153,6 +153,27 @@ def _download_url(
     if job_id is not None:
         route_params["job_id"] = job_id
     return str(request.url_for(route_name, **route_params))
+
+
+def _content_response(
+    *,
+    storage_path: str | None,
+    media_type: str,
+    filename: str,
+) -> StreamingResponse:
+    if storage_path is None:
+        raise ApiError(
+            code="artifact_content_missing",
+            message="Artifact content is not available for download",
+            status_code=status.HTTP_409_CONFLICT,
+            details={"filename": filename},
+        )
+    object_store = get_object_store()
+    return StreamingResponse(
+        object_store.iter_bytes(storage_path),
+        media_type=media_type,
+        headers={"content-disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 def _reader_model_response(
@@ -311,7 +332,7 @@ async def get_asset_content_route(
     project_id: str,
     asset_id: str,
     session: DbSession,
-) -> FileResponse:
+) -> StreamingResponse:
     asset = get_project_asset_or_404(
         session=session,
         project_id=project_id,
@@ -326,9 +347,8 @@ async def get_asset_content_route(
             status_code=status.HTTP_409_CONFLICT,
         )
 
-    object_store = get_object_store()
-    return FileResponse(
-        path=object_store.absolute_path(asset.storage_path),
+    return _content_response(
+        storage_path=asset.storage_path,
         media_type=asset.content_type,
         filename=asset.filename,
     )
@@ -459,24 +479,25 @@ async def get_reader_model_route(
 
 
 @router.get("/{project_id}/sync/content", name="download_sync_route")
-async def download_sync_route(project_id: str, session: DbSession) -> FileResponse:
+async def download_sync_route(project_id: str, session: DbSession) -> StreamingResponse:
     get_project_or_404(session=session, project_id=project_id)
     artifact = get_latest_sync_artifact(session=session, project_id=project_id)
-    object_store = get_object_store()
-    return FileResponse(
-        path=object_store.absolute_path(artifact.storage_path),
+    return _content_response(
+        storage_path=artifact.storage_path,
         media_type="application/json",
         filename=f"sync-{project_id}.json",
     )
 
 
 @router.get("/{project_id}/reader-model/content", name="download_reader_model_route")
-async def download_reader_model_route(project_id: str, session: DbSession) -> FileResponse:
+async def download_reader_model_route(
+    project_id: str,
+    session: DbSession,
+) -> StreamingResponse:
     get_project_or_404(session=session, project_id=project_id)
     artifact = get_reader_model_artifact_or_404(session=session, project_id=project_id)
-    object_store = get_object_store()
-    return FileResponse(
-        path=object_store.absolute_path(artifact.storage_path),
+    return _content_response(
+        storage_path=artifact.storage_path,
         media_type="application/json",
         filename=f"reader-model-{project_id}.json",
     )
@@ -490,16 +511,15 @@ async def download_transcript_route(
     project_id: str,
     job_id: str,
     session: DbSession,
-) -> FileResponse:
+) -> StreamingResponse:
     get_job_or_404(session=session, project_id=project_id, job_id=job_id)
     artifact = get_transcript_artifact_or_404(
         session=session,
         project_id=project_id,
         job_id=job_id,
     )
-    object_store = get_object_store()
-    return FileResponse(
-        path=object_store.absolute_path(artifact.storage_path),
+    return _content_response(
+        storage_path=artifact.storage_path,
         media_type="application/json",
         filename=f"transcript-{job_id}.json",
     )
@@ -510,16 +530,15 @@ async def download_match_route(
     project_id: str,
     job_id: str,
     session: DbSession,
-) -> FileResponse:
+) -> StreamingResponse:
     get_job_or_404(session=session, project_id=project_id, job_id=job_id)
     artifact = get_match_artifact_or_404(
         session=session,
         project_id=project_id,
         job_id=job_id,
     )
-    object_store = get_object_store()
-    return FileResponse(
-        path=object_store.absolute_path(artifact.storage_path),
+    return _content_response(
+        storage_path=artifact.storage_path,
         media_type="application/json",
         filename=f"match-{job_id}.json",
     )

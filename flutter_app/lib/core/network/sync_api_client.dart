@@ -14,9 +14,35 @@ class SyncApiClient {
     final response = await _dio.get<Map<String, dynamic>>(
       '/projects/$projectId/reader-model',
     );
-    return ReaderModel.fromJson(
-      _asMap(response.data, context: 'reader model response')['model']
-          as Map<String, dynamic>,
+    final body = _asMap(response.data, context: 'reader model response');
+    if (_looksLikeReaderModelPayload(body)) {
+      return ReaderModel.fromJson(body);
+    }
+
+    final inlineModel = body['model'];
+    if (inlineModel is Map<String, dynamic>) {
+      return ReaderModel.fromJson(inlineModel);
+    }
+    if (inlineModel is Map) {
+      return ReaderModel.fromJson(Map<String, dynamic>.from(inlineModel));
+    }
+
+    final downloadUrl = body['download_url']?.toString();
+    if (downloadUrl != null && downloadUrl.isNotEmpty) {
+      final downloadResponse = await _dio.getUri<Object?>(
+        Uri.parse(downloadUrl),
+      );
+      return ReaderModel.fromJson(
+        _asMap(downloadResponse.data, context: 'reader model download'),
+      );
+    }
+
+    throw DioException(
+      requestOptions: response.requestOptions,
+      response: response,
+      message:
+          'Reader model response did not include an inline model or download URL.',
+      type: DioExceptionType.badResponse,
     );
   }
 
@@ -79,4 +105,10 @@ Map<String, dynamic> _asMap(Object? value, {required String context}) {
 
 bool _looksLikeSyncPayload(Map<String, dynamic> payload) {
   return payload.containsKey('book_id') && payload.containsKey('tokens');
+}
+
+bool _looksLikeReaderModelPayload(Map<String, dynamic> payload) {
+  return payload.containsKey('book_id') &&
+      payload.containsKey('title') &&
+      payload.containsKey('sections');
 }

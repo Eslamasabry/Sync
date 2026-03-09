@@ -37,6 +37,7 @@ Notes:
 - backend code runs directly from `backend/`
 - current backend implementation stores blobs in the local filesystem under `ALIGNMENT_WORKDIR/object_store`
 - MinIO is provisioned now so a later S3-compatible adapter can switch in without changing local infrastructure
+- `OBJECT_STORE_MODE=s3` now enables the S3-compatible adapter directly against MinIO or another S3 endpoint. The default remains `filesystem` for local simplicity.
 
 ## Host Services Stack
 
@@ -134,6 +135,7 @@ Runtime notes:
 - `TRUSTED_HOSTS` accepts a comma-separated list of allowed hostnames or IPs and is recommended behind a reverse proxy.
 - `JOB_EXECUTION_MODE=celery` keeps the default worker-based path. `JOB_EXECUTION_MODE=inline` lets the API execute jobs in-process and allows Redis readiness to be skipped.
 - `DATABASE_URL=sqlite+pysqlite:///...` is supported for single-host or lightweight local runs.
+- `OBJECT_STORE_MODE=s3` uses `S3_ENDPOINT_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, and `S3_BUCKET` for durable blob storage. `filesystem` remains the default local mode.
 
 ## Local Endpoints
 

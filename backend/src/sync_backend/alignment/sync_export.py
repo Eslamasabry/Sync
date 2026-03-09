@@ -13,7 +13,7 @@ from sync_backend.services import (
     get_project_or_404,
     get_transcript_artifact_or_404,
 )
-from sync_backend.storage import FileObjectStore
+from sync_backend.storage import ObjectStore
 
 
 def _build_audio_manifest(transcript_payload: dict[str, Any]) -> list[dict[str, int | str]]:
@@ -142,7 +142,7 @@ def build_sync_artifact(
     session: Session,
     project_id: str,
     job_id: str,
-    object_store: FileObjectStore,
+    object_store: ObjectStore,
 ) -> SyncArtifact:
     project = get_project_or_404(session=session, project_id=project_id)
     job = get_job_or_404(session=session, project_id=project_id, job_id=job_id)

@@ -9,6 +9,7 @@ description = "Backend service for the Sync audiobook-EPUB alignment project."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "boto3>=1.37,<2.0",
   "celery>=5.4,<6.0",
   "ebooklib>=0.18,<1.0",
   "fastapi>=0.115,<1.0",
@@ -69,5 +70,5 @@ mypy_path = "src"
 packages = ["sync_backend"]
 
 [[tool.mypy.overrides]]
-module = ["celery", "celery.*"]
+module = ["boto3", "boto3.*", "celery", "celery.*"]
 ignore_missing_imports = true

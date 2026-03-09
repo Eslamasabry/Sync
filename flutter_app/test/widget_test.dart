@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
 import 'package:sync_flutter/app.dart';
 import 'package:sync_flutter/core/network/sync_api_client.dart';
 import 'package:sync_flutter/features/reader/data/reader_repository.dart';
@@ -72,6 +73,21 @@ class _FrontMatterReaderRepository extends ReaderRepository {
       }),
       source: ReaderContentSource.api,
       audioUrls: const [],
+    );
+  }
+}
+
+class _FailingReaderRepository extends ReaderRepository {
+  _FailingReaderRepository()
+    : super(apiClient: SyncApiClient(baseUrl: 'http://localhost'));
+
+  @override
+  Future<ReaderProjectBundle> loadProject(String projectId) async {
+    throw DioException(
+      requestOptions: RequestOptions(path: '/projects/$projectId/reader-model'),
+      message:
+          'Reader model response did not include an inline model or download URL.',
+      type: DioExceptionType.badResponse,
     );
   }
 }
@@ -159,5 +175,16 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('shows the reader error state when a real project load fails', (
+    tester,
+  ) async {
+    await _pumpReaderApp(tester, repository: _FailingReaderRepository());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reader failed to load'), findsOneWidget);
+    expect(find.textContaining('Reader model response'), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
   });
 }

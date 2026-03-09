@@ -11,7 +11,7 @@ Constraints:
 Current baseline:
 
 - typed API client for reader model and sync artifact
-- Riverpod async project loading with demo fallback when the API is unavailable
+- Riverpod async project loading with demo fallback only for the default `demo-book` project
 - local playback/theme controller separated from remote content loading
 - sync-driven token highlighting UI scaffold
 
@@ -106,6 +106,7 @@ For a complete smoke run, prefer the repo scripts documented in [local-run.md](/
 
 - real audio playback is used when the backend project loads and the sync artifact references uploaded audio assets
 - demo fallback stays available when the API is offline, but uses the simulated timeline instead of `just_audio`
+- real projects now respect backend artifact `download_url` values for both reader-model and sync payload loading
 
 ## Production-Adjacent Usage Notes
 
@@ -113,7 +114,7 @@ For a complete smoke run, prefer the repo scripts documented in [local-run.md](/
 - Reverse proxies must pass both HTTP and WebSocket traffic for `/v1/ws/projects/{project_id}`.
 - Use `https://` in `SYNC_API_BASE_URL` for deployed environments so the client upgrades to `wss://` automatically.
 - The client assumes uploaded audio is streamable from `GET /v1/projects/{project_id}/assets/{asset_id}/content`.
-- When the API is unreachable, the app intentionally falls back to demo content. That is convenient for local iteration but should not be mistaken for a healthy backend connection.
+- When the API is unreachable, the app intentionally falls back to demo content only for the default `demo-book` project. Real project ids now surface a load error instead of silently masking backend issues.
 
 Implementation must follow:
 

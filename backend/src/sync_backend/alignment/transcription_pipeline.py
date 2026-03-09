@@ -18,7 +18,7 @@ from sync_backend.services import (
     get_job_or_404,
     get_project_or_404,
 )
-from sync_backend.storage import FileObjectStore
+from sync_backend.storage import ObjectStore
 
 
 def transcribe_alignment_job(
@@ -26,7 +26,7 @@ def transcribe_alignment_job(
     session: Session,
     project_id: str,
     job_id: str,
-    object_store: FileObjectStore,
+    object_store: ObjectStore,
     preprocessor: AudioPreprocessor,
     transcriber: SegmentTranscriber,
 ) -> TranscriptArtifact:

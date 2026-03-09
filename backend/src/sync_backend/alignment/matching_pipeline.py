@@ -12,7 +12,7 @@ from sync_backend.services import (
     get_reader_model_artifact_or_404,
     get_transcript_artifact_or_404,
 )
-from sync_backend.storage import FileObjectStore
+from sync_backend.storage import ObjectStore
 
 
 def build_match_artifact(
@@ -20,7 +20,7 @@ def build_match_artifact(
     session: Session,
     project_id: str,
     job_id: str,
-    object_store: FileObjectStore,
+    object_store: ObjectStore,
 ) -> MatchArtifact:
     job = get_job_or_404(session=session, project_id=project_id, job_id=job_id)
     reader_model_artifact = get_reader_model_artifact_or_404(session=session, project_id=project_id)

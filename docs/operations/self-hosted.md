@@ -54,9 +54,16 @@ Edit:
 - `DATABASE_URL`
 - `REDIS_URL`
 - `JOB_EXECUTION_MODE`
+- `OBJECT_STORE_MODE`
+- `S3_ENDPOINT_URL`
+- `S3_ACCESS_KEY_ID`
+- `S3_SECRET_ACCESS_KEY`
+- `S3_BUCKET`
 - `CORS_ALLOW_ORIGINS`
 - `TRUSTED_HOSTS`
 - `ALIGNMENT_WORKDIR`
+
+Use `OBJECT_STORE_MODE=filesystem` for the simplest host-only deployment. Use `OBJECT_STORE_MODE=s3` when you want durable blob storage in MinIO, AWS S3, or another S3-compatible service.
 
 ## 5. PostgreSQL Bootstrap
 

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from sqlalchemy.orm import Session
 
 from sync_backend.alignment.audio import AudioPreprocessor
@@ -18,6 +20,7 @@ def transcribe_alignment_job_task(project_id: str, job_id: str) -> None:
         ffmpeg_bin=settings.ffmpeg_bin,
         ffprobe_bin=settings.ffprobe_bin,
         chunk_duration_ms=settings.audio_chunk_duration_ms,
+        processing_workdir=Path(settings.alignment_workdir) / "processing",
     )
     transcriber = get_transcriber(settings)
 

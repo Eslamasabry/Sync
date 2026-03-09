@@ -8,9 +8,10 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import cast
+from uuid import uuid4
 
 from sync_backend.models import Asset
-from sync_backend.storage import FileObjectStore
+from sync_backend.storage import ObjectStore
 
 
 class AudioProcessingError(RuntimeError):
@@ -32,33 +33,40 @@ class AudioPreprocessor:
     def __init__(
         self,
         *,
-        object_store: FileObjectStore,
+        object_store: ObjectStore,
         ffmpeg_bin: str,
         ffprobe_bin: str,
         chunk_duration_ms: int,
+        processing_workdir: Path | None = None,
     ) -> None:
         self.object_store = object_store
         self.ffmpeg_bin = ffmpeg_bin
         self.ffprobe_bin = ffprobe_bin
         self.chunk_duration_ms = chunk_duration_ms
+        self.processing_workdir = processing_workdir or Path("./artifacts/processing")
 
     def prepare_asset(self, *, project_id: str, asset: Asset) -> list[PreparedAudioSegment]:
         if asset.storage_path is None:
             raise AudioProcessingError(f"Asset {asset.id} does not have a stored payload")
 
-        source_path = self.object_store.absolute_path(asset.storage_path)
-        suffix = source_path.suffix.lower()
-        if suffix == ".wav":
-            return self._prepare_wav(
+        with self.object_store.materialize_file(asset.storage_path) as source_path:
+            suffix = source_path.suffix.lower()
+            if suffix == ".wav":
+                return self._prepare_wav(
+                    project_id=project_id,
+                    asset=asset,
+                    source_path=source_path,
+                )
+            return self._prepare_with_ffmpeg(
                 project_id=project_id,
                 asset=asset,
                 source_path=source_path,
             )
-        return self._prepare_with_ffmpeg(
-            project_id=project_id,
-            asset=asset,
-            source_path=source_path,
-        )
+
+    def _processing_dir(self, *, project_id: str, asset_id: str) -> Path:
+        target_dir = self.processing_workdir / project_id / asset_id / uuid4().hex
+        target_dir.mkdir(parents=True, exist_ok=True)
+        return target_dir
 
     def _prepare_wav(
         self,
@@ -67,6 +75,7 @@ class AudioPreprocessor:
         asset: Asset,
         source_path: Path,
     ) -> list[PreparedAudioSegment]:
+        processing_dir = self._processing_dir(project_id=project_id, asset_id=asset.id)
         with contextlib.closing(wave.open(str(source_path), "rb")) as wav_file:
             frame_rate = wav_file.getframerate()
             total_frames = wav_file.getnframes()
@@ -86,20 +95,23 @@ class AudioPreprocessor:
                 with contextlib.closing(wave.open(buffer, "wb")) as segment_file:
                     segment_file.setparams(params)
                     segment_file.writeframes(frames)
+                payload = buffer.getvalue()
 
                 storage_path, _ = self.object_store.write_bytes(
                     (
                         f"projects/{project_id}/artifacts/audio/{asset.id}/"
                         f"segment-{segment_index:04d}.wav"
                     ),
-                    buffer.getvalue(),
+                    payload,
                 )
+                local_path = processing_dir / f"segment-{segment_index:04d}.wav"
+                local_path.write_bytes(payload)
                 segments.append(
                     PreparedAudioSegment(
                         asset_id=asset.id,
                         segment_index=segment_index,
                         storage_path=storage_path,
-                        absolute_path=self.object_store.absolute_path(storage_path),
+                        absolute_path=local_path,
                         start_ms=start_ms,
                         end_ms=end_ms,
                         duration_ms=duration_ms,
@@ -124,6 +136,7 @@ class AudioPreprocessor:
                 "ffmpeg is required for non-WAV audio preprocessing"
             )
 
+        processing_dir = self._processing_dir(project_id=project_id, asset_id=asset.id)
         total_duration_ms = self._probe_duration_ms(
             ffprobe_path=ffprobe_path,
             source_path=source_path,
@@ -133,11 +146,7 @@ class AudioPreprocessor:
             range(0, total_duration_ms, self.chunk_duration_ms)
         ):
             duration_ms = min(self.chunk_duration_ms, total_duration_ms - start_ms)
-            target_path = self.object_store.absolute_path(
-                f"projects/{project_id}/artifacts/audio/{asset.id}/"
-                f"segment-{segment_index:04d}.wav"
-            )
-            target_path.parent.mkdir(parents=True, exist_ok=True)
+            target_path = processing_dir / f"segment-{segment_index:04d}.wav"
 
             subprocess.run(
                 [
@@ -159,7 +168,13 @@ class AudioPreprocessor:
                 capture_output=True,
                 text=True,
             )
-            storage_path = str(target_path.relative_to(self.object_store.base_path))
+            storage_path, _ = self.object_store.write_bytes(
+                (
+                    f"projects/{project_id}/artifacts/audio/{asset.id}/"
+                    f"segment-{segment_index:04d}.wav"
+                ),
+                target_path.read_bytes(),
+            )
             segments.append(
                 PreparedAudioSegment(
                     asset_id=asset.id,

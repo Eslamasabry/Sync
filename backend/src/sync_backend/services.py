@@ -18,7 +18,7 @@ from sync_backend.models import (
     SyncArtifact,
     TranscriptArtifact,
 )
-from sync_backend.storage import FileObjectStore
+from sync_backend.storage import ObjectStore
 
 
 def create_project(*, session: Session, title: str, language: str | None) -> Project:
@@ -74,7 +74,7 @@ def store_uploaded_asset(
     filename: str,
     content_type: str,
     payload: bytes,
-    object_store: FileObjectStore,
+    object_store: ObjectStore,
 ) -> Asset:
     get_project_or_404(session=session, project_id=project_id)
     asset_id = str(uuid4())
@@ -141,7 +141,7 @@ def generate_reader_model_artifact(
     session: Session,
     project_id: str,
     asset: Asset,
-    object_store: FileObjectStore,
+    object_store: ObjectStore,
 ) -> ReaderModelArtifact:
     if asset.kind != "epub" or asset.storage_path is None:
         raise ApiError(
@@ -152,11 +152,12 @@ def generate_reader_model_artifact(
         )
 
     project = get_project_or_404(session=session, project_id=project_id)
-    reader_model = build_reader_model(
-        object_store.absolute_path(asset.storage_path),
-        book_id=project_id,
-        language=project.language,
-    )
+    with object_store.materialize_file(asset.storage_path) as epub_path:
+        reader_model = build_reader_model(
+            epub_path,
+            book_id=project_id,
+            language=project.language,
+        )
     artifact_id = str(uuid4())
     storage_path, size_bytes = object_store.write_json(
         f"projects/{project_id}/artifacts/reader-model/{artifact_id}.json",

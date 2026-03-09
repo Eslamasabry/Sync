@@ -54,6 +54,7 @@ Notes:
   - `ENABLE_GZIP` and `GZIP_MINIMUM_SIZE`
   - `CORS_ALLOW_ORIGINS`, `CORS_ALLOW_ORIGIN_REGEX`, `CORS_ALLOW_METHODS`, `CORS_ALLOW_HEADERS`, `CORS_ALLOW_CREDENTIALS`
   - `TRUSTED_HOSTS`
+- Blob storage is filesystem-backed by default, but `OBJECT_STORE_MODE=s3` now supports durable S3-compatible storage through `boto3` using the existing `S3_ENDPOINT_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, and `S3_BUCKET` settings.
 - CORS is off by default. That is intentional for safe local and server-side use. Enable it explicitly for Flutter web or other cross-origin clients.
 - `TRUSTED_HOSTS` is also off by default. Set it in deployed environments to lock accepted `Host` headers to your real domains or LAN IPs.
 
