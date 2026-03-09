@@ -145,6 +145,18 @@ class ReaderScreen extends ConsumerWidget {
                               recentConnections.asData?.value ?? const [],
                             ),
                       ),
+                      const SizedBox(height: 14),
+                      _ReaderStateStrip(
+                        project: project,
+                        settings: activeSettings,
+                        onRefresh: () => ref.invalidate(readerProjectProvider),
+                        onOpenConnectionSettings: () =>
+                            _showConnectionSettingsSheet(
+                              context,
+                              activeSettings,
+                              recentConnections.asData?.value ?? const [],
+                            ),
+                      ),
                       const SizedBox(height: 18),
                     ],
                     Expanded(
@@ -461,6 +473,210 @@ Future<void> _showGapInspectorSheet(
       onNavigate: onNavigate,
     ),
   );
+}
+
+class _ReaderStateStrip extends StatelessWidget {
+  const _ReaderStateStrip({
+    required this.project,
+    required this.settings,
+    required this.onRefresh,
+    required this.onOpenConnectionSettings,
+  });
+
+  final AsyncValue<ReaderProjectBundle> project;
+  final RuntimeConnectionSettings settings;
+  final VoidCallback onRefresh;
+  final VoidCallback onOpenConnectionSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    return project.when(
+      data: (bundle) {
+        final summary = _stateSummary(bundle);
+        if (summary == null) {
+          return const SizedBox.shrink();
+        }
+        final palette = ReaderPalette.of(context);
+        final tone = summary.isProblem
+            ? palette.accentSoft
+            : palette.backgroundElevated;
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+          decoration: BoxDecoration(
+            color: tone,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: palette.borderSubtle),
+          ),
+          child: Wrap(
+            spacing: 14,
+            runSpacing: 14,
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      summary.title,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      summary.message,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: palette.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  if (summary.canRefresh)
+                    FilledButton.tonal(
+                      onPressed: onRefresh,
+                      child: const Text('Refresh'),
+                    ),
+                  FilledButton.tonal(
+                    onPressed: onOpenConnectionSettings,
+                    child: const Text('Connection'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+      loading: () => _ReaderTransitionCard(
+        title: 'Opening reader workspace',
+        message:
+            'Connecting to ${settings.shortHost} and loading the normalized book model plus sync timeline for ${settings.normalizedProjectId}.',
+        chips: const [
+          'Connect to backend',
+          'Load reader model',
+          'Load sync timeline',
+        ],
+      ),
+      error: (_, _) => const SizedBox.shrink(),
+    );
+  }
+
+  static _ReaderStateSummary? _stateSummary(ReaderProjectBundle bundle) {
+    final fallback = switch (bundle.source) {
+      ReaderContentSource.offlineCache => _ReaderStateSummary(
+        title: 'Offline cache in control',
+        message:
+            bundle.statusMessage ??
+            'This reader session is coming from cached artifacts on the device.',
+        canRefresh: true,
+        isProblem: false,
+      ),
+      ReaderContentSource.artifactPending => _ReaderStateSummary(
+        title: 'Artifacts still processing',
+        message:
+            bundle.statusMessage ??
+            'The project exists, but the latest reader artifacts are not ready yet.',
+        canRefresh: true,
+        isProblem: false,
+      ),
+      ReaderContentSource.projectError => _ReaderStateSummary(
+        title: 'Latest reader artifacts are incomplete',
+        message:
+            bundle.statusMessage ??
+            'The project loaded, but the last artifact pass did not leave a usable reading model.',
+        canRefresh: true,
+        isProblem: true,
+      ),
+      ReaderContentSource.demoFallback => _ReaderStateSummary(
+        title: 'Demo content is standing in',
+        message:
+            bundle.statusMessage ??
+            'The backend is unavailable, so the app opened with demo data.',
+        canRefresh: true,
+        isProblem: true,
+      ),
+      ReaderContentSource.api => null,
+    };
+
+    if (fallback != null) {
+      return fallback;
+    }
+    if (bundle.statusMessage != null && bundle.statusMessage!.isNotEmpty) {
+      return _ReaderStateSummary(
+        title: 'Project state update',
+        message: bundle.statusMessage!,
+        canRefresh: true,
+        isProblem: false,
+      );
+    }
+    return null;
+  }
+}
+
+class _ReaderStateSummary {
+  const _ReaderStateSummary({
+    required this.title,
+    required this.message,
+    required this.canRefresh,
+    required this.isProblem,
+  });
+
+  final String title;
+  final String message;
+  final bool canRefresh;
+  final bool isProblem;
+}
+
+class _ReaderTransitionCard extends StatelessWidget {
+  const _ReaderTransitionCard({
+    required this.title,
+    required this.message,
+    required this.chips,
+  });
+
+  final String title;
+  final String message;
+  final List<String> chips;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      decoration: BoxDecoration(
+        color: palette.backgroundElevated,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 6),
+          Text(
+            message,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final chip in chips) _DiagnosticsChip(label: chip),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ReaderHero extends StatelessWidget {
@@ -1920,6 +2136,16 @@ class _ReaderLoadingView extends StatelessWidget {
                 context,
               ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
             ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: const [
+                _DiagnosticsChip(label: 'Connect to backend'),
+                _DiagnosticsChip(label: 'Load reader model'),
+                _DiagnosticsChip(label: 'Load sync timeline'),
+              ],
+            ),
             if (_connectionHint(settings) case final hint?) ...[
               const SizedBox(height: 16),
               _ConnectionHintBanner(message: hint),
@@ -1973,7 +2199,16 @@ class _ReaderErrorView extends StatelessWidget {
               ).textTheme.labelLarge?.copyWith(color: palette.textMuted),
             ),
             const SizedBox(height: 16),
-            Text(message),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              decoration: BoxDecoration(
+                color: palette.backgroundBase,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: palette.borderSubtle),
+              ),
+              child: Text(message),
+            ),
             const SizedBox(height: 16),
             Text(
               _errorHelp(settings),

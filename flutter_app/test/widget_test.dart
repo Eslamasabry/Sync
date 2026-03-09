@@ -570,7 +570,7 @@ void main() {
     expect(find.text('Moby-Dick'), findsOneWidget);
     expect(find.text('Speed'), findsOneWidget);
     expect(find.text('Download Audio'), findsOneWidget);
-    expect(find.text('Connection'), findsOneWidget);
+    expect(find.text('Connection'), findsAtLeastNWidgets(1));
     expect(find.text('Navigate'), findsOneWidget);
   });
 
@@ -706,7 +706,7 @@ void main() {
       settingsStorage: settingsStorage,
     );
 
-    await tester.tap(find.text('Connection'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Connection').first);
     await tester.pumpAndSettle();
 
     await tester.enterText(
@@ -747,7 +747,7 @@ void main() {
       settingsStorage: settingsStorage,
     );
 
-    await tester.tap(find.text('Connection'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Connection').first);
     await tester.pumpAndSettle();
 
     expect(find.text('Recent Connections'), findsOneWidget);
@@ -887,6 +887,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Reader failed to load'), findsOneWidget);
+    expect(find.text('Open Connection'), findsOneWidget);
     expect(find.textContaining('Reader model response'), findsOneWidget);
     expect(find.text('Retry'), findsOneWidget);
   });
@@ -898,7 +899,7 @@ void main() {
 
       expect(
         find.textContaining('no playable audio asset was returned'),
-        findsOneWidget,
+        findsAtLeastNWidgets(1),
       );
     },
   );
@@ -909,6 +910,7 @@ void main() {
     await _pumpReaderApp(tester, repository: _PendingReaderRepository());
     await tester.pumpAndSettle();
 
+    expect(find.text('Artifacts still processing'), findsOneWidget);
     expect(find.textContaining('still processing'), findsAtLeastNWidgets(1));
     expect(
       find.textContaining('there is no normalized reader model to render yet'),
@@ -928,13 +930,13 @@ void main() {
 
     expect(
       find.textContaining('Cached reader artifacts loaded from this device'),
-      findsOneWidget,
+      findsAtLeastNWidgets(1),
     );
     expect(
       find.textContaining(
         'Audio streaming stays disabled until the backend is reachable again',
       ),
-      findsOneWidget,
+      findsAtLeastNWidgets(1),
     );
     expect(
       find.text('Demo data loaded because the API is unavailable.'),
