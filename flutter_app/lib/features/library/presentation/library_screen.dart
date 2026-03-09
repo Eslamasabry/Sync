@@ -124,6 +124,15 @@ final libraryProjectSnapshotProvider = FutureProvider.autoDispose
           ref.read(libraryProjectSummaryLoaderProvider).load(settings),
     );
 
+final libraryProjectJobsProvider = FutureProvider.autoDispose
+    .family<ProjectJobsResult, RuntimeConnectionSettings>((ref, settings) {
+      final api = SyncApiClient(
+        baseUrl: settings.apiBaseUrl,
+        authToken: settings.authToken,
+      );
+      return api.fetchProjectJobs(settings.projectId);
+    });
+
 class LibraryOfflineSnapshot {
   const LibraryOfflineSnapshot({
     required this.hasTextCache,
@@ -826,7 +835,81 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
               ),
           ],
         ),
+        if (widget.state.status == LibraryImportStatus.completed &&
+            widget.state.projectId != null &&
+            widget.state.jobId != null) ...[
+          const SizedBox(height: 16),
+          _ImportCompletionBanner(
+            state: widget.state,
+            onOpenReader: actions.openImportedProject,
+          ),
+        ],
       ],
+    );
+  }
+}
+
+class _ImportCompletionBanner extends StatelessWidget {
+  const _ImportCompletionBanner({
+    required this.state,
+    required this.onOpenReader,
+  });
+
+  final LibraryImportState state;
+  final VoidCallback onOpenReader;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        color: palette.backgroundBase,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.task_alt_rounded, color: palette.success),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Alignment queued',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Project ${state.projectId} is ready and job ${state.jobId} is running. Stay in the library to watch queue state or jump into the reader workspace when you want to inspect progress there.',
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _LibraryStatusChip(label: 'Project ${state.projectId}'),
+              _LibraryStatusChip(label: 'Job ${state.jobId}'),
+              if (state.completedAt != null)
+                _LibraryStatusChip(label: _formatTimestamp(state.completedAt!)),
+            ],
+          ),
+          const SizedBox(height: 14),
+          FilledButton.icon(
+            onPressed: onOpenReader,
+            icon: const Icon(Icons.chrome_reader_mode_rounded),
+            label: const Text('Open Reader'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1284,7 +1367,9 @@ class _ProjectDetailsSheet extends StatelessWidget {
         final offline = ref.watch(
           libraryOfflineSnapshotProvider(snapshot.settings),
         );
+        final jobs = ref.watch(libraryProjectJobsProvider(snapshot.settings));
         final theme = Theme.of(context);
+        final homeTab = ref.read(homeTabProvider.notifier);
         return Padding(
           padding: EdgeInsets.fromLTRB(
             20,
@@ -1363,10 +1448,110 @@ class _ProjectDetailsSheet extends StatelessWidget {
                     style: theme.textTheme.bodyMedium,
                   ),
                 ),
+              const SizedBox(height: 16),
+              Text('Recent attempts', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 10),
+              jobs.when(
+                data: (value) {
+                  if (value.jobs.isEmpty) {
+                    return const Text('No alignment attempts recorded yet.');
+                  }
+                  return Column(
+                    children: [
+                      for (final job in value.jobs.take(5))
+                        _JobHistoryTile(job: job),
+                    ],
+                  );
+                },
+                loading: () => const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: LinearProgressIndicator(),
+                ),
+                error: (error, _) => Text('Could not load job history. $error'),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.tonalIcon(
+                onPressed: () async {
+                  await ref
+                      .read(runtimeConnectionSettingsProvider.notifier)
+                      .save(snapshot.settings);
+                  ref.invalidate(projectIdProvider);
+                  ref.invalidate(syncApiClientProvider);
+                  ref.invalidate(projectEventsClientProvider);
+                  ref.invalidate(readerRepositoryProvider);
+                  ref.invalidate(readerProjectProvider);
+                  ref.invalidate(projectEventsProvider);
+                  ref.invalidate(latestProjectEventProvider);
+                  ref.read(readerPlaybackProvider.notifier).resetForProject();
+                  homeTab.showReader();
+                  if (context.mounted) {
+                    Navigator.of(context).pop();
+                  }
+                },
+                icon: const Icon(Icons.chrome_reader_mode_rounded),
+                label: const Text('Open In Reader'),
+              ),
             ],
           ),
         );
       },
+    );
+  }
+}
+
+class _JobHistoryTile extends StatelessWidget {
+  const _JobHistoryTile({required this.job});
+
+  final AlignmentJobResult job;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final status = _capitalizeLabel(job.status.replaceAll('_', ' '));
+    final stage = job.stage == null
+        ? null
+        : _capitalizeLabel(job.stage!.replaceAll('_', ' '));
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: palette.backgroundBase,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _LibraryStatusChip(label: status),
+              _LibraryStatusChip(label: 'Attempt ${job.attemptNumber}'),
+              if (stage != null) _LibraryStatusChip(label: stage),
+              if (job.percent != null)
+                _LibraryStatusChip(label: '${job.percent}%'),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            job.jobId,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+          ),
+          if (job.terminalReason case final reason?) ...[
+            const SizedBox(height: 6),
+            Text(
+              reason,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -1376,6 +1561,15 @@ String _formatMs(int value) {
   final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
   final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
   return '$minutes:$seconds';
+}
+
+String _formatTimestamp(DateTime value) {
+  final local = value.toLocal();
+  final month = local.month.toString().padLeft(2, '0');
+  final day = local.day.toString().padLeft(2, '0');
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '${local.year}-$month-$day $hour:$minute';
 }
 
 String _formatBytes(int value) {

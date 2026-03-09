@@ -49,6 +49,13 @@ class AlignmentJobResult {
   final String? stage;
 }
 
+class ProjectJobsResult {
+  const ProjectJobsResult({required this.projectId, required this.jobs});
+
+  final String projectId;
+  final List<AlignmentJobResult> jobs;
+}
+
 class SyncApiClient {
   SyncApiClient({
     Dio? dio,
@@ -174,7 +181,9 @@ class SyncApiClient {
     } else if (file.bytes != null) {
       multipartFile = MultipartFile.fromBytes(file.bytes!, filename: file.name);
     } else {
-      throw ArgumentError('Import file must include a path or in-memory bytes.');
+      throw ArgumentError(
+        'Import file must include a path or in-memory bytes.',
+      );
     }
 
     final formData = FormData.fromMap({'kind': kind, 'file': multipartFile});
@@ -215,7 +224,23 @@ class SyncApiClient {
     final response = await _dio.get<Map<String, dynamic>>(
       '/projects/$projectId/jobs/$jobId',
     );
-    return _parseJobResult(_asMap(response.data, context: 'job detail response'));
+    return _parseJobResult(
+      _asMap(response.data, context: 'job detail response'),
+    );
+  }
+
+  Future<ProjectJobsResult> fetchProjectJobs(String projectId) async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/projects/$projectId/jobs',
+    );
+    final body = _asMap(response.data, context: 'project jobs response');
+    final jobs = _asObjectList(
+      body['jobs'],
+    ).map(_parseJobResult).toList(growable: false);
+    return ProjectJobsResult(
+      projectId: body['project_id']?.toString() ?? projectId,
+      jobs: jobs,
+    );
   }
 
   Future<void> downloadFile({
@@ -271,6 +296,15 @@ Map<String, dynamic> _asMap(Object? value, {required String context}) {
     return Map<String, dynamic>.from(value);
   }
   throw FormatException('Expected JSON object for $context.');
+}
+
+List<Map<String, dynamic>> _asObjectList(Object? value) {
+  if (value is! List) {
+    return const <Map<String, dynamic>>[];
+  }
+  return value
+      .map((item) => _asMap(item, context: 'object list item'))
+      .toList(growable: false);
 }
 
 bool _looksLikeSyncPayload(Map<String, dynamic> payload) {

@@ -33,6 +33,7 @@ class LibraryImportState {
     this.message,
     this.projectId,
     this.jobId,
+    this.completedAt,
   });
 
   final LibraryImportStatus status;
@@ -43,6 +44,7 @@ class LibraryImportState {
   final String? message;
   final String? projectId;
   final String? jobId;
+  final DateTime? completedAt;
 
   bool get canStartImport =>
       title.trim().isNotEmpty &&
@@ -66,9 +68,11 @@ class LibraryImportState {
     String? message,
     String? projectId,
     String? jobId,
+    DateTime? completedAt,
     bool clearMessage = false,
     bool clearProjectId = false,
     bool clearJobId = false,
+    bool clearCompletedAt = false,
     bool clearEpub = false,
   }) {
     return LibraryImportState(
@@ -80,6 +84,7 @@ class LibraryImportState {
       message: clearMessage ? null : message ?? this.message,
       projectId: clearProjectId ? null : projectId ?? this.projectId,
       jobId: clearJobId ? null : jobId ?? this.jobId,
+      completedAt: clearCompletedAt ? null : completedAt ?? this.completedAt,
     );
   }
 }
@@ -115,7 +120,9 @@ class LibraryImportController extends Notifier<LibraryImportState> {
     );
     final file = await ref.read(importFilePickerProvider).pickEpub();
     state = state.copyWith(
-      status: file == null ? LibraryImportStatus.idle : LibraryImportStatus.ready,
+      status: file == null
+          ? LibraryImportStatus.idle
+          : LibraryImportStatus.ready,
       epubFile: file,
     );
   }
@@ -127,7 +134,9 @@ class LibraryImportController extends Notifier<LibraryImportState> {
     );
     final files = await ref.read(importFilePickerProvider).pickAudioFiles();
     state = state.copyWith(
-      status: files.isEmpty ? LibraryImportStatus.idle : LibraryImportStatus.ready,
+      status: files.isEmpty
+          ? LibraryImportStatus.idle
+          : LibraryImportStatus.ready,
       audioFiles: files,
     );
   }
@@ -144,7 +153,8 @@ class LibraryImportController extends Notifier<LibraryImportState> {
     if (!state.canStartImport) {
       state = state.copyWith(
         status: LibraryImportStatus.failed,
-        message: 'Choose an EPUB, at least one audio file, and enter a title first.',
+        message:
+            'Choose an EPUB, at least one audio file, and enter a title first.',
       );
       return;
     }
@@ -158,6 +168,7 @@ class LibraryImportController extends Notifier<LibraryImportState> {
         message: 'Creating project shell...',
         clearProjectId: true,
         clearJobId: true,
+        clearCompletedAt: true,
       );
       final project = await api.createProject(
         title: state.title.trim(),
@@ -180,7 +191,8 @@ class LibraryImportController extends Notifier<LibraryImportState> {
         final audioFile = state.audioFiles[index];
         state = state.copyWith(
           status: LibraryImportStatus.uploadingAudio,
-          message: 'Uploading audio ${index + 1} of ${state.audioFiles.length}...',
+          message:
+              'Uploading audio ${index + 1} of ${state.audioFiles.length}...',
         );
         final asset = await api.uploadAsset(
           projectId: project.projectId,
@@ -200,13 +212,15 @@ class LibraryImportController extends Notifier<LibraryImportState> {
         audioAssetIds: audioAssetIds,
       );
 
-      await ref.read(runtimeConnectionSettingsProvider.notifier).save(
-        RuntimeConnectionSettings(
-          apiBaseUrl: settings.apiBaseUrl,
-          projectId: project.projectId,
-          authToken: settings.authToken,
-        ),
-      );
+      await ref
+          .read(runtimeConnectionSettingsProvider.notifier)
+          .save(
+            RuntimeConnectionSettings(
+              apiBaseUrl: settings.apiBaseUrl,
+              projectId: project.projectId,
+              authToken: settings.authToken,
+            ),
+          );
       ref.invalidate(projectIdProvider);
       ref.invalidate(syncApiClientProvider);
       ref.invalidate(projectEventsClientProvider);
@@ -215,13 +229,13 @@ class LibraryImportController extends Notifier<LibraryImportState> {
       ref.invalidate(projectEventsProvider);
       ref.invalidate(latestProjectEventProvider);
       ref.read(readerPlaybackProvider.notifier).resetForProject();
-      ref.read(homeTabProvider.notifier).showReader();
 
       state = state.copyWith(
         status: LibraryImportStatus.completed,
         projectId: project.projectId,
         jobId: job.jobId,
         message: 'Project created and alignment started.',
+        completedAt: DateTime.now().toUtc(),
       );
     } catch (error) {
       state = state.copyWith(
@@ -238,5 +252,12 @@ class LibraryImportController extends Notifier<LibraryImportState> {
       language: 'en',
       audioFiles: <ImportPickedFile>[],
     );
+  }
+
+  void openImportedProject() {
+    if (state.projectId == null || state.jobId == null) {
+      return;
+    }
+    ref.read(homeTabProvider.notifier).showReader();
   }
 }

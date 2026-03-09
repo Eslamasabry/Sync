@@ -99,33 +99,45 @@ class _FakeSyncApiClient extends SyncApiClient {
 }
 
 void main() {
-  test('library import controller creates project, uploads files, and switches reader target', () async {
-    final storage = _MemoryRuntimeConnectionSettingsStorage();
-    final api = _FakeSyncApiClient();
-    final container = ProviderContainer(
-      overrides: [
-        runtimeConnectionSettingsStorageProvider.overrideWithValue(storage),
-        importFilePickerProvider.overrideWithValue(const _FakeImportFilePicker()),
-        syncApiClientProvider.overrideWith((ref) async => api),
-      ],
-    );
-    addTearDown(container.dispose);
+  test(
+    'library import controller creates project, uploads files, and switches reader target',
+    () async {
+      final storage = _MemoryRuntimeConnectionSettingsStorage();
+      final api = _FakeSyncApiClient();
+      final container = ProviderContainer(
+        overrides: [
+          runtimeConnectionSettingsStorageProvider.overrideWithValue(storage),
+          importFilePickerProvider.overrideWithValue(
+            const _FakeImportFilePicker(),
+          ),
+          syncApiClientProvider.overrideWith((ref) async => api),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    final controller = container.read(libraryImportProvider.notifier);
-    controller.setTitle('Imported Book');
-    controller.setLanguage('en');
-    await controller.pickEpub();
-    await controller.pickAudioFiles();
-    await controller.startImport();
+      final controller = container.read(libraryImportProvider.notifier);
+      container.read(homeTabProvider.notifier).showLibrary();
+      controller.setTitle('Imported Book');
+      controller.setLanguage('en');
+      await controller.pickEpub();
+      await controller.pickAudioFiles();
+      await controller.startImport();
 
-    final state = container.read(libraryImportProvider);
-    final settings = await container.read(runtimeConnectionSettingsProvider.future);
+      final state = container.read(libraryImportProvider);
+      final settings = await container.read(
+        runtimeConnectionSettingsProvider.future,
+      );
 
-    expect(state.status, LibraryImportStatus.completed);
-    expect(state.projectId, 'project-123');
-    expect(state.jobId, 'job-123');
-    expect(api.uploadedKinds, ['epub', 'audio', 'audio']);
-    expect(settings.projectId, 'project-123');
-    expect(container.read(homeTabProvider), 1);
-  });
+      expect(state.status, LibraryImportStatus.completed);
+      expect(state.projectId, 'project-123');
+      expect(state.jobId, 'job-123');
+      expect(state.completedAt, isNotNull);
+      expect(api.uploadedKinds, ['epub', 'audio', 'audio']);
+      expect(settings.projectId, 'project-123');
+      expect(container.read(homeTabProvider), 0);
+
+      controller.openImportedProject();
+      expect(container.read(homeTabProvider), 1);
+    },
+  );
 }
