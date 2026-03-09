@@ -3,7 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sync_flutter/core/playback/playback_driver.dart';
+import 'package:sync_flutter/features/reader/data/reader_location_store.dart';
 import 'package:sync_flutter/features/reader/data/reader_repository.dart';
+import 'package:sync_flutter/features/reader/domain/reader_model.dart';
+import 'package:sync_flutter/features/reader/domain/sync_artifact.dart';
+import 'package:sync_flutter/features/reader/state/reader_location_provider.dart';
 
 final readerPlaybackProvider =
     NotifierProvider<ReaderPlaybackController, ReaderPlaybackState>(
@@ -13,6 +17,8 @@ final readerPlaybackProvider =
 final playbackDriverProvider = Provider<PlaybackDriver>(
   (ref) => JustAudioPlaybackDriver(),
 );
+
+enum ReaderPlaybackPreset { custom, study, commute, bedtime }
 
 class ReaderPlaybackState {
   const ReaderPlaybackState({
@@ -31,6 +37,9 @@ class ReaderPlaybackState {
     required this.contentEndMs,
     required this.isScrubbing,
     required this.scrubPositionMs,
+    required this.playbackPreset,
+    required this.loopStartMs,
+    required this.loopEndMs,
   });
 
   final int positionMs;
@@ -48,6 +57,9 @@ class ReaderPlaybackState {
   final int contentEndMs;
   final bool isScrubbing;
   final int? scrubPositionMs;
+  final ReaderPlaybackPreset playbackPreset;
+  final int? loopStartMs;
+  final int? loopEndMs;
 
   int get displayedPositionMs => scrubPositionMs ?? positionMs;
 
@@ -55,6 +67,11 @@ class ReaderPlaybackState {
 
   bool get hasTrailingMatter =>
       contentEndMs > 0 && contentEndMs < totalDurationMs;
+
+  bool get hasLoop =>
+      loopStartMs != null &&
+      loopEndMs != null &&
+      loopEndMs! > loopStartMs!;
 
   ReaderPlaybackState copyWith({
     int? positionMs,
@@ -72,7 +89,12 @@ class ReaderPlaybackState {
     int? contentEndMs,
     bool? isScrubbing,
     int? scrubPositionMs,
+    ReaderPlaybackPreset? playbackPreset,
+    int? loopStartMs,
+    int? loopEndMs,
     bool clearScrubPosition = false,
+    bool clearLoopStart = false,
+    bool clearLoopEnd = false,
   }) {
     return ReaderPlaybackState(
       positionMs: positionMs ?? this.positionMs,
@@ -92,6 +114,9 @@ class ReaderPlaybackState {
       scrubPositionMs: clearScrubPosition
           ? null
           : scrubPositionMs ?? this.scrubPositionMs,
+      playbackPreset: playbackPreset ?? this.playbackPreset,
+      loopStartMs: clearLoopStart ? null : loopStartMs ?? this.loopStartMs,
+      loopEndMs: clearLoopEnd ? null : loopEndMs ?? this.loopEndMs,
     );
   }
 }
@@ -100,6 +125,11 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
   Timer? _timer;
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<bool>? _playingSubscription;
+  String? _currentProjectId;
+  ReaderModel? _currentReaderModel;
+  SyncArtifact? _currentSyncArtifact;
+  int _lastPersistedPositionMs = -1;
+  DateTime? _lastPersistedAt;
 
   @override
   ReaderPlaybackState build() {
@@ -124,11 +154,18 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
       contentEndMs: 0,
       isScrubbing: false,
       scrubPositionMs: null,
+      playbackPreset: ReaderPlaybackPreset.custom,
+      loopStartMs: null,
+      loopEndMs: null,
     );
   }
 
   Future<void> configureProject(ReaderProjectBundle bundle) async {
-    resetForProject();
+    await _persistReadingLocation(force: true);
+    _currentProjectId = bundle.projectId;
+    _currentReaderModel = bundle.readerModel;
+    _currentSyncArtifact = bundle.syncArtifact;
+    resetForProject(persistLocation: false);
     if (bundle.audioUrls.isEmpty) {
       state = state.copyWith(
         usesNativeAudio: false,
@@ -136,15 +173,29 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
         contentStartMs: bundle.syncArtifact.contentStartMs,
         contentEndMs: bundle.syncArtifact.contentEndMs,
       );
+      await _restoreReadingLocation(bundle.projectId);
       return;
     }
 
     final driver = ref.read(playbackDriverProvider);
     _positionSubscription ??= driver.positionStream.listen((position) {
       state = state.copyWith(positionMs: position.inMilliseconds);
+      final loopStartMs = state.loopStartMs;
+      final loopEndMs = state.loopEndMs;
+      if (loopStartMs != null &&
+          loopEndMs != null &&
+          loopEndMs > loopStartMs &&
+          position.inMilliseconds >= loopEndMs) {
+        unawaited(_seekWithinLoop(loopStartMs));
+        return;
+      }
+      unawaited(_maybePersistReadingLocation());
     });
     _playingSubscription ??= driver.playingStream.listen((isPlaying) {
       state = state.copyWith(isPlaying: isPlaying);
+      if (!isPlaying) {
+        unawaited(_persistReadingLocation(force: true));
+      }
     });
 
     await driver.setUrls(bundle.audioUrls);
@@ -156,6 +207,7 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
       contentStartMs: bundle.syncArtifact.contentStartMs,
       contentEndMs: bundle.syncArtifact.contentEndMs,
     );
+    await _restoreReadingLocation(bundle.projectId);
   }
 
   Future<void> togglePlayback(int totalDurationMs) async {
@@ -172,6 +224,7 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
     if (state.isPlaying) {
       _timer?.cancel();
       state = state.copyWith(isPlaying: false);
+      await _persistReadingLocation(force: true);
       return;
     }
 
@@ -190,10 +243,24 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
         );
         return;
       }
+      final loopStartMs = state.loopStartMs;
+      final loopEndMs = state.loopEndMs;
+      if (loopStartMs != null &&
+          loopEndMs != null &&
+          loopEndMs > loopStartMs &&
+          nextPosition >= loopEndMs) {
+        state = state.copyWith(
+          positionMs: loopStartMs,
+          clearScrubPosition: true,
+        );
+        unawaited(_maybePersistReadingLocation());
+        return;
+      }
       state = state.copyWith(
         positionMs: nextPosition,
         clearScrubPosition: true,
       );
+      unawaited(_maybePersistReadingLocation());
     });
   }
 
@@ -246,13 +313,17 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
       isScrubbing: false,
       clearScrubPosition: true,
     );
+    await _persistReadingLocation(force: true);
   }
 
   Future<void> setSpeed(double speed) async {
     if (state.usesNativeAudio) {
       await ref.read(playbackDriverProvider).setSpeed(speed);
     }
-    state = state.copyWith(speed: speed);
+    state = state.copyWith(
+      speed: speed,
+      playbackPreset: ReaderPlaybackPreset.custom,
+    );
   }
 
   void toggleTheme() {
@@ -283,7 +354,65 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
     state = state.copyWith(distractionFreeMode: !state.distractionFreeMode);
   }
 
-  void resetForProject() {
+  Future<void> applyPreset(ReaderPlaybackPreset preset) async {
+    switch (preset) {
+      case ReaderPlaybackPreset.custom:
+        break;
+      case ReaderPlaybackPreset.study:
+        await setSpeed(0.9);
+        state = state.copyWith(
+          followPlayback: true,
+          distractionFreeMode: false,
+          playbackPreset: ReaderPlaybackPreset.study,
+        );
+      case ReaderPlaybackPreset.commute:
+        await setSpeed(1.25);
+        state = state.copyWith(
+          followPlayback: true,
+          distractionFreeMode: false,
+          playbackPreset: ReaderPlaybackPreset.commute,
+        );
+      case ReaderPlaybackPreset.bedtime:
+        await setSpeed(0.85);
+        state = state.copyWith(
+          followPlayback: false,
+          distractionFreeMode: true,
+          playbackPreset: ReaderPlaybackPreset.bedtime,
+        );
+    }
+  }
+
+  void markLoopStart() {
+    state = state.copyWith(
+      loopStartMs: state.displayedPositionMs,
+      playbackPreset: ReaderPlaybackPreset.custom,
+    );
+  }
+
+  void markLoopEnd() {
+    final currentPosition = state.displayedPositionMs;
+    final loopStart = state.loopStartMs;
+    if (loopStart == null) {
+      state = state.copyWith(loopStartMs: currentPosition);
+      return;
+    }
+    final orderedStart = currentPosition < loopStart ? currentPosition : loopStart;
+    final orderedEnd = currentPosition < loopStart ? loopStart : currentPosition;
+    state = state.copyWith(
+      loopStartMs: orderedStart,
+      loopEndMs: orderedEnd,
+      playbackPreset: ReaderPlaybackPreset.custom,
+    );
+  }
+
+  void clearLoop() {
+    state = state.copyWith(clearLoopStart: true, clearLoopEnd: true);
+  }
+
+  void resetForProject({bool persistLocation = true}) {
+    if (persistLocation) {
+      unawaited(_persistReadingLocation(force: true));
+    }
     _timer?.cancel();
     state = state.copyWith(
       positionMs: 0,
@@ -294,6 +423,116 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
       contentEndMs: 0,
       isScrubbing: false,
       clearScrubPosition: true,
+      playbackPreset: ReaderPlaybackPreset.custom,
+      clearLoopStart: true,
+      clearLoopEnd: true,
     );
+    _lastPersistedPositionMs = -1;
+    _lastPersistedAt = null;
   }
+
+  Future<void> _seekWithinLoop(int positionMs) async {
+    if (state.usesNativeAudio) {
+      await ref
+          .read(playbackDriverProvider)
+          .seek(Duration(milliseconds: positionMs));
+    }
+    state = state.copyWith(positionMs: positionMs, clearScrubPosition: true);
+  }
+
+  Future<void> _restoreReadingLocation(String projectId) async {
+    final snapshot = await ref
+        .read(readerLocationStoreProvider)
+        .loadProject(projectId);
+    if (snapshot == null) {
+      return;
+    }
+    await seekTo(snapshot.positionMs);
+  }
+
+  Future<void> _maybePersistReadingLocation() async {
+    final currentPosition = state.displayedPositionMs;
+    final now = DateTime.now().toUtc();
+    final elapsed = _lastPersistedAt == null
+        ? null
+        : now.difference(_lastPersistedAt!);
+    final movedEnough = (currentPosition - _lastPersistedPositionMs).abs() >=
+        5000;
+    if (_lastPersistedAt != null &&
+        !movedEnough &&
+        elapsed != null &&
+        elapsed.inSeconds < 8) {
+      return;
+    }
+    await _persistReadingLocation(force: false);
+  }
+
+  Future<void> _persistReadingLocation({required bool force}) async {
+    final projectId = _currentProjectId;
+    final syncArtifact = _currentSyncArtifact;
+    final readerModel = _currentReaderModel;
+    if (projectId == null || syncArtifact == null || readerModel == null) {
+      return;
+    }
+
+    final currentPosition = state.displayedPositionMs;
+    if (!force && currentPosition == _lastPersistedPositionMs) {
+      return;
+    }
+
+    final activeToken = _activeTokenAt(syncArtifact, currentPosition);
+    final currentSection = _sectionForToken(readerModel, activeToken);
+    final contentStart = syncArtifact.contentStartMs;
+    final contentEnd = syncArtifact.contentEndMs > contentStart
+        ? syncArtifact.contentEndMs
+        : syncArtifact.totalDurationMs;
+    final clampedPosition = currentPosition.clamp(
+      contentStart,
+      contentEnd > 0 ? contentEnd : currentPosition,
+    );
+    final progressFraction = contentEnd <= contentStart
+        ? 0.0
+        : ((clampedPosition - contentStart) / (contentEnd - contentStart))
+              .clamp(0.0, 1.0);
+
+    final snapshot = ReaderLocationSnapshot(
+      projectId: projectId,
+      positionMs: currentPosition,
+      totalDurationMs: syncArtifact.totalDurationMs,
+      contentStartMs: syncArtifact.contentStartMs,
+      contentEndMs: syncArtifact.contentEndMs,
+      progressFraction: progressFraction,
+      sectionId: currentSection?.id,
+      sectionTitle: currentSection?.title,
+      updatedAt: DateTime.now().toUtc(),
+    );
+    await ref.read(readerLocationStoreProvider).storeProject(snapshot);
+    ref.read(readerLocationRevisionProvider.notifier).bump();
+    _lastPersistedPositionMs = currentPosition;
+    _lastPersistedAt = snapshot.updatedAt;
+  }
+}
+
+SyncToken? _activeTokenAt(SyncArtifact artifact, int positionMs) {
+  for (final token in artifact.tokens) {
+    if (positionMs >= token.startMs && positionMs < token.endMs) {
+      return token;
+    }
+  }
+  if (artifact.tokens.isNotEmpty && positionMs >= artifact.tokens.last.endMs) {
+    return artifact.tokens.last;
+  }
+  return null;
+}
+
+ReaderSection? _sectionForToken(ReaderModel readerModel, SyncToken? token) {
+  if (token == null) {
+    return null;
+  }
+  for (final section in readerModel.sections) {
+    if (section.id == token.location.sectionId) {
+      return section;
+    }
+  }
+  return null;
 }

@@ -5,9 +5,11 @@ import 'package:sync_flutter/core/config/runtime_connection_settings.dart';
 import 'package:sync_flutter/core/config/runtime_connection_settings_controller.dart';
 import 'package:sync_flutter/core/theme/sync_theme.dart';
 import 'package:sync_flutter/features/reader/data/reader_repository.dart';
+import 'package:sync_flutter/features/reader/data/reader_study_store.dart';
 import 'package:sync_flutter/features/reader/domain/reader_model.dart';
 import 'package:sync_flutter/features/reader/domain/sync_artifact.dart';
 import 'package:sync_flutter/features/reader/state/reader_audio_download_controller.dart';
+import 'package:sync_flutter/features/reader/state/reader_study_provider.dart';
 import 'package:sync_flutter/features/reader/state/reader_playback_controller.dart';
 import 'package:sync_flutter/features/reader/state/reader_events_provider.dart';
 import 'package:sync_flutter/features/reader/state/reader_project_provider.dart';
@@ -30,6 +32,8 @@ class ReaderScreen extends ConsumerWidget {
     final latestEvent = ref.watch(latestProjectEventProvider);
     final audioDownload = ref.watch(readerAudioDownloadProvider);
     final audioActions = ref.read(readerAudioDownloadProvider.notifier);
+    final studyEntries = ref.watch(readerStudyEntriesProvider);
+    final studyActions = ref.read(readerStudyEntriesProvider.notifier);
     final palette = ReaderPalette.of(context);
 
     ref.listen(projectEventsProvider, (_, next) {
@@ -74,11 +78,19 @@ class ReaderScreen extends ConsumerWidget {
                     onToggleTheme: controller.toggleTheme,
                     onToggleDistractionFree:
                         controller.toggleDistractionFreeMode,
-                    onOpenNavigation: bundle == null
+                            onOpenNavigation: bundle == null
                         ? null
                         : () => _showNavigationSheet(
                             context,
                             bundle,
+                            controller.seekTo,
+                          ),
+                    onOpenGapInspector: bundle == null
+                        ? null
+                        : () => _showGapInspectorSheet(
+                            context,
+                            bundle,
+                            playback.displayedPositionMs,
                             controller.seekTo,
                           ),
                     onOpenConnectionSettings: () =>
@@ -172,6 +184,69 @@ class ReaderScreen extends ConsumerWidget {
                                   controller.toggleFollowPlayback,
                               onToggleDistractionFree:
                                   controller.toggleDistractionFreeMode,
+                              onOpenGapInspector: bundle == null
+                                  ? null
+                                  : () => _showGapInspectorSheet(
+                                      context,
+                                      bundle,
+                                      playback.displayedPositionMs,
+                                      controller.seekTo,
+                                    ),
+                              onJumpToNextConfidentSpan: bundle == null
+                                  ? null
+                                  : () {
+                                      final nextStart = _nextConfidentSpanStartMs(
+                                        bundle.syncArtifact,
+                                        playback.displayedPositionMs,
+                                      );
+                                      if (nextStart != null) {
+                                        controller.seekTo(nextStart);
+                                      }
+                                    },
+                              studyEntries: studyEntries.asData?.value ?? const [],
+                              onAddBookmark: bundle == null
+                                  ? null
+                                  : () => studyActions.addEntry(
+                                      _studyDraftForPosition(
+                                        bundle,
+                                        playback.displayedPositionMs,
+                                        ReaderStudyEntryType.bookmark,
+                                      ),
+                                    ),
+                              onAddHighlight: bundle == null
+                                  ? null
+                                  : () => studyActions.addEntry(
+                                      _studyDraftForPosition(
+                                        bundle,
+                                        playback.displayedPositionMs,
+                                        ReaderStudyEntryType.highlight,
+                                      ),
+                                    ),
+                              onAddNote: bundle == null
+                                  ? null
+                                  : () => _showNoteComposerSheet(
+                                      context,
+                                      onSave: (note) => studyActions.addEntry(
+                                        _studyDraftForPosition(
+                                          bundle,
+                                          playback.displayedPositionMs,
+                                          ReaderStudyEntryType.note,
+                                          note: note,
+                                        ),
+                                      ),
+                                    ),
+                              onOpenReviewTray: bundle == null
+                                  ? null
+                                  : () => _showReviewTraySheet(
+                                      context,
+                                      studyEntries.asData?.value ?? const [],
+                                      controller.seekTo,
+                                      studyActions.removeEntry,
+                                    ),
+                              onApplyPreset: controller.applyPreset,
+                              onMarkLoopStart: controller.markLoopStart,
+                              onMarkLoopEnd: controller.markLoopEnd,
+                              onClearLoop: controller.clearLoop,
                             );
 
                             if (isWide) {
@@ -282,6 +357,19 @@ Future<void> _showConnectionSettingsSheet(
   );
 }
 
+Future<void> _showNoteComposerSheet(
+  BuildContext context, {
+  required Future<void> Function(String note) onSave,
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    backgroundColor: Theme.of(context).colorScheme.surface,
+    builder: (context) => _NoteComposerSheet(onSave: onSave),
+  );
+}
+
 Future<void> _showNavigationSheet(
   BuildContext context,
   ReaderProjectBundle bundle,
@@ -297,6 +385,25 @@ Future<void> _showNavigationSheet(
   );
 }
 
+Future<void> _showGapInspectorSheet(
+  BuildContext context,
+  ReaderProjectBundle bundle,
+  int currentPositionMs,
+  Future<void> Function(int positionMs) onNavigate,
+) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    backgroundColor: Theme.of(context).colorScheme.surface,
+    builder: (context) => _GapInspectorSheet(
+      bundle: bundle,
+      currentPositionMs: currentPositionMs,
+      onNavigate: onNavigate,
+    ),
+  );
+}
+
 class _ReaderHero extends StatelessWidget {
   const _ReaderHero({
     required this.project,
@@ -305,6 +412,7 @@ class _ReaderHero extends StatelessWidget {
     required this.onToggleTheme,
     required this.onToggleDistractionFree,
     required this.onOpenNavigation,
+    required this.onOpenGapInspector,
     required this.onOpenConnectionSettings,
   });
 
@@ -314,6 +422,7 @@ class _ReaderHero extends StatelessWidget {
   final VoidCallback onToggleTheme;
   final VoidCallback onToggleDistractionFree;
   final VoidCallback? onOpenNavigation;
+  final VoidCallback? onOpenGapInspector;
   final VoidCallback onOpenConnectionSettings;
 
   @override
@@ -386,6 +495,11 @@ class _ReaderHero extends StatelessWidget {
                       onPressed: onOpenNavigation,
                       icon: const Icon(Icons.menu_book_rounded),
                       label: const Text('Navigate'),
+                    ),
+                    FilledButton.tonalIcon(
+                      onPressed: onOpenGapInspector,
+                      icon: const Icon(Icons.radar_rounded),
+                      label: const Text('Sync'),
                     ),
                     FilledButton.tonalIcon(
                       onPressed: onToggleTheme,
@@ -510,6 +624,17 @@ class _ControlDock extends StatelessWidget {
     required this.onSetParagraphSpacing,
     required this.onToggleFollowPlayback,
     required this.onToggleDistractionFree,
+    required this.onOpenGapInspector,
+    required this.onJumpToNextConfidentSpan,
+    required this.studyEntries,
+    required this.onAddBookmark,
+    required this.onAddHighlight,
+    required this.onAddNote,
+    required this.onOpenReviewTray,
+    required this.onApplyPreset,
+    required this.onMarkLoopStart,
+    required this.onMarkLoopEnd,
+    required this.onClearLoop,
   });
 
   final ReaderProjectBundle? bundle;
@@ -535,6 +660,17 @@ class _ControlDock extends StatelessWidget {
   final ValueChanged<double> onSetParagraphSpacing;
   final VoidCallback onToggleFollowPlayback;
   final VoidCallback onToggleDistractionFree;
+  final VoidCallback? onOpenGapInspector;
+  final VoidCallback? onJumpToNextConfidentSpan;
+  final List<ReaderStudyEntry> studyEntries;
+  final VoidCallback? onAddBookmark;
+  final VoidCallback? onAddHighlight;
+  final VoidCallback? onAddNote;
+  final VoidCallback? onOpenReviewTray;
+  final Future<void> Function(ReaderPlaybackPreset preset) onApplyPreset;
+  final VoidCallback onMarkLoopStart;
+  final VoidCallback onMarkLoopEnd;
+  final VoidCallback onClearLoop;
 
   @override
   Widget build(BuildContext context) {
@@ -571,6 +707,19 @@ class _ControlDock extends StatelessWidget {
             if (bundle != null) ...[
               _ReaderDiagnosticsBanner(bundle: bundle!, playback: playback),
               const SizedBox(height: 12),
+              _ReadingProgressBanner(
+                bundle: bundle!,
+                currentPositionMs: currentPositionMs,
+              ),
+              const SizedBox(height: 12),
+              _PlaybackPowerCard(
+                playback: playback,
+                onApplyPreset: onApplyPreset,
+                onMarkLoopStart: onMarkLoopStart,
+                onMarkLoopEnd: onMarkLoopEnd,
+                onClearLoop: onClearLoop,
+              ),
+              const SizedBox(height: 12),
               _ReaderPreferencesCard(
                 playback: playback,
                 onSetFontScale: onSetFontScale,
@@ -578,6 +727,14 @@ class _ControlDock extends StatelessWidget {
                 onSetParagraphSpacing: onSetParagraphSpacing,
                 onToggleFollowPlayback: onToggleFollowPlayback,
                 onToggleDistractionFree: onToggleDistractionFree,
+              ),
+              const SizedBox(height: 12),
+              _StudyWorkflowCard(
+                entries: studyEntries,
+                onAddBookmark: onAddBookmark,
+                onAddHighlight: onAddHighlight,
+                onAddNote: onAddNote,
+                onOpenReviewTray: onOpenReviewTray,
               ),
               const SizedBox(height: 12),
             ],
@@ -591,6 +748,15 @@ class _ControlDock extends StatelessWidget {
                 onJumpToOutro: bundle!.syncArtifact.hasTrailingMatter
                     ? () => onJumpToOutro()
                     : null,
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (bundle != null) ...[
+              _SyncIntelligenceBanner(
+                bundle: bundle!,
+                currentPositionMs: currentPositionMs,
+                onOpenGapInspector: onOpenGapInspector,
+                onJumpToNextConfidentSpan: onJumpToNextConfidentSpan,
               ),
               const SizedBox(height: 12),
             ],
@@ -972,7 +1138,7 @@ class _ReaderLoadedViewState extends State<_ReaderLoadedView> {
   @override
   void didUpdateWidget(covariant _ReaderLoadedView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final activeLocationKey = _activeToken(
+    final activeLocationKey = _activeTokenAtPosition(
       widget.bundle.syncArtifact,
       widget.playback.displayedPositionMs,
     )?.location.locationKey;
@@ -995,10 +1161,14 @@ class _ReaderLoadedViewState extends State<_ReaderLoadedView> {
       if (!mounted) {
         return;
       }
+      final disableAnimations =
+          MediaQuery.maybeOf(context)?.disableAnimations ?? false;
       Scrollable.ensureVisible(
         targetContext,
         alignment: 0.22,
-        duration: const Duration(milliseconds: 180),
+        duration: disableAnimations
+            ? Duration.zero
+            : const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
       );
     });
@@ -1046,7 +1216,7 @@ class _ReaderLoadedViewState extends State<_ReaderLoadedView> {
       for (final token in bundle.syncArtifact.tokens)
         token.location.locationKey: token,
     };
-    final activeLocationKey = _activeToken(
+    final activeLocationKey = _activeTokenAtPosition(
       bundle.syncArtifact,
       playback.displayedPositionMs,
     )?.location.locationKey;
@@ -1107,19 +1277,6 @@ class _ReaderLoadedViewState extends State<_ReaderLoadedView> {
         ),
       ),
     );
-  }
-
-  static SyncToken? _activeToken(SyncArtifact artifact, int positionMs) {
-    for (final token in artifact.tokens) {
-      if (positionMs >= token.startMs && positionMs < token.endMs) {
-        return token;
-      }
-    }
-    if (artifact.tokens.isNotEmpty &&
-        positionMs >= artifact.tokens.last.endMs) {
-      return artifact.tokens.last;
-    }
-    return null;
   }
 
   static String? _paragraphKeyForLocation(String? locationKey) {
@@ -2025,6 +2182,259 @@ class _ReaderDiagnosticsBanner extends StatelessWidget {
   }
 }
 
+class _ReadingProgressBanner extends StatelessWidget {
+  const _ReadingProgressBanner({
+    required this.bundle,
+    required this.currentPositionMs,
+  });
+
+  final ReaderProjectBundle bundle;
+  final int currentPositionMs;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final theme = Theme.of(context);
+    final progress = _readingProgress(bundle, currentPositionMs);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: palette.backgroundBase,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Reading Progress', style: theme.textTheme.labelLarge),
+          const SizedBox(height: 6),
+          Text(
+            progress.summary,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: palette.textMuted,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _DiagnosticsChip(label: progress.bookLabel),
+              if (progress.sectionLabel != null)
+                _DiagnosticsChip(label: progress.sectionLabel!),
+              _DiagnosticsChip(label: progress.remainingLabel),
+              if (progress.sectionTitle != null)
+                _DiagnosticsChip(label: progress.sectionTitle!),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StudyWorkflowCard extends StatelessWidget {
+  const _StudyWorkflowCard({
+    required this.entries,
+    required this.onAddBookmark,
+    required this.onAddHighlight,
+    required this.onAddNote,
+    required this.onOpenReviewTray,
+  });
+
+  final List<ReaderStudyEntry> entries;
+  final VoidCallback? onAddBookmark;
+  final VoidCallback? onAddHighlight;
+  final VoidCallback? onAddNote;
+  final VoidCallback? onOpenReviewTray;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final theme = Theme.of(context);
+    final bookmarkCount = entries
+        .where((entry) => entry.type == ReaderStudyEntryType.bookmark)
+        .length;
+    final highlightCount = entries
+        .where((entry) => entry.type == ReaderStudyEntryType.highlight)
+        .length;
+    final noteCount = entries
+        .where((entry) => entry.type == ReaderStudyEntryType.note)
+        .length;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: palette.backgroundBase,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Study Workflow', style: theme.textTheme.labelLarge),
+          const SizedBox(height: 6),
+          Text(
+            'Save the current sync position as a bookmark, highlight the active phrase, or attach a note for later review.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: palette.textMuted,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _DiagnosticsChip(label: 'Bookmarks $bookmarkCount'),
+              _DiagnosticsChip(label: 'Highlights $highlightCount'),
+              _DiagnosticsChip(label: 'Notes $noteCount'),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              FilledButton.tonal(
+                onPressed: onAddBookmark,
+                child: const Text('Save Bookmark'),
+              ),
+              FilledButton.tonal(
+                onPressed: onAddHighlight,
+                child: const Text('Highlight Span'),
+              ),
+              FilledButton.tonal(
+                onPressed: onAddNote,
+                child: const Text('Add Note'),
+              ),
+              TextButton(
+                onPressed: onOpenReviewTray,
+                child: const Text('Review Tray'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlaybackPowerCard extends StatelessWidget {
+  const _PlaybackPowerCard({
+    required this.playback,
+    required this.onApplyPreset,
+    required this.onMarkLoopStart,
+    required this.onMarkLoopEnd,
+    required this.onClearLoop,
+  });
+
+  final ReaderPlaybackState playback;
+  final Future<void> Function(ReaderPlaybackPreset preset) onApplyPreset;
+  final VoidCallback onMarkLoopStart;
+  final VoidCallback onMarkLoopEnd;
+  final VoidCallback onClearLoop;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: palette.backgroundBase,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Playback Modes', style: theme.textTheme.labelLarge),
+          const SizedBox(height: 6),
+          Text(
+            'Switch between study, commute, and bedtime playback, or loop a precise A/B span.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: palette.textMuted,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _PresetChip(
+                label: 'Study',
+                isActive: playback.playbackPreset == ReaderPlaybackPreset.study,
+                onTap: () => onApplyPreset(ReaderPlaybackPreset.study),
+              ),
+              _PresetChip(
+                label: 'Commute',
+                isActive:
+                    playback.playbackPreset == ReaderPlaybackPreset.commute,
+                onTap: () => onApplyPreset(ReaderPlaybackPreset.commute),
+              ),
+              _PresetChip(
+                label: 'Bedtime',
+                isActive:
+                    playback.playbackPreset == ReaderPlaybackPreset.bedtime,
+                onTap: () => onApplyPreset(ReaderPlaybackPreset.bedtime),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              FilledButton.tonal(
+                onPressed: onMarkLoopStart,
+                child: Text(
+                  playback.loopStartMs == null
+                      ? 'Set Loop A'
+                      : 'Loop A ${ReaderScreen._formatMs(playback.loopStartMs!)}',
+                ),
+              ),
+              FilledButton.tonal(
+                onPressed: onMarkLoopEnd,
+                child: Text(
+                  playback.loopEndMs == null
+                      ? 'Set Loop B'
+                      : 'Loop B ${ReaderScreen._formatMs(playback.loopEndMs!)}',
+                ),
+              ),
+              if (playback.hasLoop)
+                TextButton(
+                  onPressed: onClearLoop,
+                  child: const Text('Clear Loop'),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PresetChip extends StatelessWidget {
+  const _PresetChip({
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ChoiceChip(label: Text(label), selected: isActive, onSelected: (_) => onTap());
+  }
+}
+
 class _DiagnosticsChip extends StatelessWidget {
   const _DiagnosticsChip({required this.label});
 
@@ -2221,6 +2631,106 @@ class _GapStatusBanner extends StatelessWidget {
   }
 }
 
+class _SyncIntelligenceBanner extends StatelessWidget {
+  const _SyncIntelligenceBanner({
+    required this.bundle,
+    required this.currentPositionMs,
+    required this.onOpenGapInspector,
+    required this.onJumpToNextConfidentSpan,
+  });
+
+  final ReaderProjectBundle bundle;
+  final int currentPositionMs;
+  final VoidCallback? onOpenGapInspector;
+  final VoidCallback? onJumpToNextConfidentSpan;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final theme = Theme.of(context);
+    final gap = bundle.syncArtifact.activeGapAt(currentPositionMs);
+    final token = _activeTokenAtPosition(bundle.syncArtifact, currentPositionMs);
+    final confidence = token?.confidence ?? 1.0;
+    final nextStrongSpan = _nextConfidentSpanStartMs(
+      bundle.syncArtifact,
+      currentPositionMs,
+    );
+
+    final headline = gap != null
+        ? switch (gap.reason) {
+            'audiobook_front_matter' => 'Audiobook intro sits outside the book.',
+            'audiobook_end_matter' => 'Audiobook outro sits outside the book.',
+            _ => 'Narration drift detected in this span.',
+          }
+        : confidence < 0.72
+        ? 'Weak alignment around the current phrase.'
+        : confidence < 0.86
+        ? 'Alignment is usable but a little soft here.'
+        : 'Alignment looks confident in the current reading span.';
+
+    final detail = gap != null
+        ? 'This gap covers ${ReaderScreen._formatMs(gap.startMs)} to ${ReaderScreen._formatMs(gap.endMs)} and contains ${gap.wordCount} unmatched transcript words.'
+        : token == null
+        ? 'No synced token is active at this exact position yet.'
+        : 'Current token confidence: ${(confidence * 100).round()}% at ${ReaderScreen._formatMs(token.startMs)}.';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: gap != null ? palette.accentSoft : palette.backgroundBase,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(headline, style: theme.textTheme.labelLarge),
+          const SizedBox(height: 6),
+          Text(
+            detail,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: palette.textMuted,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (gap != null)
+                _DiagnosticsChip(label: _gapReasonLabel(gap.reason)),
+              if (token != null)
+                _DiagnosticsChip(
+                  label: 'Confidence ${(confidence * 100).round()}%',
+                ),
+              if (token != null && token.confidence < 0.86)
+                _DiagnosticsChip(label: 'Hint: verify by ear here'),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              if (nextStrongSpan != null)
+                FilledButton.tonal(
+                  onPressed: onJumpToNextConfidentSpan,
+                  child: const Text('Next Strong Span'),
+                ),
+              if (onOpenGapInspector != null)
+                TextButton(
+                  onPressed: onOpenGapInspector,
+                  child: const Text('Inspect Gaps'),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ParagraphBlock extends StatelessWidget {
   const _ParagraphBlock({
     required this.section,
@@ -2289,37 +2799,481 @@ class _TokenPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final disableAnimations =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final confidence = syncToken?.confidence ?? 1.0;
+    final isSoftConfidence = confidence < 0.86;
+    final isWeakConfidence = confidence < 0.72;
+    final foregroundColor = isActive
+        ? palette.accentPrimary
+        : isWeakConfidence
+        ? palette.textMuted
+        : palette.textPrimary;
+    final backgroundColor = isActive
+        ? palette.accentSoft
+        : isWeakConfidence
+        ? palette.accentSoft.withValues(alpha: 0.28)
+        : Colors.transparent;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: () => onTap(syncToken),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 140),
-        curve: Curves.easeOut,
-        padding: EdgeInsets.symmetric(
-          horizontal: 8 * fontScale,
-          vertical: 6 * fontScale,
-        ),
-        decoration: BoxDecoration(
-          color: isActive ? palette.accentSoft : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isActive ? palette.accentPrimary : Colors.transparent,
+      child: Semantics(
+        button: true,
+        label: syncToken == null
+            ? 'Unsynced token ${token.text}'
+            : 'Token ${token.text}, confidence ${(confidence * 100).round()} percent',
+        child: AnimatedContainer(
+          duration: disableAnimations
+              ? Duration.zero
+              : const Duration(milliseconds: 140),
+          curve: Curves.easeOut,
+          padding: EdgeInsets.symmetric(
+            horizontal: 8 * fontScale,
+            vertical: 6 * fontScale,
           ),
-        ),
-        child: Text(
-          token.text,
-          style: textTheme.bodyLarge?.copyWith(
-            fontSize: (textTheme.bodyLarge?.fontSize ?? 20) * fontScale,
-            height: lineHeight,
-            color: isActive ? palette.accentPrimary : palette.textPrimary,
-            fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-            decoration: isActive ? TextDecoration.underline : null,
-            decorationColor: palette.accentPrimary,
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isActive
+                  ? palette.accentPrimary
+                  : isSoftConfidence
+                  ? palette.borderSubtle
+                  : Colors.transparent,
+            ),
+          ),
+          child: Text(
+            token.text,
+            style: textTheme.bodyLarge?.copyWith(
+              fontSize: (textTheme.bodyLarge?.fontSize ?? 20) * fontScale,
+              height: lineHeight,
+              color: foregroundColor,
+              fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+              fontStyle: isWeakConfidence ? FontStyle.italic : FontStyle.normal,
+              decoration:
+                  isActive || isSoftConfidence
+                      ? TextDecoration.underline
+                      : null,
+              decorationColor: isActive
+                  ? palette.accentPrimary
+                  : palette.textMuted,
+              decorationStyle: isActive
+                  ? TextDecorationStyle.solid
+                  : TextDecorationStyle.dotted,
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+class _GapInspectorSheet extends StatelessWidget {
+  const _GapInspectorSheet({
+    required this.bundle,
+    required this.currentPositionMs,
+    required this.onNavigate,
+  });
+
+  final ReaderProjectBundle bundle;
+  final int currentPositionMs;
+  final Future<void> Function(int positionMs) onNavigate;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final activeGap = bundle.syncArtifact.activeGapAt(currentPositionMs);
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        0,
+        20,
+        20 + MediaQuery.viewInsetsOf(context).bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Sync Inspector', style: theme.textTheme.headlineSmall),
+          const SizedBox(height: 8),
+          Text(
+            'Review weak or unmatched audiobook spans without leaving the reader.',
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 18),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                if (bundle.syncArtifact.gaps.isEmpty)
+                  const ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('No gap metadata for this project.'),
+                  )
+                else
+                  for (final gap in bundle.syncArtifact.gaps)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        activeGap == gap
+                            ? Icons.radio_button_checked_rounded
+                            : Icons.radio_button_unchecked_rounded,
+                      ),
+                      title: Text(_gapReasonLabel(gap.reason)),
+                      subtitle: Text(
+                        '${ReaderScreen._formatMs(gap.startMs)} → ${ReaderScreen._formatMs(gap.endMs)} • ${gap.wordCount} words',
+                      ),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () async {
+                        await onNavigate(gap.endMs);
+                        if (context.mounted) {
+                          Navigator.of(context).pop();
+                        }
+                      },
+                    ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NoteComposerSheet extends StatefulWidget {
+  const _NoteComposerSheet({required this.onSave});
+
+  final Future<void> Function(String note) onSave;
+
+  @override
+  State<_NoteComposerSheet> createState() => _NoteComposerSheetState();
+}
+
+class _NoteComposerSheetState extends State<_NoteComposerSheet> {
+  late final TextEditingController _controller;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        0,
+        20,
+        20 + MediaQuery.viewInsetsOf(context).bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Add Note', style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: 8),
+          const Text(
+            'Attach a short note to the current sync position on this device.',
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _controller,
+            minLines: 3,
+            maxLines: 6,
+            decoration: const InputDecoration(
+              labelText: 'Note',
+              hintText: 'Why did this span matter?',
+            ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: _isSaving ? null : _save,
+            child: Text(_isSaving ? 'Saving...' : 'Save Note'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _save() async {
+    final note = _controller.text.trim();
+    if (note.isEmpty) {
+      return;
+    }
+    setState(() => _isSaving = true);
+    await widget.onSave(note);
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+}
+
+class _ReviewTraySheet extends StatelessWidget {
+  const _ReviewTraySheet({
+    required this.entries,
+    required this.onNavigate,
+    required this.onRemove,
+  });
+
+  final List<ReaderStudyEntry> entries;
+  final Future<void> Function(int positionMs) onNavigate;
+  final Future<void> Function(String id) onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        0,
+        20,
+        20 + MediaQuery.viewInsetsOf(context).bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Review Tray', style: theme.textTheme.headlineSmall),
+          const SizedBox(height: 8),
+          Text(
+            'Revisit saved bookmarks, highlights, and notes from this device.',
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 16),
+          Flexible(
+            child: entries.isEmpty
+                ? const ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('No saved study items yet.'),
+                  )
+                : ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final entry in entries)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(entry.sectionTitle ?? _studyTypeLabel(entry.type)),
+                          subtitle: Text(
+                            '${_studyTypeLabel(entry.type)} • ${ReaderScreen._formatMs(entry.positionMs)}\n${entry.excerpt}${entry.note == null ? '' : '\n${entry.note}'}',
+                          ),
+                          isThreeLine: entry.note != null,
+                          trailing: IconButton(
+                            onPressed: () => onRemove(entry.id),
+                            icon: const Icon(Icons.delete_outline_rounded),
+                          ),
+                          onTap: () async {
+                            await onNavigate(entry.positionMs);
+                            if (context.mounted) {
+                              Navigator.of(context).pop();
+                            }
+                          },
+                        ),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReadingProgressSnapshot {
+  const _ReadingProgressSnapshot({
+    required this.summary,
+    required this.bookLabel,
+    required this.remainingLabel,
+    this.sectionLabel,
+    this.sectionTitle,
+  });
+
+  final String summary;
+  final String bookLabel;
+  final String remainingLabel;
+  final String? sectionLabel;
+  final String? sectionTitle;
+}
+
+_ReadingProgressSnapshot _readingProgress(
+  ReaderProjectBundle bundle,
+  int currentPositionMs,
+) {
+  final syncArtifact = bundle.syncArtifact;
+  final activeToken = _activeTokenAtPosition(syncArtifact, currentPositionMs);
+  final contentStart = syncArtifact.contentStartMs;
+  final contentEnd = syncArtifact.contentEndMs > contentStart
+      ? syncArtifact.contentEndMs
+      : syncArtifact.totalDurationMs;
+  final clampedPosition = currentPositionMs.clamp(
+    contentStart,
+    contentEnd > 0 ? contentEnd : currentPositionMs,
+  );
+  final contentSpan = (contentEnd - contentStart).clamp(1, 1 << 30);
+  final bookProgress = (((clampedPosition - contentStart) / contentSpan) * 100)
+      .clamp(0.0, 100.0);
+  final remainingMs = (contentEnd - clampedPosition).clamp(0, contentEnd);
+
+  String? sectionLabel;
+  String? sectionTitle;
+  if (activeToken != null) {
+    ReaderSection? section;
+    for (final candidate in bundle.readerModel.sections) {
+      if (candidate.id == activeToken.location.sectionId) {
+        section = candidate;
+        break;
+      }
+    }
+    final sectionTokens = bundle.syncArtifact.tokens
+        .where((token) => token.location.sectionId == activeToken.location.sectionId)
+        .toList(growable: false);
+    if (sectionTokens.isNotEmpty) {
+      final sectionStart = sectionTokens.first.startMs;
+      final sectionEnd = sectionTokens.last.endMs > sectionStart
+          ? sectionTokens.last.endMs
+          : sectionStart + 1;
+      final sectionProgress =
+          (((currentPositionMs.clamp(sectionStart, sectionEnd) - sectionStart) /
+                      (sectionEnd - sectionStart)) *
+                  100)
+              .clamp(0.0, 100.0);
+      sectionLabel = 'Section ${sectionProgress.round()}%';
+      sectionTitle = section?.title;
+    }
+  }
+
+  return _ReadingProgressSnapshot(
+    summary:
+        'Book ${bookProgress.round()}% complete with ${ReaderScreen._formatMs(remainingMs)} left in synced content.',
+    bookLabel: 'Book ${bookProgress.round()}%',
+    sectionLabel: sectionLabel,
+    remainingLabel: '${ReaderScreen._formatMs(remainingMs)} left',
+    sectionTitle: sectionTitle,
+  );
+}
+
+SyncToken? _activeTokenAtPosition(SyncArtifact artifact, int positionMs) {
+  for (final token in artifact.tokens) {
+    if (positionMs >= token.startMs && positionMs < token.endMs) {
+      return token;
+    }
+  }
+  if (artifact.tokens.isNotEmpty && positionMs >= artifact.tokens.last.endMs) {
+    return artifact.tokens.last;
+  }
+  return null;
+}
+
+int? _nextConfidentSpanStartMs(
+  SyncArtifact artifact,
+  int currentPositionMs, {
+  double minConfidence = 0.88,
+}) {
+  for (final token in artifact.tokens) {
+    if (token.startMs <= currentPositionMs + 250) {
+      continue;
+    }
+    if (token.confidence >= minConfidence) {
+      return token.startMs;
+    }
+  }
+  return null;
+}
+
+String _gapReasonLabel(String reason) {
+  return switch (reason) {
+    'audiobook_front_matter' => 'Audiobook intro',
+    'audiobook_end_matter' => 'Audiobook outro',
+    _ => 'Narration mismatch',
+  };
+}
+
+Future<void> _showReviewTraySheet(
+  BuildContext context,
+  List<ReaderStudyEntry> entries,
+  Future<void> Function(int positionMs) onNavigate,
+  Future<void> Function(String id) onRemove,
+) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    backgroundColor: Theme.of(context).colorScheme.surface,
+    builder: (context) => _ReviewTraySheet(
+      entries: entries,
+      onNavigate: onNavigate,
+      onRemove: onRemove,
+    ),
+  );
+}
+
+ReaderStudyEntryDraft _studyDraftForPosition(
+  ReaderProjectBundle bundle,
+  int positionMs,
+  ReaderStudyEntryType type, {
+  String? note,
+}) {
+  final activeToken = _activeTokenAtPosition(bundle.syncArtifact, positionMs);
+  ReaderSection? section;
+  if (activeToken != null) {
+    for (final candidate in bundle.readerModel.sections) {
+      if (candidate.id == activeToken.location.sectionId) {
+        section = candidate;
+        break;
+      }
+    }
+  }
+  final excerpt = _studyExcerptForPosition(bundle, activeToken);
+  return ReaderStudyEntryDraft(
+    type: type,
+    positionMs: activeToken?.startMs ?? positionMs,
+    excerpt: excerpt,
+    sectionId: activeToken?.location.sectionId,
+    sectionTitle: section?.title,
+    note: note,
+  );
+}
+
+String _studyExcerptForPosition(
+  ReaderProjectBundle bundle,
+  SyncToken? activeToken,
+) {
+  if (activeToken == null) {
+    return bundle.readerModel.title;
+  }
+
+  for (final section in bundle.readerModel.sections) {
+    if (section.id != activeToken.location.sectionId) {
+      continue;
+    }
+    for (final paragraph in section.paragraphs) {
+      if (paragraph.index != activeToken.location.paragraphIndex) {
+        continue;
+      }
+      final text = paragraph.tokens.map((token) => token.text).join(' ').trim();
+      if (text.length <= 132) {
+        return text;
+      }
+      return '${text.substring(0, 129)}...';
+    }
+  }
+
+  return activeToken.text;
+}
+
+String _studyTypeLabel(ReaderStudyEntryType type) {
+  return switch (type) {
+    ReaderStudyEntryType.bookmark => 'Bookmark',
+    ReaderStudyEntryType.highlight => 'Highlight',
+    ReaderStudyEntryType.note => 'Note',
+  };
 }
 
 class _SpeedChip extends StatelessWidget {

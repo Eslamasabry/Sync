@@ -12,12 +12,16 @@ import 'package:sync_flutter/core/config/runtime_connection_settings_storage_typ
 import 'package:sync_flutter/core/playback/playback_driver.dart';
 import 'package:sync_flutter/core/network/sync_api_client.dart';
 import 'package:sync_flutter/features/reader/data/reader_repository.dart';
+import 'package:sync_flutter/features/reader/data/reader_location_store.dart';
 import 'package:sync_flutter/features/reader/domain/reader_model.dart';
 import 'package:sync_flutter/features/reader/domain/sync_artifact.dart';
 import 'package:sync_flutter/features/reader/state/reader_events_provider.dart';
+import 'package:sync_flutter/features/reader/state/reader_location_provider.dart';
 import 'package:sync_flutter/features/reader/state/reader_playback_controller.dart';
 import 'package:sync_flutter/features/reader/state/reader_project_provider.dart';
 import 'package:sync_flutter/features/reader/state/sample_reader_data.dart';
+import 'package:sync_flutter/features/reader/state/reader_study_provider.dart';
+import 'package:sync_flutter/features/reader/data/reader_study_store.dart';
 
 class _FakePlaybackDriver implements PlaybackDriver {
   final StreamController<Duration> _positionController =
@@ -89,6 +93,53 @@ class _MemoryRuntimeConnectionSettingsStorage
     _recent
       ..removeWhere((item) => item.identityKey == settings.identityKey)
       ..insert(0, settings);
+  }
+}
+
+class _MemoryReaderLocationStore implements ReaderLocationStore {
+  _MemoryReaderLocationStore({Map<String, ReaderLocationSnapshot>? initial})
+    : _items = {...?initial};
+
+  final Map<String, ReaderLocationSnapshot> _items;
+
+  @override
+  Future<ReaderLocationSnapshot?> loadProject(String projectId) async =>
+      _items[projectId];
+
+  @override
+  Future<List<ReaderLocationSnapshot>> loadRecent() async {
+    final values = _items.values.toList(growable: false);
+    values.sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
+    return values;
+  }
+
+  @override
+  Future<void> removeProject(String projectId) async {
+    _items.remove(projectId);
+  }
+
+  @override
+  Future<void> storeProject(ReaderLocationSnapshot snapshot) async {
+    _items[snapshot.projectId] = snapshot;
+  }
+}
+
+class _MemoryReaderStudyStore implements ReaderStudyStore {
+  _MemoryReaderStudyStore({Map<String, List<ReaderStudyEntry>>? initial})
+    : _items = {...?initial};
+
+  final Map<String, List<ReaderStudyEntry>> _items;
+
+  @override
+  Future<List<ReaderStudyEntry>> loadProject(String projectId) async =>
+      [...?_items[projectId]];
+
+  @override
+  Future<void> saveProject(
+    String projectId,
+    List<ReaderStudyEntry> entries,
+  ) async {
+    _items[projectId] = [...entries];
   }
 }
 
@@ -319,36 +370,46 @@ class _OfflineAudioReaderRepository extends ReaderRepository {
   }
 }
 
-Future<void> _pumpReaderApp(
+Future<ProviderContainer> _pumpReaderApp(
   WidgetTester tester, {
   required ReaderRepository repository,
   _MemoryRuntimeConnectionSettingsStorage? settingsStorage,
+  ReaderLocationStore? locationStore,
+  ReaderStudyStore? studyStore,
 }) async {
   tester.view.devicePixelRatio = 1.0;
   tester.view.physicalSize = const Size(1440, 1600);
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+  final container = ProviderContainer(
+    overrides: [
+      runtimeConnectionSettingsStorageProvider.overrideWithValue(
+        settingsStorage ?? _MemoryRuntimeConnectionSettingsStorage(),
+      ),
+      readerLocationStoreProvider.overrideWithValue(
+        locationStore ?? _MemoryReaderLocationStore(),
+      ),
+      readerStudyStoreProvider.overrideWithValue(
+        studyStore ?? _MemoryReaderStudyStore(),
+      ),
+      readerRepositoryProvider.overrideWith((ref) async => repository),
+      projectEventsProvider.overrideWith((ref) => const Stream.empty()),
+      playbackDriverProvider.overrideWithValue(_FakePlaybackDriver()),
+    ],
+  );
+  addTearDown(container.dispose);
   await tester.pumpWidget(
-    ProviderScope(
-      overrides: [
-        runtimeConnectionSettingsStorageProvider.overrideWithValue(
-          settingsStorage ?? _MemoryRuntimeConnectionSettingsStorage(),
-        ),
-        readerRepositoryProvider.overrideWith((ref) async => repository),
-        projectEventsProvider.overrideWith((ref) => const Stream.empty()),
-        playbackDriverProvider.overrideWithValue(_FakePlaybackDriver()),
-      ],
-      child: const SyncApp(),
-    ),
+    UncontrolledProviderScope(container: container, child: const SyncApp()),
   );
   await tester.pumpAndSettle();
+  return container;
 }
 
 void main() {
   testWidgets('renders reader shell and playback controls', (tester) async {
     await _pumpReaderApp(tester, repository: _FakeReaderRepository());
 
-    expect(find.text('Sync'), findsOneWidget);
+    expect(find.text('Sync'), findsAtLeastNWidgets(1));
     expect(find.text('Moby-Dick'), findsOneWidget);
     expect(find.text('Play'), findsOneWidget);
     expect(find.text('Speed'), findsOneWidget);
@@ -375,6 +436,8 @@ void main() {
     final before = tester.widget<Text>(find.text('Call').first);
     final beforeSize = before.style?.fontSize ?? 0;
 
+    await tester.ensureVisible(find.text('Large').first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Large').first);
     await tester.pumpAndSettle();
 
@@ -524,6 +587,67 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('restores persisted reading location on reload', (tester) async {
+    final container = await _pumpReaderApp(
+      tester,
+      repository: _FakeReaderRepository(),
+      locationStore: _MemoryReaderLocationStore(
+        initial: {
+          'demo-book': ReaderLocationSnapshot(
+            projectId: 'demo-book',
+            positionMs: 2600,
+            totalDurationMs: demoSyncArtifact.totalDurationMs,
+            contentStartMs: demoSyncArtifact.contentStartMs,
+            contentEndMs: demoSyncArtifact.contentEndMs,
+            progressFraction: 0.54,
+            sectionId: 's1',
+            sectionTitle: 'Loomings',
+            updatedAt: DateTime.utc(2026, 3, 9, 12),
+          ),
+        },
+      ),
+    );
+
+    final playback = container.read(readerPlaybackProvider);
+    expect(playback.positionMs, 2600);
+    expect(find.textContaining('Book 54% complete'), findsOneWidget);
+  });
+
+  testWidgets('opens the sync inspector and lists gap spans', (tester) async {
+    await _pumpReaderApp(tester, repository: _FakeReaderRepository());
+
+    await tester.tap(find.byIcon(Icons.radar_rounded));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sync Inspector'), findsOneWidget);
+    expect(find.text('Audiobook intro'), findsAtLeastNWidgets(1));
+    expect(find.text('Audiobook outro'), findsAtLeastNWidgets(1));
+  });
+
+  testWidgets('saves bookmarks and shows them in the review tray', (
+    tester,
+  ) async {
+    final studyStore = _MemoryReaderStudyStore();
+    await _pumpReaderApp(
+      tester,
+      repository: _FakeReaderRepository(),
+      studyStore: studyStore,
+    );
+
+    await tester.ensureVisible(find.text('Save Bookmark'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save Bookmark'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Review Tray'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Review Tray'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Review Tray'), findsAtLeastNWidgets(1));
+    expect(find.textContaining('Bookmark • 00:00'), findsOneWidget);
+    expect(find.textContaining('Bookmark • 00:00\nMoby-Dick'), findsOneWidget);
   });
 
   testWidgets('shows the reader error state when a real project load fails', (

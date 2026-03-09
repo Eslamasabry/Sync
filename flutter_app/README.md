@@ -16,6 +16,7 @@ Current baseline:
 - on-device audio download and cache management for real projects
 - local playback/theme controller separated from remote content loading
 - sync-driven token highlighting UI scaffold
+- app-shell navigation with a device-local library surface for recent books and recent backend targets
 
 ## CI Expectations
 
@@ -124,7 +125,11 @@ For a complete smoke run, prefer the repo scripts documented in [local-run.md](/
 - demo fallback stays available when the API is offline, but uses the simulated timeline instead of `just_audio`
 - real projects now respect backend artifact `download_url` values for both reader-model and sync payload loading
 - after a successful real-project load, the app caches the normalized reader-model and sync artifact locally and reuses them when the backend is unreachable
+- the reader restores the last local reading position per project and keeps progress metadata on device
 - the reader can download project audio for offline playback and will prefer local cached files when they exist
+- the reader now exposes a sync inspector with gap metadata, confidence-aware hints, and jump-to-next-strong-span controls
+- the reader now supports local bookmarks, highlights, notes, and a review tray tied to sync positions
+- playback now includes study, commute, and bedtime presets plus A/B loop markers for repeat listening
 - the reader now exposes a diagnostics panel that distinguishes local cached audio, mixed local plus streaming audio, streaming-only playback, and text-only sync mode
 - cached offline mode now supports two states:
   - full offline: cached reader artifacts plus cached audio
