@@ -16,6 +16,7 @@ venv/
 .flutter-plugins-dependencies
 .packages
 build/
+flutter_app/android/.kotlin/
 
 # IDE
 .idea/
