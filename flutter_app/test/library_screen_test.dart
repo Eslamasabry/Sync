@@ -6,8 +6,13 @@ import 'package:sync_flutter/core/config/runtime_connection_settings_controller.
 import 'package:sync_flutter/core/config/runtime_connection_settings_storage_types.dart';
 import 'package:sync_flutter/core/theme/sync_theme.dart';
 import 'package:sync_flutter/features/library/presentation/library_screen.dart';
+import 'package:sync_flutter/features/reader/data/reader_artifact_cache.dart';
+import 'package:sync_flutter/features/reader/data/reader_audio_cache.dart';
 import 'package:sync_flutter/features/reader/data/reader_location_store.dart';
+import 'package:sync_flutter/features/reader/domain/reader_model.dart';
+import 'package:sync_flutter/features/reader/domain/sync_artifact.dart';
 import 'package:sync_flutter/features/reader/state/reader_location_provider.dart';
+import 'package:sync_flutter/features/reader/state/reader_project_provider.dart';
 
 class _MemoryRuntimeConnectionSettingsStorage
     implements RuntimeConnectionSettingsStorage {
@@ -85,6 +90,73 @@ class _FakeLibraryProjectSummaryLoader implements LibraryProjectSummaryLoader {
   }
 }
 
+class _MemoryReaderArtifactCache implements ReaderArtifactCache {
+  @override
+  Future<CachedReaderProject?> loadProject(String projectId) async =>
+      CachedReaderProject(
+        readerModel: ReaderModel(
+          bookId: projectId,
+          title: 'Cached Project',
+          language: 'en',
+          sections: const [],
+        ),
+        syncArtifact: SyncArtifact(
+          version: '1.0',
+          bookId: projectId,
+          language: 'en',
+          audio: const [],
+          contentStartMs: 0,
+          contentEndMs: 0,
+          tokens: const [],
+          gaps: const [],
+        ),
+        cachedAt: DateTime.utc(2026, 3, 9, 10),
+      );
+
+  @override
+  Future<void> storeProject({
+    required String projectId,
+    required ReaderModel readerModel,
+    required SyncArtifact syncArtifact,
+  }) async {}
+}
+
+class _MemoryReaderAudioCache implements ReaderAudioCache {
+  @override
+  Future<CachedProjectAudio> inspectProject(
+    String projectId, {
+    Iterable<String>? expectedAssetIds,
+  }) async {
+    return CachedProjectAudio(
+      assetsById: {
+        'audio-1': CachedAudioAsset(
+          assetId: 'audio-1',
+          filePath: '/tmp/audio-1.mp3',
+          cachedAt: DateTime.utc(2026, 3, 9, 11),
+          sizeBytes: 1024 * 1024,
+        ),
+      },
+      updatedAt: DateTime.utc(2026, 3, 9, 11),
+    );
+  }
+
+  @override
+  Future<CachedProjectAudio> cacheProjectAudio({
+    required String projectId,
+    required List<AudioDownloadDescriptor> assets,
+    required Future<void> Function(
+      AudioDownloadDescriptor asset,
+      String destinationPath,
+      void Function(int received, int total) reportProgress,
+    )
+    downloadAsset,
+    void Function(AudioDownloadProgress progress)? onProgress,
+  }) async => inspectProject(projectId);
+
+  @override
+  Future<void> removeProject(String projectId) async {}
+}
+
 void main() {
   testWidgets(
     'library screen shows import workspace and recent local history',
@@ -97,6 +169,12 @@ void main() {
             ),
             libraryProjectSummaryLoaderProvider.overrideWithValue(
               const _FakeLibraryProjectSummaryLoader(),
+            ),
+            readerArtifactCacheProvider.overrideWithValue(
+              _MemoryReaderArtifactCache(),
+            ),
+            readerAudioCacheProvider.overrideWithValue(
+              _MemoryReaderAudioCache(),
             ),
             readerLocationStoreProvider.overrideWithValue(
               _MemoryReaderLocationStore(),
@@ -121,6 +199,8 @@ void main() {
       expect(find.text('Processing Queue'), findsOneWidget);
       expect(find.text('Recent Server Projects'), findsOneWidget);
       expect(find.textContaining('Running'), findsWidgets);
+      expect(find.text('Text cached'), findsWidgets);
+      expect(find.text('Audio offline'), findsWidgets);
       expect(find.text('Details'), findsOneWidget);
       await tester.scrollUntilVisible(
         find.text('Recent Books'),

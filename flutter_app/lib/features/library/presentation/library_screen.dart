@@ -124,6 +124,48 @@ final libraryProjectSnapshotProvider = FutureProvider.autoDispose
           ref.read(libraryProjectSummaryLoaderProvider).load(settings),
     );
 
+class LibraryOfflineSnapshot {
+  const LibraryOfflineSnapshot({
+    required this.hasTextCache,
+    required this.cachedAudioAssets,
+    required this.cachedAudioBytes,
+    this.textCachedAt,
+    this.audioCachedAt,
+  });
+
+  final bool hasTextCache;
+  final int cachedAudioAssets;
+  final int cachedAudioBytes;
+  final DateTime? textCachedAt;
+  final DateTime? audioCachedAt;
+}
+
+final libraryOfflineSnapshotProvider = FutureProvider.autoDispose
+    .family<LibraryOfflineSnapshot, RuntimeConnectionSettings>((
+      ref,
+      settings,
+    ) async {
+      final artifactCache = ref.read(readerArtifactCacheProvider);
+      final audioCache = ref.read(readerAudioCacheProvider);
+      final cachedBundle = await artifactCache.loadProject(
+        settings.normalizedProjectId,
+      );
+      final cachedAudio = await audioCache.inspectProject(
+        settings.normalizedProjectId,
+      );
+      final cachedAudioBytes = cachedAudio.assetsById.values.fold<int>(
+        0,
+        (sum, asset) => sum + (asset.sizeBytes ?? 0),
+      );
+      return LibraryOfflineSnapshot(
+        hasTextCache: cachedBundle != null,
+        cachedAudioAssets: cachedAudio.assetCount,
+        cachedAudioBytes: cachedAudioBytes,
+        textCachedAt: cachedBundle?.cachedAt,
+        audioCachedAt: cachedAudio.updatedAt,
+      );
+    });
+
 class LibraryScreen extends ConsumerWidget {
   const LibraryScreen({super.key});
 
@@ -574,6 +616,7 @@ class _ProjectTargetSummary extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final snapshot = ref.watch(libraryProjectSnapshotProvider(settings));
+    final offline = ref.watch(libraryOfflineSnapshotProvider(settings));
     return snapshot.when(
       data: (value) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -589,6 +632,11 @@ class _ProjectTargetSummary extends ConsumerWidget {
                 _LibraryStatusChip(label: jobLabel),
               _LibraryStatusChip(label: '${value.audioAssetCount} audio'),
               _LibraryStatusChip(label: '${value.epubAssetCount} EPUB'),
+              ...offline.maybeWhen(
+                data: (offlineValue) =>
+                    _offlineStatusChips(offlineValue, value.audioAssetCount),
+                orElse: () => const <Widget>[],
+              ),
             ],
           ),
         ],
@@ -684,6 +732,7 @@ class _ProjectSnapshotTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final snapshot = ref.watch(libraryProjectSnapshotProvider(settings));
+    final offline = ref.watch(libraryOfflineSnapshotProvider(settings));
     final theme = Theme.of(context);
     return snapshot.when(
       data: (value) => ListTile(
@@ -707,6 +756,11 @@ class _ProjectSnapshotTile extends ConsumerWidget {
                 if (value.latestJobLabel case final jobLabel?)
                   _LibraryStatusChip(label: jobLabel),
                 _LibraryStatusChip(label: _formatBytes(value.totalSizeBytes)),
+                ...offline.maybeWhen(
+                  data: (offlineValue) =>
+                      _offlineStatusChips(offlineValue, value.audioAssetCount),
+                  orElse: () => const <Widget>[],
+                ),
               ],
             ),
           ],
@@ -787,63 +841,94 @@ class _ProjectDetailsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        20,
-        0,
-        20,
-        20 + MediaQuery.viewInsetsOf(context).bottom,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(snapshot.title, style: theme.textTheme.headlineSmall),
-          const SizedBox(height: 8),
-          Text(
-            '${snapshot.settings.shortHost} • ${snapshot.settings.normalizedProjectId}',
-            style: theme.textTheme.bodyMedium,
+    return Consumer(
+      builder: (context, ref, child) {
+        final offline = ref.watch(
+          libraryOfflineSnapshotProvider(snapshot.settings),
+        );
+        final theme = Theme.of(context);
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            0,
+            20,
+            20 + MediaQuery.viewInsetsOf(context).bottom,
           ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _LibraryStatusChip(label: snapshot.projectStatusLabel),
-              if (snapshot.latestJobLabel case final jobLabel?)
-                _LibraryStatusChip(label: jobLabel),
-              _LibraryStatusChip(label: '${snapshot.assetCount} assets'),
-              _LibraryStatusChip(label: _formatBytes(snapshot.totalSizeBytes)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Language: ${snapshot.language ?? 'Unknown'}',
-            style: theme.textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Assets: ${snapshot.epubAssetCount} EPUB • ${snapshot.audioAssetCount} audio',
-            style: theme.textTheme.bodyMedium,
-          ),
-          if (snapshot.updatedAt != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              'Updated: ${snapshot.updatedAt!.toLocal().toIso8601String().substring(0, 16).replaceFirst('T', ' ')}',
-              style: theme.textTheme.bodyMedium,
-            ),
-          ],
-          if (snapshot.latestJobTerminalReason case final terminalReason?)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Text(
-                'Latest issue: $terminalReason',
+              Text(snapshot.title, style: theme.textTheme.headlineSmall),
+              const SizedBox(height: 8),
+              Text(
+                '${snapshot.settings.shortHost} • ${snapshot.settings.normalizedProjectId}',
                 style: theme.textTheme.bodyMedium,
               ),
-            ),
-        ],
-      ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _LibraryStatusChip(label: snapshot.projectStatusLabel),
+                  if (snapshot.latestJobLabel case final jobLabel?)
+                    _LibraryStatusChip(label: jobLabel),
+                  _LibraryStatusChip(label: '${snapshot.assetCount} assets'),
+                  _LibraryStatusChip(
+                    label: _formatBytes(snapshot.totalSizeBytes),
+                  ),
+                ],
+              ),
+              if (offline case AsyncData<LibraryOfflineSnapshot>(
+                value: final value,
+              )) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: _offlineStatusChips(
+                    value,
+                    snapshot.audioAssetCount,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              Text(
+                'Language: ${snapshot.language ?? 'Unknown'}',
+                style: theme.textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Assets: ${snapshot.epubAssetCount} EPUB • ${snapshot.audioAssetCount} audio',
+                style: theme.textTheme.bodyMedium,
+              ),
+              if (offline case AsyncData<LibraryOfflineSnapshot>(
+                value: final value,
+              )) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Offline footprint: ${_formatBytes(value.cachedAudioBytes)} audio cached',
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ],
+              if (snapshot.updatedAt != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Updated: ${snapshot.updatedAt!.toLocal().toIso8601String().substring(0, 16).replaceFirst('T', ' ')}',
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ],
+              if (snapshot.latestJobTerminalReason case final terminalReason?)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(
+                    'Latest issue: $terminalReason',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -863,6 +948,37 @@ String _formatBytes(int value) {
     return '${(value / 1024).toStringAsFixed(1)} KB';
   }
   return '$value B';
+}
+
+List<Widget> _offlineStatusChips(
+  LibraryOfflineSnapshot snapshot,
+  int expectedAudioAssets,
+) {
+  final chips = <Widget>[
+    _LibraryStatusChip(
+      label: snapshot.hasTextCache ? 'Text cached' : 'Text live',
+    ),
+  ];
+  if (expectedAudioAssets > 0) {
+    if (snapshot.cachedAudioAssets >= expectedAudioAssets) {
+      chips.add(const _LibraryStatusChip(label: 'Audio offline'));
+    } else if (snapshot.cachedAudioAssets > 0) {
+      chips.add(
+        _LibraryStatusChip(
+          label:
+              'Audio ${snapshot.cachedAudioAssets}/$expectedAudioAssets cached',
+        ),
+      );
+    } else {
+      chips.add(const _LibraryStatusChip(label: 'Audio streaming'));
+    }
+  }
+  if (snapshot.cachedAudioBytes > 0) {
+    chips.add(
+      _LibraryStatusChip(label: _formatBytes(snapshot.cachedAudioBytes)),
+    );
+  }
+  return chips;
 }
 
 Map<String, dynamic>? _asMapOrNull(Object? value) {
