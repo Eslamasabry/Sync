@@ -55,6 +55,7 @@ docs/
 
 - Product scope: [PRD-open-source-word-level-audiobook-epub-sync.md](/home/eslam/Storage/Code/Sync/PRD-open-source-word-level-audiobook-epub-sync.md)
 - Epic backlog: [docs/product/epics.md](/home/eslam/Storage/Code/Sync/docs/product/epics.md)
+- Next execution tranche: [docs/product/next-10-tasks.md](/home/eslam/Storage/Code/Sync/docs/product/next-10-tasks.md)
 - Agent and contribution rules: [AGENTS.md](/home/eslam/Storage/Code/Sync/AGENTS.md)
 - Architecture baseline: [docs/architecture/foundations.md](/home/eslam/Storage/Code/Sync/docs/architecture/foundations.md)
 - Flutter reader decision: [docs/architecture/flutter-reader-decision.md](/home/eslam/Storage/Code/Sync/docs/architecture/flutter-reader-decision.md)
