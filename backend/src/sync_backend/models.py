@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -69,6 +69,16 @@ class Asset(Base, TimestampMixin):
 
 class AlignmentJob(Base, TimestampMixin):
     __tablename__ = "alignment_jobs"
+    __table_args__ = (
+        Index(
+            "ux_alignment_jobs_active_request_fingerprint",
+            "project_id",
+            "request_fingerprint",
+            unique=True,
+            sqlite_where=text("status IN ('queued', 'running', 'completed')"),
+            postgresql_where=text("status IN ('queued', 'running', 'completed')"),
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     project_id: Mapped[str] = mapped_column(

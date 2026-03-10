@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
+from sqlalchemy.exc import IntegrityError
 from starlette.websockets import WebSocketDisconnect
 
 from sync_backend.alignment.audio import AudioPreprocessor, PreparedAudioSegment
@@ -22,7 +23,7 @@ from sync_backend.config import get_settings
 from sync_backend.db import get_session_factory, reset_db_caches
 from sync_backend.main import create_app
 from sync_backend.models import AlignmentJob, TranscriptArtifact
-from sync_backend.services import cancel_job
+from sync_backend.services import cancel_job, create_alignment_job
 from sync_backend.storage import get_object_store
 
 
@@ -508,6 +509,68 @@ def test_duplicate_job_request_reuses_existing_job_without_redispatch(
     assert second_response.json()["job_id"] == first_response.json()["job_id"]
     assert second_response.json()["attempt_number"] == 1
     assert len(inline_calls) == 1
+
+
+def test_create_alignment_job_recovers_from_concurrent_insert_conflict(
+    client: TestClient,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Concurrent Insert Project", "language": "en"},
+    ).json()["project_id"]
+    book_asset_id = upload_test_epub_asset(
+        client,
+        project_id=project_id,
+        filename="book.epub",
+    )
+    audio_asset_id = upload_test_audio_asset(
+        client,
+        project_id=project_id,
+        filename="book.wav",
+    )
+
+    session = get_session_factory()()
+    original_commit = session.commit
+    conflict_injected = False
+
+    def commit_with_conflict() -> None:
+        nonlocal conflict_injected
+        if conflict_injected:
+            original_commit()
+            return
+
+        competing_session = get_session_factory()()
+        try:
+            create_alignment_job(
+                session=competing_session,
+                project_id=project_id,
+                book_asset_id=book_asset_id,
+                audio_asset_ids=[audio_asset_id],
+            )
+        finally:
+            competing_session.close()
+
+        conflict_injected = True
+        raise IntegrityError("synthetic concurrent insert conflict", None, Exception("conflict"))
+
+    monkeypatch.setattr(session, "commit", commit_with_conflict)
+
+    try:
+        result = create_alignment_job(
+            session=session,
+            project_id=project_id,
+            book_asset_id=book_asset_id,
+            audio_asset_ids=[audio_asset_id],
+        )
+    finally:
+        session.close()
+
+    assert result.reused_existing is True
+    assert result.job.status == "queued"
+
+    project_jobs = client.get(f"/v1/projects/{project_id}/jobs").json()["jobs"]
+    assert len(project_jobs) == 1
 
 
 def test_failed_job_request_creates_retry_attempt(client: TestClient) -> None:

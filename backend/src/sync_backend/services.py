@@ -8,6 +8,7 @@ from http import HTTPStatus
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from sync_backend.alignment.epub import build_reader_model
@@ -253,6 +254,22 @@ def _ensure_alignment_asset_ready(*, asset: Asset, role: str) -> None:
     )
 
 
+def _find_reusable_alignment_job(
+    *,
+    session: Session,
+    project_id: str,
+    request_fingerprint: str,
+) -> AlignmentJob | None:
+    return session.scalar(
+        select(AlignmentJob)
+        .where(AlignmentJob.project_id == project_id)
+        .where(AlignmentJob.request_fingerprint == request_fingerprint)
+        .where(AlignmentJob.status.in_(("queued", "running", "completed")))
+        .order_by(AlignmentJob.created_at.desc())
+        .limit(1)
+    )
+
+
 def create_alignment_job(
     *,
     session: Session,
@@ -323,7 +340,18 @@ def create_alignment_job(
         mismatch_ranges=[],
     )
     session.add(job)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        existing_job = _find_reusable_alignment_job(
+            session=session,
+            project_id=project_id,
+            request_fingerprint=request_fingerprint,
+        )
+        if existing_job is None:
+            raise
+        return AlignmentJobCreateResult(job=existing_job, reused_existing=True)
     session.refresh(job)
     return AlignmentJobCreateResult(job=job, reused_existing=False)
 
