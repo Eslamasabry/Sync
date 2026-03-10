@@ -571,6 +571,26 @@ def test_upload_rejects_empty_payload(client: TestClient) -> None:
     assert upload_response.json()["error"]["code"] == "asset_empty_upload"
 
 
+def test_upload_rejects_unreadable_audio_payload(client: TestClient) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Broken Audio Project", "language": "en"},
+    ).json()["project_id"]
+
+    upload_response = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "audio"},
+        files={"file": ("broken.mp3", b"not-real-audio", "audio/mpeg")},
+    )
+
+    assert upload_response.status_code == 422
+    assert upload_response.json()["error"]["code"] == "audio_processing_failed"
+
+    project_response = client.get(f"/v1/projects/{project_id}")
+    assert project_response.status_code == 200
+    assert project_response.json()["assets"] == []
+
+
 def test_upload_rejects_payload_that_exceeds_configured_size_limit(
     client: TestClient,
     monkeypatch: MonkeyPatch,

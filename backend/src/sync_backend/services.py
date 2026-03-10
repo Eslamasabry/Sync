@@ -148,6 +148,16 @@ def store_uploaded_asset_from_file(
     get_project_or_404(session=session, project_id=project_id)
     asset_id = str(uuid4())
     duration_ms = _probe_asset_duration_ms_from_path(kind=kind, source_path=source_path)
+    if kind == "audio" and duration_ms is None:
+        raise ApiError(
+            code="audio_processing_failed",
+            message=(
+                "Sync could not read this audiobook file. "
+                "Upload a supported audio file and try again"
+            ),
+            status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
+            details={"filename": filename, "kind": kind},
+        )
     storage_filename = _storage_safe_filename(filename, fallback_kind=kind)
     storage_path, stored_size_bytes = object_store.write_file(
         f"projects/{project_id}/assets/{asset_id}/{storage_filename}",

@@ -377,6 +377,47 @@ void main() {
     expect(find.text('Use This'), findsOneWidget);
   });
 
+  testWidgets('library promotes server setup before import when backend is not ready', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          runtimeConnectionSettingsStorageProvider.overrideWithValue(
+            _MemoryRuntimeConnectionSettingsStorage(),
+          ),
+          libraryProjectSummaryLoaderProvider.overrideWithValue(
+            const _FakeLibraryProjectSummaryLoader(),
+          ),
+          readerArtifactCacheProvider.overrideWithValue(
+            _MemoryReaderArtifactCache(),
+          ),
+          readerAudioCacheProvider.overrideWithValue(_MemoryReaderAudioCache()),
+          readerLocationStoreProvider.overrideWithValue(
+            _MemoryReaderLocationStore(),
+          ),
+          libraryServerConnectionProvider.overrideWith(
+            (ref) async => const LibraryServerConnectionState(
+              isReady: false,
+              headline: 'Connect your server first',
+              detail: 'Point the app at your self-hosted backend before importing.',
+            ),
+          ),
+          libraryServerProjectsProvider.overrideWith((ref) async => const []),
+        ],
+        child: MaterialApp(
+          theme: SyncTheme.paper(),
+          home: const LibraryScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Connect Your Server', skipOffstage: false), findsWidgets);
+    expect(find.text('Connect your server first'), findsWidgets);
+    expect(find.text('Open Connection'), findsWidgets);
+  });
+
   testWidgets(
     'recent book resume restores the saved auth token for its original server',
     (tester) async {
