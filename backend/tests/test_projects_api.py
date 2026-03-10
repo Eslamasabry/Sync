@@ -22,7 +22,7 @@ from sync_backend.api.realtime import broker
 from sync_backend.config import get_settings
 from sync_backend.db import get_session_factory, reset_db_caches
 from sync_backend.main import create_app
-from sync_backend.models import AlignmentJob, TranscriptArtifact
+from sync_backend.models import AlignmentJob, Asset, TranscriptArtifact
 from sync_backend.services import cancel_job, create_alignment_job
 from sync_backend.storage import get_object_store
 
@@ -408,6 +408,87 @@ def test_uploaded_asset_content_can_be_downloaded(client: TestClient) -> None:
     assert asset["size_bytes"] == len(payload)
     assert asset["checksum_sha256"] is not None
     assert asset["duration_ms"] == 250
+
+
+def test_uploaded_asset_sanitizes_storage_filename_without_changing_visible_name(
+    client: TestClient,
+) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Unsafe Filename Project", "language": "en"},
+    ).json()["project_id"]
+
+    payload = make_test_wav_bytes(duration_seconds=0.25)
+    upload_response = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "audio"},
+        files={
+            "file": (
+                "../../nested/../evil clip?.wav",
+                payload,
+                "audio/wav",
+            )
+        },
+    )
+
+    assert upload_response.status_code == 201
+    asset_id = upload_response.json()["asset_id"]
+
+    session_factory = get_session_factory()
+    with session_factory() as session:
+        asset = session.get(Asset, asset_id)
+        assert asset is not None
+        assert asset.filename == "../../nested/../evil clip?.wav"
+        assert asset.storage_path is not None
+        assert "/../" not in asset.storage_path
+        assert "\\" not in asset.storage_path
+        assert asset.storage_path.endswith("/evil clip_.wav")
+
+    content_response = client.get(f"/v1/projects/{project_id}/assets/{asset_id}/content")
+    assert content_response.status_code == 200
+    assert content_response.content == payload
+
+
+def test_download_urls_respect_forwarded_https_headers(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setenv("PROXY_HEADER_TRUSTED_HOSTS", "*")
+    get_settings.cache_clear()
+    reset_db_caches()
+
+    with TestClient(create_app()) as client:
+        project_id = client.post(
+            "/v1/projects",
+            json={"title": "Proxy Header Project", "language": "en"},
+            headers={
+                "host": "sync.example",
+                "x-forwarded-proto": "https",
+                "x-forwarded-for": "203.0.113.10",
+            },
+        ).json()["project_id"]
+
+        asset_id = client.post(
+            f"/v1/projects/{project_id}/assets/upload",
+            data={"kind": "audio"},
+            files={"file": ("clip.wav", make_test_wav_bytes(duration_seconds=0.25), "audio/wav")},
+            headers={
+                "host": "sync.example",
+                "x-forwarded-proto": "https",
+                "x-forwarded-for": "203.0.113.10",
+            },
+        ).json()["asset_id"]
+
+        project_response = client.get(
+            f"/v1/projects/{project_id}",
+            headers={
+                "host": "sync.example",
+                "x-forwarded-proto": "https",
+                "x-forwarded-for": "203.0.113.10",
+            },
+        )
+
+    assert project_response.status_code == 200
+    asset = project_response.json()["assets"][0]
+    assert asset["asset_id"] == asset_id
+    assert asset["download_url"].startswith("https://sync.example/")
 
 
 def test_uploaded_asset_supports_byte_range_requests(client: TestClient) -> None:

@@ -949,6 +949,7 @@ void main() {
         initial: {
           'demo-book': ReaderLocationSnapshot(
             apiBaseUrl: 'http://localhost:8000/v1',
+            authToken: '',
             projectId: 'demo-book',
             positionMs: 2600,
             totalDurationMs: demoSyncArtifact.totalDurationMs,

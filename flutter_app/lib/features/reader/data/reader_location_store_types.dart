@@ -1,6 +1,7 @@
 class ReaderLocationSnapshot {
   const ReaderLocationSnapshot({
     required this.apiBaseUrl,
+    required this.authToken,
     required this.projectId,
     required this.positionMs,
     required this.totalDurationMs,
@@ -13,6 +14,7 @@ class ReaderLocationSnapshot {
   });
 
   final String apiBaseUrl;
+  final String authToken;
   final String projectId;
   final int positionMs;
   final int totalDurationMs;
@@ -41,6 +43,7 @@ class ReaderLocationSnapshot {
   Map<String, dynamic> toJson() {
     return {
       'api_base_url': apiBaseUrl,
+      'auth_token': authToken,
       'project_id': projectId,
       'position_ms': positionMs,
       'total_duration_ms': totalDurationMs,
@@ -56,6 +59,7 @@ class ReaderLocationSnapshot {
   factory ReaderLocationSnapshot.fromJson(Map<String, dynamic> json) {
     return ReaderLocationSnapshot(
       apiBaseUrl: json['api_base_url'] as String? ?? '',
+      authToken: json['auth_token'] as String? ?? '',
       projectId: json['project_id'] as String? ?? '',
       positionMs: _asInt(json['position_ms']),
       totalDurationMs: _asInt(json['total_duration_ms']),

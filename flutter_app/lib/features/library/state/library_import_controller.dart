@@ -61,7 +61,6 @@ class LibraryImportState {
 
   bool get canStartImport =>
       title.trim().isNotEmpty &&
-      language.trim().isNotEmpty &&
       epubFile != null &&
       audioFiles.isNotEmpty;
 
@@ -193,9 +192,11 @@ class LibraryImportController extends Notifier<LibraryImportState> {
       return;
     }
     final derivedTitle = _titleFromFilename(file.name);
-    final suggestedAudio = await ref
-        .read(importFilePickerProvider)
-        .findNearbyAudioFiles(file, preferredTitle: derivedTitle);
+    final suggestedAudio = _sortedAudioFiles(
+      await ref
+          .read(importFilePickerProvider)
+          .findNearbyAudioFiles(file, preferredTitle: derivedTitle),
+    );
     final shouldAutofillAudio =
         previousDraft.audioFiles.isEmpty && suggestedAudio.isNotEmpty;
     state = state.copyWith(
@@ -212,15 +213,19 @@ class LibraryImportController extends Notifier<LibraryImportState> {
       suggestedAudioFiles: shouldAutofillAudio
           ? const <ImportPickedFile>[]
           : suggestedAudio,
-      audioFiles: shouldAutofillAudio ? suggestedAudio : previousDraft.audioFiles,
-      title: previousDraft.title.trim().isEmpty ? derivedTitle : previousDraft.title,
+      audioFiles: shouldAutofillAudio
+          ? suggestedAudio
+          : previousDraft.audioFiles,
+      title: previousDraft.title.trim().isEmpty
+          ? derivedTitle
+          : previousDraft.title,
       message: shouldAutofillAudio
           ? 'Found audiobook files in the same folder and added them for you.'
           : suggestedAudio.isNotEmpty
-              ? 'Book added. I also found audiobook files nearby.'
-              : previousDraft.audioFiles.isEmpty
-              ? 'Book added. Next, add the audiobook to start sync.'
-              : 'Book replaced. Your audiobook files are still attached.',
+          ? 'Book added. I also found audiobook files nearby.'
+          : previousDraft.audioFiles.isEmpty
+          ? 'Book added. Next, add the audiobook to start sync.'
+          : 'Book replaced. Your audiobook files are still attached.',
       clearSuggestedEpub: true,
     );
   }
@@ -236,20 +241,24 @@ class LibraryImportController extends Notifier<LibraryImportState> {
       state = previousDraft.copyWith(clearMessage: true);
       return;
     }
+    final sortedFiles = _sortedAudioFiles(files);
     final suggestedEpub = previousDraft.epubFile != null
         ? null
         : await ref
               .read(importFilePickerProvider)
-              .findNearbyEpubFile(files.first, preferredTitle: previousDraft.title);
+              .findNearbyEpubFile(
+                sortedFiles.first,
+                preferredTitle: previousDraft.title,
+              );
     final shouldAutofillEpub =
         previousDraft.epubFile == null && suggestedEpub != null;
     state = state.copyWith(
       status: _draftStatusFor(
         title: previousDraft.title,
         epubFile: shouldAutofillEpub ? suggestedEpub : previousDraft.epubFile,
-        audioFiles: files,
+        audioFiles: sortedFiles,
       ),
-      audioFiles: files,
+      audioFiles: sortedFiles,
       epubFile: shouldAutofillEpub ? suggestedEpub : previousDraft.epubFile,
       suggestedEpubFile: shouldAutofillEpub ? null : suggestedEpub,
       clearSuggestedAudio: true,
@@ -259,10 +268,10 @@ class LibraryImportController extends Notifier<LibraryImportState> {
       message: shouldAutofillEpub
           ? 'Found a nearby EPUB in the same folder and added it for you.'
           : suggestedEpub != null
-              ? 'Audiobook added. I also found a nearby EPUB.'
-              : previousDraft.epubFile == null
-              ? 'Audiobook added. Next, add the EPUB to start sync.'
-              : 'Audiobook updated. Your book file is still attached.',
+          ? 'Audiobook added. I also found a nearby EPUB.'
+          : previousDraft.epubFile == null
+          ? 'Audiobook added. Next, add the EPUB to start sync.'
+          : 'Audiobook updated. Your book file is still attached.',
     );
   }
 
@@ -271,7 +280,7 @@ class LibraryImportController extends Notifier<LibraryImportState> {
       return;
     }
     state = _draftUpdate(
-      audioFiles: state.suggestedAudioFiles,
+      audioFiles: _sortedAudioFiles(state.suggestedAudioFiles),
       clearSuggestedAudio: true,
       message: 'Added nearby audiobook files to your import.',
     );
@@ -302,9 +311,11 @@ class LibraryImportController extends Notifier<LibraryImportState> {
         : previousDraft.title.trim();
     final suggestedAudio = previousDraft.epubFile == null
         ? const <ImportPickedFile>[]
-        : await picker.findNearbyAudioFiles(
-            previousDraft.epubFile!,
-            preferredTitle: baseTitle,
+        : _sortedAudioFiles(
+            await picker.findNearbyAudioFiles(
+              previousDraft.epubFile!,
+              preferredTitle: baseTitle,
+            ),
           );
     final suggestedEpub =
         previousDraft.epubFile == null && previousDraft.audioFiles.isNotEmpty
@@ -327,7 +338,9 @@ class LibraryImportController extends Notifier<LibraryImportState> {
             ? suggestedAudio
             : previousDraft.audioFiles,
       ),
-      audioFiles: shouldAutofillAudio ? suggestedAudio : previousDraft.audioFiles,
+      audioFiles: shouldAutofillAudio
+          ? suggestedAudio
+          : previousDraft.audioFiles,
       epubFile: shouldAutofillEpub ? suggestedEpub : previousDraft.epubFile,
       suggestedAudioFiles: shouldAutofillAudio
           ? const <ImportPickedFile>[]
@@ -349,7 +362,9 @@ class LibraryImportController extends Notifier<LibraryImportState> {
       status: LibraryImportStatus.picking,
       clearMessage: true,
     );
-    final candidates = await ref.read(importFilePickerProvider).scanDeviceBooks();
+    final candidates = await ref
+        .read(importFilePickerProvider)
+        .scanDeviceBooks();
     state = previousDraft.copyWith(
       status: previousDraft.status,
       scannedDeviceBooks: candidates,
@@ -365,7 +380,8 @@ class LibraryImportController extends Notifier<LibraryImportState> {
     state = _draftUpdate(
       title: candidate.title,
       epubFile: candidate.epubFile,
-      audioFiles: candidate.audioFiles,
+      audioFiles: _sortedAudioFiles(candidate.audioFiles),
+      clearEpub: candidate.epubFile == null,
       clearScannedDeviceBooks: true,
       message: candidate.epubFile != null
           ? 'Loaded ${candidate.title} from ${candidate.directoryLabel}. Review it, then start sync.'
@@ -375,8 +391,8 @@ class LibraryImportController extends Notifier<LibraryImportState> {
 
   void removeAudioFile(String name) {
     final nextAudioFiles = state.audioFiles
-          .where((file) => file.name != name)
-          .toList(growable: false);
+        .where((file) => file.name != name)
+        .toList(growable: false);
     state = _draftUpdate(
       audioFiles: nextAudioFiles,
       message: nextAudioFiles.isEmpty
@@ -389,7 +405,8 @@ class LibraryImportController extends Notifier<LibraryImportState> {
     if (!state.canStartImport) {
       state = state.copyWith(
         status: LibraryImportStatus.failed,
-        message: state.missingRequirementsMessage ??
+        message:
+            state.missingRequirementsMessage ??
             'Complete the book setup before starting sync.',
       );
       return;
@@ -513,13 +530,14 @@ class LibraryImportController extends Notifier<LibraryImportState> {
     List<ImportPickedFile>? suggestedAudioFiles,
     String? message,
     bool clearMessage = false,
+    bool clearEpub = false,
     bool clearSuggestedEpub = false,
     bool clearSuggestedAudio = false,
     bool clearScannedDeviceBooks = false,
   }) {
     final nextTitle = title ?? state.title;
     final nextLanguage = language ?? state.language;
-    final nextEpub = epubFile ?? state.epubFile;
+    final nextEpub = clearEpub ? null : epubFile ?? state.epubFile;
     final nextAudioFiles = audioFiles ?? state.audioFiles;
     return state.copyWith(
       status: _draftStatusFor(
@@ -529,8 +547,9 @@ class LibraryImportController extends Notifier<LibraryImportState> {
       ),
       title: nextTitle,
       language: nextLanguage,
-      epubFile: epubFile,
+      epubFile: clearEpub ? null : epubFile,
       audioFiles: nextAudioFiles,
+      clearEpub: clearEpub,
       scannedDeviceBooks: scannedDeviceBooks,
       suggestedEpubFile: suggestedEpubFile,
       suggestedAudioFiles: suggestedAudioFiles,
@@ -544,6 +563,55 @@ class LibraryImportController extends Notifier<LibraryImportState> {
       clearScannedDeviceBooks: clearScannedDeviceBooks,
     );
   }
+}
+
+List<ImportPickedFile> _sortedAudioFiles(List<ImportPickedFile> files) {
+  final sorted = List<ImportPickedFile>.from(files);
+  sorted.sort((left, right) => _naturalFileNameCompare(left.name, right.name));
+  return sorted;
+}
+
+int _naturalFileNameCompare(String left, String right) {
+  final leftParts = _naturalNameParts(left);
+  final rightParts = _naturalNameParts(right);
+  final maxLength = leftParts.length > rightParts.length
+      ? leftParts.length
+      : rightParts.length;
+
+  for (var index = 0; index < maxLength; index += 1) {
+    if (index >= leftParts.length) {
+      return -1;
+    }
+    if (index >= rightParts.length) {
+      return 1;
+    }
+
+    final leftPart = leftParts[index];
+    final rightPart = rightParts[index];
+    final leftNumber = int.tryParse(leftPart);
+    final rightNumber = int.tryParse(rightPart);
+    if (leftNumber != null && rightNumber != null) {
+      final comparison = leftNumber.compareTo(rightNumber);
+      if (comparison != 0) {
+        return comparison;
+      }
+      continue;
+    }
+
+    final comparison = leftPart.toLowerCase().compareTo(
+      rightPart.toLowerCase(),
+    );
+    if (comparison != 0) {
+      return comparison;
+    }
+  }
+
+  return 0;
+}
+
+List<String> _naturalNameParts(String value) {
+  final matches = RegExp(r'\d+|\D+').allMatches(value);
+  return [for (final match in matches) match.group(0) ?? ''];
 }
 
 LibraryImportStatus _draftStatusFor({

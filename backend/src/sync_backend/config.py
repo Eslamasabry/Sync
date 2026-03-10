@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     )
     cors_allow_credentials: bool = Field(default=False, alias="CORS_ALLOW_CREDENTIALS")
     trusted_hosts: str = Field(default="", alias="TRUSTED_HOSTS")
+    proxy_header_trusted_hosts: str = Field(default="", alias="PROXY_HEADER_TRUSTED_HOSTS")
     api_auth_token: str = Field(default="", alias="API_AUTH_TOKEN")
 
     model_config = SettingsConfigDict(
@@ -86,6 +87,10 @@ class Settings(BaseSettings):
     @property
     def trusted_host_values(self) -> list[str]:
         return _parse_csv_env(self.trusted_hosts)
+
+    @property
+    def proxy_header_trusted_host_values(self) -> list[str]:
+        return _parse_csv_env(self.proxy_header_trusted_hosts)
 
     @property
     def use_inline_job_execution(self) -> bool:

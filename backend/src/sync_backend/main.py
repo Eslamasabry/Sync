@@ -7,6 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from sync_backend.api.errors import (
     ApiError,
@@ -37,6 +38,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         cors_enabled=bool(
             settings.cors_origins or settings.effective_cors_origin_regex
         ),
+        proxy_headers_enabled=bool(settings.proxy_header_trusted_host_values),
         trusted_hosts_enabled=bool(settings.trusted_host_values),
     )
     yield
@@ -70,6 +72,11 @@ def create_app() -> FastAPI:
         app.add_middleware(
             TrustedHostMiddleware,
             allowed_hosts=settings.trusted_host_values,
+        )
+    if settings.proxy_header_trusted_host_values:
+        app.add_middleware(
+            ProxyHeadersMiddleware,
+            trusted_hosts=settings.proxy_header_trusted_host_values,
         )
     app.add_exception_handler(ApiError, api_error_handler)
     app.add_exception_handler(RequestValidationError, request_validation_error_handler)

@@ -123,11 +123,8 @@ class _FakeImportFilePicker implements ImportFilePicker {
 }
 
 class _FakeSyncApiClient extends SyncApiClient {
-  _FakeSyncApiClient({
-    this.uploadError,
-    this.jobError,
-    this.createProjectError,
-  }) : super(baseUrl: 'http://sync.example.test/v1');
+  _FakeSyncApiClient({this.uploadError, this.jobError, this.createProjectError})
+    : super(baseUrl: 'http://sync.example.test/v1');
 
   final List<String> uploadedKinds = [];
   final Object? uploadError;
@@ -275,28 +272,31 @@ void main() {
     expect(afterCancel.message, isNull);
   });
 
-  test('device scan can fill the draft from one local book candidate', () async {
-    final container = ProviderContainer(
-      overrides: [
-        importFilePickerProvider.overrideWithValue(_FakeImportFilePicker()),
-      ],
-    );
-    addTearDown(container.dispose);
+  test(
+    'device scan can fill the draft from one local book candidate',
+    () async {
+      final container = ProviderContainer(
+        overrides: [
+          importFilePickerProvider.overrideWithValue(_FakeImportFilePicker()),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    final controller = container.read(libraryImportProvider.notifier);
-    await controller.scanDeviceBooks();
+      final controller = container.read(libraryImportProvider.notifier);
+      await controller.scanDeviceBooks();
 
-    final scanned = container.read(libraryImportProvider);
-    expect(scanned.scannedDeviceBooks, hasLength(1));
-    expect(scanned.message, contains('Found 1 books'));
+      final scanned = container.read(libraryImportProvider);
+      expect(scanned.scannedDeviceBooks, hasLength(1));
+      expect(scanned.message, contains('Found 1 books'));
 
-    controller.useScannedDeviceBook(scanned.scannedDeviceBooks.first);
-    final selected = container.read(libraryImportProvider);
-    expect(selected.title, 'The Time Machine');
-    expect(selected.epubFile?.name, 'The Time Machine.epub');
-    expect(selected.audioFiles, hasLength(1));
-    expect(selected.scannedDeviceBooks, isEmpty);
-  });
+      controller.useScannedDeviceBook(scanned.scannedDeviceBooks.first);
+      final selected = container.read(libraryImportProvider);
+      expect(selected.title, 'The Time Machine');
+      expect(selected.epubFile?.name, 'The Time Machine.epub');
+      expect(selected.audioFiles, hasLength(1));
+      expect(selected.scannedDeviceBooks, isEmpty);
+    },
+  );
 
   test('audio-only scanned candidate tells the user to add the epub', () async {
     final container = ProviderContainer(
@@ -332,6 +332,108 @@ void main() {
     expect(state.epubFile, isNull);
     expect(state.audioFiles, hasLength(1));
     expect(state.message, contains('Add the EPUB to finish the setup.'));
+  });
+
+  test('audio-only scanned candidate clears any previous epub draft', () async {
+    final container = ProviderContainer(
+      overrides: [
+        importFilePickerProvider.overrideWithValue(
+          _FakeImportFilePicker(
+            deviceBooks: const [
+              ImportBookCandidate(
+                title: 'Standalone Story',
+                directoryLabel: 'Downloads',
+                audioFiles: [
+                  ImportPickedFile(
+                    name: 'Standalone Story - Part 01.mp3',
+                    sizeBytes: 4096,
+                    bytes: [1, 1, 1],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final controller = container.read(libraryImportProvider.notifier);
+    await controller.pickEpub();
+    expect(container.read(libraryImportProvider).epubFile, isNotNull);
+
+    await controller.scanDeviceBooks();
+    controller.useScannedDeviceBook(
+      container.read(libraryImportProvider).scannedDeviceBooks.first,
+    );
+
+    final state = container.read(libraryImportProvider);
+    expect(state.epubFile, isNull);
+    expect(state.audioFiles.map((file) => file.name).toList(), [
+      'Standalone Story - Part 01.mp3',
+    ]);
+  });
+
+  test('picked audiobook files are sorted in natural chapter order', () async {
+    final container = ProviderContainer(
+      overrides: [
+        importFilePickerProvider.overrideWithValue(
+          _FakeImportFilePicker(
+            deviceBooks: const <ImportBookCandidate>[],
+            audioResults: const [
+              ImportPickedFile(
+                name: 'chapter-10.mp3',
+                sizeBytes: 4096,
+                bytes: [4, 5, 6],
+              ),
+              ImportPickedFile(
+                name: 'chapter-2.mp3',
+                sizeBytes: 2048,
+                bytes: [1, 2, 3],
+              ),
+              ImportPickedFile(
+                name: 'chapter-1.mp3',
+                sizeBytes: 1024,
+                bytes: [7, 8, 9],
+              ),
+            ],
+            nearbyEpubResult: null,
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final controller = container.read(libraryImportProvider.notifier);
+    await controller.pickAudioFiles();
+
+    final state = container.read(libraryImportProvider);
+    expect(state.audioFiles.map((file) => file.name).toList(), [
+      'chapter-1.mp3',
+      'chapter-2.mp3',
+      'chapter-10.mp3',
+    ]);
+  });
+
+  test('language can be blank without blocking import readiness', () async {
+    final container = ProviderContainer(
+      overrides: [
+        importFilePickerProvider.overrideWithValue(
+          _FakeImportFilePicker(deviceBooks: const <ImportBookCandidate>[]),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final controller = container.read(libraryImportProvider.notifier);
+    controller.setTitle('Imported Book');
+    controller.setLanguage('');
+    await controller.pickEpub();
+
+    final state = container.read(libraryImportProvider);
+    expect(state.language, '');
+    expect(state.canStartImport, isTrue);
+    expect(state.flowSummary, 'Ready to start sync');
   });
 
   test('editing after completion returns to editable draft state', () async {
@@ -391,10 +493,8 @@ void main() {
       final api = _FakeSyncApiClient();
       final container = ProviderContainer(
         overrides: [
-        runtimeConnectionSettingsStorageProvider.overrideWithValue(storage),
-        importFilePickerProvider.overrideWithValue(
-            _FakeImportFilePicker(),
-          ),
+          runtimeConnectionSettingsStorageProvider.overrideWithValue(storage),
+          importFilePickerProvider.overrideWithValue(_FakeImportFilePicker()),
           syncApiClientProvider.overrideWith((ref) async => api),
         ],
       );
@@ -490,35 +590,38 @@ void main() {
     );
   });
 
-  test('auth failures ask the user to update server connection details', () async {
-    final container = ProviderContainer(
-      overrides: [
-        runtimeConnectionSettingsStorageProvider.overrideWithValue(
-          _MemoryRuntimeConnectionSettingsStorage(),
-        ),
-        importFilePickerProvider.overrideWithValue(_FakeImportFilePicker()),
-        syncApiClientProvider.overrideWith(
-          (ref) async => _FakeSyncApiClient(
-            createProjectError: const ApiClientException(
-              'The server rejected the token',
-              code: 'auth_invalid',
+  test(
+    'auth failures ask the user to update server connection details',
+    () async {
+      final container = ProviderContainer(
+        overrides: [
+          runtimeConnectionSettingsStorageProvider.overrideWithValue(
+            _MemoryRuntimeConnectionSettingsStorage(),
+          ),
+          importFilePickerProvider.overrideWithValue(_FakeImportFilePicker()),
+          syncApiClientProvider.overrideWith(
+            (ref) async => _FakeSyncApiClient(
+              createProjectError: const ApiClientException(
+                'The server rejected the token',
+                code: 'auth_invalid',
+              ),
             ),
           ),
-        ),
-      ],
-    );
-    addTearDown(container.dispose);
+        ],
+      );
+      addTearDown(container.dispose);
 
-    final controller = container.read(libraryImportProvider.notifier);
-    controller.setTitle('Imported Book');
-    await controller.pickEpub();
-    await controller.startImport();
+      final controller = container.read(libraryImportProvider.notifier);
+      controller.setTitle('Imported Book');
+      await controller.pickEpub();
+      await controller.startImport();
 
-    final state = container.read(libraryImportProvider);
-    expect(state.status, LibraryImportStatus.failed);
-    expect(
-      state.message,
-      'The server rejected the current token. Update the server connection details and try again.',
-    );
-  });
+      final state = container.read(libraryImportProvider);
+      expect(state.status, LibraryImportStatus.failed);
+      expect(
+        state.message,
+        'The server rejected the current token. Update the server connection details and try again.',
+      );
+    },
+  );
 }

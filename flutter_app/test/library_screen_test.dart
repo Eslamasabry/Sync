@@ -21,6 +21,8 @@ import 'package:sync_flutter/features/reader/state/reader_project_provider.dart'
 
 class _MemoryRuntimeConnectionSettingsStorage
     implements RuntimeConnectionSettingsStorage {
+  RuntimeConnectionSettings? saved;
+
   @override
   Future<void> clear() async {}
 
@@ -47,7 +49,9 @@ class _MemoryRuntimeConnectionSettingsStorage
   ];
 
   @override
-  Future<void> store(RuntimeConnectionSettings settings) async {}
+  Future<void> store(RuntimeConnectionSettings settings) async {
+    saved = settings;
+  }
 
   @override
   Future<void> remove(RuntimeConnectionSettings settings) async {}
@@ -64,6 +68,7 @@ class _MemoryReaderLocationStore implements ReaderLocationStore {
   Future<List<ReaderLocationSnapshot>> loadRecent() async => [
     ReaderLocationSnapshot(
       apiBaseUrl: 'http://sync.example.test/v1',
+      authToken: 'snapshot-token',
       projectId: 'demo-book',
       positionMs: 2300,
       totalDurationMs: 4000,
@@ -232,6 +237,13 @@ void main() {
             readerLocationStoreProvider.overrideWithValue(
               _MemoryReaderLocationStore(),
             ),
+            libraryServerConnectionProvider.overrideWith(
+              (ref) async => const LibraryServerConnectionState(
+                isReady: true,
+                headline: 'Server ready',
+                detail: 'Ready for uploads.',
+              ),
+            ),
             libraryServerProjectsProvider.overrideWith(
               (ref) async => const [
                 ProjectListItem(
@@ -267,7 +279,7 @@ void main() {
           ],
           child: MaterialApp(
             theme: SyncTheme.paper(),
-            home: const LibraryScreen(),
+            home: const Scaffold(body: LibraryScreen()),
           ),
         ),
       );
@@ -315,15 +327,66 @@ void main() {
     },
   );
 
+  testWidgets('library surfaces scanned folder books as a top-level section', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          libraryImportProvider.overrideWith(
+            _ScannedLibraryImportController.new,
+          ),
+          runtimeConnectionSettingsStorageProvider.overrideWithValue(
+            _MemoryRuntimeConnectionSettingsStorage(),
+          ),
+          libraryProjectSummaryLoaderProvider.overrideWithValue(
+            const _FakeLibraryProjectSummaryLoader(),
+          ),
+          readerArtifactCacheProvider.overrideWithValue(
+            _MemoryReaderArtifactCache(),
+          ),
+          readerAudioCacheProvider.overrideWithValue(_MemoryReaderAudioCache()),
+          readerLocationStoreProvider.overrideWithValue(
+            _MemoryReaderLocationStore(),
+          ),
+          libraryServerConnectionProvider.overrideWith(
+            (ref) async => const LibraryServerConnectionState(
+              isReady: true,
+              headline: 'Server ready',
+              detail: 'Ready for uploads.',
+            ),
+          ),
+          libraryServerProjectsProvider.overrideWith((ref) async => const []),
+        ],
+        child: MaterialApp(
+          theme: SyncTheme.paper(),
+          home: const LibraryScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final scrollable = find.byType(Scrollable).first;
+    final scannedShelf = find.text('Found in This Folder', skipOffstage: false);
+    await tester.scrollUntilVisible(scannedShelf, 220, scrollable: scrollable);
+    await tester.pumpAndSettle();
+
+    expect(scannedShelf, findsOneWidget);
+    expect(find.text('The Time Machine'), findsWidgets);
+    expect(find.text('H. G. Wells'), findsOneWidget);
+    expect(find.text('Use This'), findsOneWidget);
+  });
+
   testWidgets(
-    'library surfaces scanned folder books as a top-level section',
+    'recent book resume restores the saved auth token for its original server',
     (tester) async {
+      final settingsStorage = _MemoryRuntimeConnectionSettingsStorage();
+
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            libraryImportProvider.overrideWith(_ScannedLibraryImportController.new),
             runtimeConnectionSettingsStorageProvider.overrideWithValue(
-              _MemoryRuntimeConnectionSettingsStorage(),
+              settingsStorage,
             ),
             libraryProjectSummaryLoaderProvider.overrideWithValue(
               const _FakeLibraryProjectSummaryLoader(),
@@ -337,28 +400,49 @@ void main() {
             readerLocationStoreProvider.overrideWithValue(
               _MemoryReaderLocationStore(),
             ),
+            libraryServerConnectionProvider.overrideWith(
+              (ref) async => const LibraryServerConnectionState(
+                isReady: true,
+                headline: 'Server ready',
+                detail: 'Ready for uploads.',
+              ),
+            ),
             libraryServerProjectsProvider.overrideWith((ref) async => const []),
           ],
           child: MaterialApp(
             theme: SyncTheme.paper(),
-            home: const LibraryScreen(),
+            home: const Scaffold(body: LibraryScreen()),
           ),
         ),
       );
       await tester.pumpAndSettle();
 
       final scrollable = find.byType(Scrollable).first;
-      final scannedShelf = find.text(
-        'Found in This Folder',
+      final booksOnDevice = find.text(
+        'Books on This Device',
         skipOffstage: false,
       );
-      await tester.scrollUntilVisible(scannedShelf, 220, scrollable: scrollable);
+      await tester.scrollUntilVisible(
+        booksOnDevice,
+        220,
+        scrollable: scrollable,
+      );
       await tester.pumpAndSettle();
 
-      expect(scannedShelf, findsOneWidget);
-      expect(find.text('The Time Machine'), findsWidgets);
-      expect(find.text('H. G. Wells'), findsOneWidget);
-      expect(find.text('Use This'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Continue'),
+        220,
+        scrollable: scrollable,
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Continue').first);
+      await tester.pumpAndSettle();
+
+      expect(settingsStorage.saved, isNotNull);
+      expect(settingsStorage.saved!.apiBaseUrl, 'http://sync.example.test/v1');
+      expect(settingsStorage.saved!.projectId, 'demo-book');
+      expect(settingsStorage.saved!.authToken, 'snapshot-token');
     },
   );
 }

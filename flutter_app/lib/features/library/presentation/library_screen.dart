@@ -155,10 +155,8 @@ final libraryProjectJobsProvider = FutureProvider.autoDispose
 
 final libraryProjectRefreshTickProvider = StreamProvider.autoDispose
     .family<int, RuntimeConnectionSettings>(
-      (ref, settings) => Stream<int>.periodic(
-        const Duration(seconds: 3),
-        (count) => count,
-      ),
+      (ref, settings) =>
+          Stream<int>.periodic(const Duration(seconds: 3), (count) => count),
     );
 
 class LibraryOfflineSnapshot {
@@ -229,7 +227,9 @@ class LibraryServerConnectionState {
 
 final libraryServerConnectionProvider =
     FutureProvider.autoDispose<LibraryServerConnectionState>((ref) async {
-      final settings = await ref.watch(runtimeConnectionSettingsProvider.future);
+      final settings = await ref.watch(
+        runtimeConnectionSettingsProvider.future,
+      );
       final api = SyncApiClient(
         baseUrl: settings.apiBaseUrl,
         authToken: settings.authToken,
@@ -263,8 +263,7 @@ final libraryServerConnectionProvider =
         return LibraryServerConnectionState(
           isReady: false,
           headline: 'Server unavailable',
-          detail:
-              'Sync cannot reach the current server yet. ${error.message}',
+          detail: 'Sync cannot reach the current server yet. ${error.message}',
         );
       }
     });
@@ -542,6 +541,62 @@ class LibraryScreen extends ConsumerWidget {
                         hasDraft: hasDraft,
                       ),
                       const SizedBox(height: 18),
+                      serverConnection.when(
+                        data: (state) => state.isReady
+                            ? const SizedBox.shrink()
+                            : _LibrarySection(
+                                title: 'Connect Your Server',
+                                description:
+                                    'Sync needs a reachable self-hosted backend before it can start processing books.',
+                                icon: Icons.cloud_sync_rounded,
+                                child: _ImportServerCallout(
+                                  headline: state.headline,
+                                  detail: state.detail,
+                                  onOpenConnection: () async {
+                                    final settings = await ref.read(
+                                      runtimeConnectionSettingsProvider.future,
+                                    );
+                                    if (context.mounted) {
+                                      await _openConnection(
+                                        context,
+                                        ref,
+                                        settings,
+                                      );
+                                    }
+                                  },
+                                ),
+                              ),
+                        loading: () => const _LibrarySection(
+                          title: 'Connect Your Server',
+                          description:
+                              'Checking whether the current backend is reachable before Sync starts processing books.',
+                          icon: Icons.cloud_sync_rounded,
+                          child: _ImportServerCallout(
+                            headline: 'Checking server',
+                            detail:
+                                'Verifying that the current server is reachable before starting sync.',
+                          ),
+                        ),
+                        error: (error, _) => _LibrarySection(
+                          title: 'Connect Your Server',
+                          description:
+                              'Sync needs a reachable self-hosted backend before it can start processing books.',
+                          icon: Icons.cloud_sync_rounded,
+                          child: _ImportServerCallout(
+                            headline: 'Connect your server first',
+                            detail: formatSyncApiError(error),
+                            onOpenConnection: () async {
+                              final settings = await ref.read(
+                                runtimeConnectionSettingsProvider.future,
+                              );
+                              if (context.mounted) {
+                                await _openConnection(context, ref, settings);
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
                       if (isWide)
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -607,9 +662,9 @@ class LibraryScreen extends ConsumerWidget {
       ref.read(homeTabProvider.notifier).showReader();
     }
     if (context.mounted) {
-      ScaffoldMessenger.of(
+      ScaffoldMessenger.maybeOf(
         context,
-      ).showSnackBar(SnackBar(content: Text(feedback)));
+      )?.showSnackBar(SnackBar(content: Text(feedback)));
     }
   }
 
@@ -659,7 +714,7 @@ class LibraryScreen extends ConsumerWidget {
     ref.invalidate(latestProjectEventProvider);
     ref.read(readerPlaybackProvider.notifier).resetForProject();
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         SnackBar(
           content: Text(
             'Removed the saved book from your shelf on ${settings.shortHost}.',
@@ -709,20 +764,28 @@ class LibraryScreen extends ConsumerWidget {
     if (!context.mounted) {
       return;
     }
-    final settings = recentSettings
+    final settings =
+        recentSettings
             .cast<RuntimeConnectionSettings?>()
             .firstWhere(
               (item) => item?.identityKey == snapshot.identityKey,
               orElse: () => null,
+            )
+            ?.copyWith(
+              authToken: snapshot.authToken.trim().isNotEmpty
+                  ? snapshot.authToken
+                  : null,
             ) ??
         RuntimeConnectionSettings(
           apiBaseUrl: snapshot.normalizedApiBaseUrl.isEmpty
               ? current.apiBaseUrl
               : snapshot.normalizedApiBaseUrl,
           projectId: snapshot.projectId,
-          authToken:
-              snapshot.normalizedApiBaseUrl.isEmpty ||
-                  snapshot.normalizedApiBaseUrl == current.normalizedApiBaseUrl
+          authToken: snapshot.authToken.trim().isNotEmpty
+              ? snapshot.authToken
+              : snapshot.normalizedApiBaseUrl.isEmpty ||
+                    snapshot.normalizedApiBaseUrl ==
+                        current.normalizedApiBaseUrl
               ? current.authToken
               : '',
         );
@@ -1009,6 +1072,55 @@ class _LibraryMobileHome extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
+              serverConnection.when(
+                data: (state) => state.isReady
+                    ? const SizedBox.shrink()
+                    : _MobileSectionCard(
+                        title: 'Connect Your Server',
+                        subtitle:
+                            'Sync needs a reachable backend before it can upload files and start processing.',
+                        child: _ImportServerCallout(
+                          headline: state.headline,
+                          detail: state.detail,
+                          onOpenConnection: () async {
+                            final settings = await ref.read(
+                              runtimeConnectionSettingsProvider.future,
+                            );
+                            if (context.mounted) {
+                              await onOpenConnection(settings);
+                            }
+                          },
+                        ),
+                      ),
+                loading: () => const _MobileSectionCard(
+                  title: 'Connect Your Server',
+                  subtitle:
+                      'Checking whether the current backend is reachable before Sync starts processing.',
+                  child: _ImportServerCallout(
+                    headline: 'Checking server',
+                    detail:
+                        'Verifying that the current server is reachable before starting sync.',
+                  ),
+                ),
+                error: (error, _) => _MobileSectionCard(
+                  title: 'Connect Your Server',
+                  subtitle:
+                      'Sync needs a reachable backend before it can upload files and start processing.',
+                  child: _ImportServerCallout(
+                    headline: 'Connect your server first',
+                    detail: formatSyncApiError(error),
+                    onOpenConnection: () async {
+                      final settings = await ref.read(
+                        runtimeConnectionSettingsProvider.future,
+                      );
+                      if (context.mounted) {
+                        await onOpenConnection(settings);
+                      }
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
               _MobileSectionCard(
                 title: 'Continue Reading',
                 subtitle:
@@ -1761,8 +1873,7 @@ class _ImportWorkflowRail extends StatelessWidget {
             label: 'Book',
             description: 'Choose the EPUB and title',
             complete: state.epubFile != null && state.title.trim().isNotEmpty,
-            active:
-                state.epubFile == null || state.title.trim().isEmpty,
+            active: state.epubFile == null || state.title.trim().isEmpty,
           ),
           (
             label: 'Audiobook',
@@ -2033,28 +2144,90 @@ class _ImportCompletionBanner extends ConsumerWidget {
           ),
           const SizedBox(height: 14),
           importedSnapshot?.maybeWhen(
-                data: (snapshot) => snapshot.lifecycleIsReadable ||
+                data: (snapshot) =>
+                    snapshot.lifecycleIsReadable ||
                         snapshot.latestJobStatus == 'completed'
                     ? FilledButton.icon(
                         onPressed: onOpenReader,
                         icon: const Icon(Icons.chrome_reader_mode_rounded),
                         label: const Text('Open Book'),
                       )
-                    : OutlinedButton.icon(
-                        onPressed: null,
-                        icon: const Icon(Icons.sync_rounded),
-                        label: const Text('Still Syncing'),
+                    : Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: palette.backgroundChrome,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: palette.borderSubtle),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.sync_rounded, color: palette.textMuted),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Stay in Library while Sync finishes. This book will move into Continue Reading as soon as the reader is ready.',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: palette.textMuted),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                orElse: () => OutlinedButton.icon(
-                  onPressed: null,
-                  icon: const Icon(Icons.sync_rounded),
-                  label: const Text('Checking Progress'),
+                orElse: () => Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: palette.backgroundChrome,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: palette.borderSubtle),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.sync_rounded, color: palette.textMuted),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Checking the first sync status now. Stay here and Sync will update this book as soon as processing starts moving.',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: palette.textMuted),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ) ??
-              OutlinedButton.icon(
-                onPressed: null,
-                icon: const Icon(Icons.sync_rounded),
-                label: const Text('Checking Progress'),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: palette.backgroundChrome,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: palette.borderSubtle),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.sync_rounded, color: palette.textMuted),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Checking the first sync status now. Stay here and Sync will update this book as soon as processing starts moving.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: palette.textMuted,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
         ],
       ),
@@ -2285,17 +2458,17 @@ class _ScannedDeviceBookTile extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     candidate.author!,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: palette.textMuted,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
                   ),
                 ],
                 const SizedBox(height: 6),
                 Text(
                   '${candidate.directoryLabel} • $audioLabel',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: palette.textMuted,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
                 ),
                 const SizedBox(height: 8),
                 Wrap(
@@ -2367,9 +2540,9 @@ class _ScannedDeviceBookShelf extends ConsumerWidget {
           const SizedBox(height: 10),
           Text(
             'These audiobook files look promising, but Sync still needs the matching EPUB.',
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: ReaderPalette.of(context).textMuted),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: ReaderPalette.of(context).textMuted,
+            ),
           ),
           const SizedBox(height: 10),
           for (final candidate in incompleteCandidates)
@@ -3419,9 +3592,7 @@ class _ProjectDetailsSheet extends StatelessWidget {
                   child: jobs.when(
                     data: (value) {
                       if (value.jobs.isEmpty) {
-                        return const Text(
-                          'No sync attempts yet.',
-                        );
+                        return const Text('No sync attempts yet.');
                       }
                       return Column(
                         children: [

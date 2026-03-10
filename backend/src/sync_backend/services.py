@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import re
 import wave
 from dataclasses import dataclass
 from http import HTTPStatus
@@ -34,6 +35,9 @@ class AlignmentJobCreateResult:
 
 class JobCancelledError(RuntimeError):
     """Raised when a running pipeline observes a job cancellation request."""
+
+
+_SAFE_STORAGE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9._()+ -]+")
 
 
 def create_project(*, session: Session, title: str, language: str | None) -> Project:
@@ -104,8 +108,9 @@ def store_uploaded_asset(
     asset_id = str(uuid4())
     checksum = hashlib.sha256(payload).hexdigest()
     duration_ms = _probe_asset_duration_ms(kind=kind, payload=payload)
+    storage_filename = _storage_safe_filename(filename, fallback_kind=kind)
     storage_path, size_bytes = object_store.write_bytes(
-        f"projects/{project_id}/assets/{asset_id}/{filename}",
+        f"projects/{project_id}/assets/{asset_id}/{storage_filename}",
         payload,
     )
 
@@ -143,8 +148,9 @@ def store_uploaded_asset_from_file(
     get_project_or_404(session=session, project_id=project_id)
     asset_id = str(uuid4())
     duration_ms = _probe_asset_duration_ms_from_path(kind=kind, source_path=source_path)
+    storage_filename = _storage_safe_filename(filename, fallback_kind=kind)
     storage_path, stored_size_bytes = object_store.write_file(
-        f"projects/{project_id}/assets/{asset_id}/{filename}",
+        f"projects/{project_id}/assets/{asset_id}/{storage_filename}",
         source_path,
     )
 
@@ -165,6 +171,35 @@ def store_uploaded_asset_from_file(
     session.commit()
     session.refresh(asset)
     return asset
+
+
+def _storage_safe_filename(filename: str, *, fallback_kind: str) -> str:
+    raw_name = filename.strip().replace("\\", "/").split("/")[-1]
+    normalized = _SAFE_STORAGE_FILENAME_CHARS.sub("_", raw_name).strip(" .")
+    if not normalized:
+        normalized = "upload"
+
+    if "." not in normalized:
+        normalized = f"{normalized}.{_default_asset_extension(fallback_kind)}"
+
+    if normalized in {".", ".."}:
+        normalized = f"upload.{_default_asset_extension(fallback_kind)}"
+
+    if len(normalized) > 128:
+        if "." in normalized:
+            stem, suffix = normalized.rsplit(".", 1)
+            normalized = f"{stem[: max(1, 127 - len(suffix))]}.{suffix}"
+        else:
+            normalized = normalized[:128]
+    return normalized
+
+
+def _default_asset_extension(kind: str) -> str:
+    if kind == "epub":
+        return "epub"
+    if kind == "audio":
+        return "bin"
+    return "bin"
 
 
 def _probe_asset_duration_ms(*, kind: str, payload: bytes) -> int | None:
