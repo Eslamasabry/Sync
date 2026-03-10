@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.8
+
+- Import and server-setup failures now explain the next recovery step in plain language instead of surfacing backend-shaped upload and connection errors
+- Unreadable audiobook uploads now tell the user which file formats to try next
+- Library server setup now calls out unreachable hosted servers more clearly, including URL, token, and Tailscale guidance
+- Railway backend builds now install CPU-only PyTorch wheels before WhisperX so hosted deploys avoid the full CUDA stack on CPU services
+
 ## v0.1.7
 
 - Recent-book resume now restores the correct backend auth context instead of silently reopening against the wrong saved server state
