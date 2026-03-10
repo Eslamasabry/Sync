@@ -67,7 +67,7 @@ async def request_validation_error_handler(
         ]
     }
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content=api_error_payload(
             code="request_validation_failed",
             message="The request payload is invalid",

@@ -524,6 +524,20 @@ String _importFailureMessage(
   required LibraryImportStatus stage,
   required String? projectId,
 }) {
+  if (error is ApiClientException) {
+    switch (error.code) {
+      case 'asset_too_large':
+        return 'One of the files is larger than this server currently allows. Try a smaller file, or raise the upload limit on your server and try again.';
+      case 'asset_upload_failed':
+        return 'The server could not save one of the files right now. Try again in a moment.';
+      case 'epub_processing_failed':
+        return 'The selected EPUB could not be read. Try a different EPUB file for this book.';
+      case 'job_dispatch_failed':
+        return 'The files uploaded, but the server could not start syncing yet. Try again in a moment.';
+      case 'auth_invalid':
+        return 'The server rejected the current token. Update the server connection details and try again.';
+    }
+  }
   final detail = formatSyncApiError(error);
   final prefix = switch (stage) {
     LibraryImportStatus.creatingProject =>
@@ -536,10 +550,10 @@ String _importFailureMessage(
       'The files uploaded, but the alignment job could not start.',
     _ => 'Import failed.',
   };
-  if (projectId == null || projectId.isEmpty) {
-    return '$prefix $detail';
+  if (projectId != null && projectId.isNotEmpty) {
+    return '$prefix $detail Your draft is still here, so you can retry without reselecting everything.';
   }
-  return '$prefix $detail Project: $projectId';
+  return '$prefix $detail';
 }
 
 String? _nearbyScanMessage({

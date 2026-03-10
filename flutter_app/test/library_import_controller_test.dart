@@ -101,15 +101,25 @@ class _FakeImportFilePicker implements ImportFilePicker {
 }
 
 class _FakeSyncApiClient extends SyncApiClient {
-  _FakeSyncApiClient() : super(baseUrl: 'http://sync.example.test/v1');
+  _FakeSyncApiClient({
+    this.uploadError,
+    this.jobError,
+    this.createProjectError,
+  }) : super(baseUrl: 'http://sync.example.test/v1');
 
   final List<String> uploadedKinds = [];
+  final Object? uploadError;
+  final Object? jobError;
+  final Object? createProjectError;
 
   @override
   Future<ProjectCreateResult> createProject({
     required String title,
     required String language,
   }) async {
+    if (createProjectError case final error?) {
+      throw error;
+    }
     return const ProjectCreateResult(
       projectId: 'project-123',
       status: 'created',
@@ -122,6 +132,9 @@ class _FakeSyncApiClient extends SyncApiClient {
     required String kind,
     required ImportPickedFile file,
   }) async {
+    if (uploadError case final error?) {
+      throw error;
+    }
     uploadedKinds.add(kind);
     return AssetUploadResult(
       assetId: '$kind-asset-${uploadedKinds.length}',
@@ -136,6 +149,9 @@ class _FakeSyncApiClient extends SyncApiClient {
     required String bookAssetId,
     required List<String> audioAssetIds,
   }) async {
+    if (jobError case final error?) {
+      throw error;
+    }
     return const AlignmentJobResult(
       jobId: 'job-123',
       status: 'queued',
@@ -328,4 +344,100 @@ void main() {
       expect(container.read(homeTabProvider), 1);
     },
   );
+
+  test('asset upload size errors return plain recovery guidance', () async {
+    final container = ProviderContainer(
+      overrides: [
+        runtimeConnectionSettingsStorageProvider.overrideWithValue(
+          _MemoryRuntimeConnectionSettingsStorage(),
+        ),
+        importFilePickerProvider.overrideWithValue(_FakeImportFilePicker()),
+        syncApiClientProvider.overrideWith(
+          (ref) async => _FakeSyncApiClient(
+            uploadError: const ApiClientException(
+              'Uploaded asset exceeds the configured size limit',
+              code: 'asset_too_large',
+            ),
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final controller = container.read(libraryImportProvider.notifier);
+    controller.setTitle('Imported Book');
+    await controller.pickEpub();
+    await controller.startImport();
+
+    final state = container.read(libraryImportProvider);
+    expect(state.status, LibraryImportStatus.failed);
+    expect(
+      state.message,
+      'One of the files is larger than this server currently allows. Try a smaller file, or raise the upload limit on your server and try again.',
+    );
+  });
+
+  test('job dispatch failures explain that sync never started', () async {
+    final container = ProviderContainer(
+      overrides: [
+        runtimeConnectionSettingsStorageProvider.overrideWithValue(
+          _MemoryRuntimeConnectionSettingsStorage(),
+        ),
+        importFilePickerProvider.overrideWithValue(_FakeImportFilePicker()),
+        syncApiClientProvider.overrideWith(
+          (ref) async => _FakeSyncApiClient(
+            jobError: const ApiClientException(
+              'Alignment job dispatch failed',
+              code: 'job_dispatch_failed',
+            ),
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final controller = container.read(libraryImportProvider.notifier);
+    controller.setTitle('Imported Book');
+    await controller.pickEpub();
+    await controller.startImport();
+
+    final state = container.read(libraryImportProvider);
+    expect(state.status, LibraryImportStatus.failed);
+    expect(
+      state.message,
+      'The files uploaded, but the server could not start syncing yet. Try again in a moment.',
+    );
+  });
+
+  test('auth failures ask the user to update server connection details', () async {
+    final container = ProviderContainer(
+      overrides: [
+        runtimeConnectionSettingsStorageProvider.overrideWithValue(
+          _MemoryRuntimeConnectionSettingsStorage(),
+        ),
+        importFilePickerProvider.overrideWithValue(_FakeImportFilePicker()),
+        syncApiClientProvider.overrideWith(
+          (ref) async => _FakeSyncApiClient(
+            createProjectError: const ApiClientException(
+              'The server rejected the token',
+              code: 'auth_invalid',
+            ),
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final controller = container.read(libraryImportProvider.notifier);
+    controller.setTitle('Imported Book');
+    await controller.pickEpub();
+    await controller.startImport();
+
+    final state = container.read(libraryImportProvider);
+    expect(state.status, LibraryImportStatus.failed);
+    expect(
+      state.message,
+      'The server rejected the current token. Update the server connection details and try again.',
+    );
+  });
 }

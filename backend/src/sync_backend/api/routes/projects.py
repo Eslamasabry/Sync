@@ -596,7 +596,7 @@ async def upload_asset_route(
             raise ApiError(
                 code="epub_processing_failed",
                 message="The EPUB uploaded, but Sync could not generate a reader model from it",
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 details={
                     "asset_id": asset.id,
                     "error_type": type(exc).__name__,
