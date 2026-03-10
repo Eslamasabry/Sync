@@ -1036,7 +1036,7 @@ String _projectListStatusLabel(ProjectListItem project) {
   return switch (status) {
     'completed' => 'Ready',
     'running' => 'Syncing',
-    'queued' => 'Queued',
+    'queued' => 'Waiting',
     'failed' => 'Needs attention',
     'cancelled' => 'Cancelled',
     _ => _capitalizeLabel(status.replaceAll('_', ' ')),
@@ -1452,7 +1452,7 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
           ),
         ],
         const SizedBox(height: 16),
-        Text('Launch', style: Theme.of(context).textTheme.labelLarge),
+        Text('Start Sync', style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: 10),
         Wrap(
           spacing: 12,
@@ -1463,10 +1463,10 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
               icon: const Icon(Icons.cloud_upload_rounded),
               label: Text(
                 widget.state.isBusy
-                    ? 'Working...'
+                    ? 'Starting...'
                     : widget.state.canStartImport
-                    ? 'Create and Align'
-                    : 'Complete Draft',
+                    ? 'Start Sync'
+                    : 'Add Missing Files',
               ),
             ),
             if (widget.state.epubFile != null ||
@@ -1502,35 +1502,36 @@ class _ImportWorkflowRail extends StatelessWidget {
     final steps =
         <({String label, String description, bool complete, bool active})>[
           (
-            label: 'Draft',
-            description: 'Attach EPUB and audio',
-            complete: state.epubFile != null && state.audioFiles.isNotEmpty,
+            label: 'Book',
+            description: 'Choose the EPUB and title',
+            complete: state.epubFile != null && state.title.trim().isNotEmpty,
             active:
-                state.status == LibraryImportStatus.idle ||
-                state.status == LibraryImportStatus.picking ||
-                state.status == LibraryImportStatus.ready ||
-                state.status == LibraryImportStatus.failed,
+                state.epubFile == null || state.title.trim().isEmpty,
           ),
           (
-            label: 'Project',
-            description: 'Create the project shell',
-            complete:
-                state.projectId != null &&
-                state.status.index > LibraryImportStatus.creatingProject.index,
-            active: state.status == LibraryImportStatus.creatingProject,
+            label: 'Audiobook',
+            description: 'Attach the listening files',
+            complete: state.audioFiles.isNotEmpty,
+            active:
+                state.audioFiles.isEmpty &&
+                (state.status == LibraryImportStatus.idle ||
+                    state.status == LibraryImportStatus.picking ||
+                    state.status == LibraryImportStatus.ready ||
+                    state.status == LibraryImportStatus.failed),
           ),
           (
             label: 'Upload',
-            description: 'Send EPUB and audio assets',
+            description: 'Send the book and audiobook',
             complete:
                 state.status.index > LibraryImportStatus.uploadingAudio.index,
             active:
+                state.status == LibraryImportStatus.creatingProject ||
                 state.status == LibraryImportStatus.uploadingEpub ||
                 state.status == LibraryImportStatus.uploadingAudio,
           ),
           (
-            label: 'Align',
-            description: 'Start the sync job',
+            label: 'Sync',
+            description: 'Prepare synced reading',
             complete: state.status == LibraryImportStatus.completed,
             active: state.status == LibraryImportStatus.startingJob,
           ),
@@ -2934,7 +2935,7 @@ class _ProjectDetailsSheet extends StatelessWidget {
                     data: (value) {
                       if (value.jobs.isEmpty) {
                         return const Text(
-                          'No alignment attempts recorded yet.',
+                          'No sync attempts yet.',
                         );
                       }
                       return Column(
@@ -2949,7 +2950,7 @@ class _ProjectDetailsSheet extends StatelessWidget {
                       child: LinearProgressIndicator(),
                     ),
                     error: (error, _) => Text(
-                      'Could not load job history. ${formatSyncApiError(error)}',
+                      'Could not load sync history. ${formatSyncApiError(error)}',
                     ),
                   ),
                 ),
@@ -3048,7 +3049,7 @@ class _ProjectDetailHero extends StatelessWidget {
             const SizedBox(height: 14),
             _LibraryProgressMeter(
               label: snapshot.latestJobStage == null
-                  ? 'Current alignment pass'
+                  ? 'Current sync pass'
                   : _capitalizeLabel(
                       snapshot.latestJobStage!.replaceAll('_', ' '),
                     ),
@@ -3154,7 +3155,7 @@ class _ProjectMetadataGrid extends StatelessWidget {
       _ProjectMetaCard(
         label: 'Language',
         value: (snapshot.language ?? 'Unknown').toUpperCase(),
-        hint: 'Reader and alignment language',
+        hint: 'Book language',
       ),
       _ProjectMetaCard(
         label: 'Assets',
@@ -3163,8 +3164,8 @@ class _ProjectMetadataGrid extends StatelessWidget {
         hint: _formatBytes(snapshot.totalSizeBytes),
       ),
       _ProjectMetaCard(
-        label: 'Project State',
-        value: snapshot.projectStatusLabel.replaceFirst('Project ', ''),
+        label: 'Book State',
+        value: snapshot.projectStatusLabel.replaceFirst('Book ', ''),
         hint: snapshot.updatedAt == null
             ? 'No recent update time'
             : 'Updated ${_formatTimestamp(snapshot.updatedAt!)}',
@@ -3561,7 +3562,7 @@ extension on LibraryProjectSnapshot {
     }
     final normalized = projectStatus.replaceAll('_', ' ').trim();
     if (normalized.isEmpty) {
-      return 'Project unknown';
+      return 'Book status unknown';
     }
     return 'Book ${_capitalizeLabel(normalized)}';
   }
@@ -3612,7 +3613,7 @@ extension on LibraryProjectSnapshot {
       case 'running':
         return 'Watch progress';
       case 'queued':
-        return 'Keep in queue';
+        return 'Wait here';
       case 'failed':
         return 'Inspect issue';
       case 'completed':
