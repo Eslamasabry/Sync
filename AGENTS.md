@@ -73,3 +73,17 @@ If code changes one of these, update docs in the same change:
 - repo structure
 - theme tokens
 - worker lifecycle
+
+## Execution Rule
+
+- Do not stop after a single slice unless there is a real external blocker, a destructive or high-risk decision that must be confirmed, or an explicit user stop command.
+- Work in autonomous batches:
+  - reprioritize
+  - implement
+  - test
+  - fix regressions
+  - continue to the next highest-value slice
+- Operate like a product owner plus engineer:
+  - keep the user journey simple
+  - reduce backend or internal jargon in user-facing flows
+  - prefer progress toward a world-class experience over premature handoff

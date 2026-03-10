@@ -1,5 +1,6 @@
 class ReaderLocationSnapshot {
   const ReaderLocationSnapshot({
+    required this.apiBaseUrl,
     required this.projectId,
     required this.positionMs,
     required this.totalDurationMs,
@@ -11,6 +12,7 @@ class ReaderLocationSnapshot {
     this.sectionTitle,
   });
 
+  final String apiBaseUrl;
   final String projectId;
   final int positionMs;
   final int totalDurationMs;
@@ -21,8 +23,24 @@ class ReaderLocationSnapshot {
   final String? sectionId;
   final String? sectionTitle;
 
+  String get normalizedApiBaseUrl => apiBaseUrl.trim();
+
+  String get normalizedProjectId => projectId.trim();
+
+  String get identityKey =>
+      '${normalizedApiBaseUrl.toLowerCase()}|$normalizedProjectId';
+
+  String get shortHost {
+    final uri = Uri.tryParse(normalizedApiBaseUrl);
+    if (uri == null || uri.host.isEmpty) {
+      return normalizedApiBaseUrl;
+    }
+    return uri.hasPort ? '${uri.host}:${uri.port}' : uri.host;
+  }
+
   Map<String, dynamic> toJson() {
     return {
+      'api_base_url': apiBaseUrl,
       'project_id': projectId,
       'position_ms': positionMs,
       'total_duration_ms': totalDurationMs,
@@ -37,6 +55,7 @@ class ReaderLocationSnapshot {
 
   factory ReaderLocationSnapshot.fromJson(Map<String, dynamic> json) {
     return ReaderLocationSnapshot(
+      apiBaseUrl: json['api_base_url'] as String? ?? '',
       projectId: json['project_id'] as String? ?? '',
       positionMs: _asInt(json['position_ms']),
       totalDurationMs: _asInt(json['total_duration_ms']),
@@ -53,27 +72,33 @@ class ReaderLocationSnapshot {
 }
 
 abstract class ReaderLocationStore {
-  Future<ReaderLocationSnapshot?> loadProject(String projectId);
+  Future<ReaderLocationSnapshot?> loadProject(
+    String projectId, {
+    String? apiBaseUrl,
+  });
 
   Future<List<ReaderLocationSnapshot>> loadRecent();
 
   Future<void> storeProject(ReaderLocationSnapshot snapshot);
 
-  Future<void> removeProject(String projectId);
+  Future<void> removeProject(String projectId, {String? apiBaseUrl});
 }
 
 class NoopReaderLocationStore implements ReaderLocationStore {
   const NoopReaderLocationStore();
 
   @override
-  Future<ReaderLocationSnapshot?> loadProject(String projectId) async => null;
+  Future<ReaderLocationSnapshot?> loadProject(
+    String projectId, {
+    String? apiBaseUrl,
+  }) async => null;
 
   @override
   Future<List<ReaderLocationSnapshot>> loadRecent() async =>
       const <ReaderLocationSnapshot>[];
 
   @override
-  Future<void> removeProject(String projectId) async {}
+  Future<void> removeProject(String projectId, {String? apiBaseUrl}) async {}
 
   @override
   Future<void> storeProject(ReaderLocationSnapshot snapshot) async {}

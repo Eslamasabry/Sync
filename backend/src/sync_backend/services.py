@@ -36,10 +36,19 @@ class JobCancelledError(RuntimeError):
 
 
 def create_project(*, session: Session, title: str, language: str | None) -> Project:
+    normalized_title = title.strip()
+    normalized_language = language.strip() if language is not None else None
+    if not normalized_title:
+        raise ApiError(
+            code="project_title_invalid",
+            message="Project title must include visible characters",
+            status_code=HTTPStatus.BAD_REQUEST,
+        )
+
     project = Project(
         id=str(uuid4()),
-        title=title,
-        language=language,
+        title=normalized_title,
+        language=normalized_language or None,
         status="created",
     )
     session.add(project)
@@ -380,6 +389,24 @@ def cancel_job(*, session: Session, project_id: str, job_id: str) -> AlignmentJo
     job.status = "cancelled"
     job.progress_stage = "cancelled"
     job.terminal_reason = "cancelled_by_request"
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+    return job
+
+
+def mark_job_enqueue_failed(
+    *,
+    session: Session,
+    project_id: str,
+    job_id: str,
+    reason: str = "enqueue_failed",
+) -> AlignmentJob:
+    job = get_job_or_404(session=session, project_id=project_id, job_id=job_id)
+    job.status = "failed"
+    job.progress_stage = "dispatch_failed"
+    job.progress_percent = 0
+    job.terminal_reason = reason
     session.add(job)
     session.commit()
     session.refresh(job)

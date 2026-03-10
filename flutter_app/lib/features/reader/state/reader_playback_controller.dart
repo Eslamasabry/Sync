@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sync_flutter/core/config/runtime_connection_settings_controller.dart';
 import 'package:sync_flutter/core/playback/playback_driver.dart';
 import 'package:sync_flutter/features/reader/data/reader_location_store.dart';
 import 'package:sync_flutter/features/reader/data/reader_repository.dart';
@@ -132,6 +133,7 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<bool>? _playingSubscription;
   String? _currentProjectId;
+  String? _currentApiBaseUrl;
   ReaderModel? _currentReaderModel;
   SyncArtifact? _currentSyncArtifact;
   int _lastPersistedPositionMs = -1;
@@ -170,7 +172,9 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
 
   Future<void> configureProject(ReaderProjectBundle bundle) async {
     await _persistReadingLocation(force: true);
+    final settings = await ref.read(runtimeConnectionSettingsProvider.future);
     _currentProjectId = bundle.projectId;
+    _currentApiBaseUrl = settings.apiBaseUrl;
     _currentReaderModel = bundle.readerModel;
     _currentSyncArtifact = bundle.syncArtifact;
     resetForProject(persistLocation: false);
@@ -181,7 +185,10 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
         contentStartMs: bundle.syncArtifact.contentStartMs,
         contentEndMs: bundle.syncArtifact.contentEndMs,
       );
-      await _restoreReadingLocation(bundle.projectId);
+      await _restoreReadingLocation(
+        bundle.projectId,
+        apiBaseUrl: settings.apiBaseUrl,
+      );
       return;
     }
 
@@ -215,7 +222,7 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
       contentStartMs: bundle.syncArtifact.contentStartMs,
       contentEndMs: bundle.syncArtifact.contentEndMs,
     );
-    await _restoreReadingLocation(bundle.projectId);
+    await _restoreReadingLocation(bundle.projectId, apiBaseUrl: settings.apiBaseUrl);
   }
 
   Future<void> togglePlayback(int totalDurationMs) async {
@@ -564,10 +571,10 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
     return contentEnd > 0 ? contentEnd : state.totalDurationMs;
   }
 
-  Future<void> _restoreReadingLocation(String projectId) async {
+  Future<void> _restoreReadingLocation(String projectId, {String? apiBaseUrl}) async {
     final snapshot = await ref
         .read(readerLocationStoreProvider)
-        .loadProject(projectId);
+        .loadProject(projectId, apiBaseUrl: apiBaseUrl);
     if (snapshot == null) {
       return;
     }
@@ -593,9 +600,13 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
 
   Future<void> _persistReadingLocation({required bool force}) async {
     final projectId = _currentProjectId;
+    final apiBaseUrl = _currentApiBaseUrl;
     final syncArtifact = _currentSyncArtifact;
     final readerModel = _currentReaderModel;
-    if (projectId == null || syncArtifact == null || readerModel == null) {
+    if (projectId == null ||
+        apiBaseUrl == null ||
+        syncArtifact == null ||
+        readerModel == null) {
       return;
     }
 
@@ -620,6 +631,7 @@ class ReaderPlaybackController extends Notifier<ReaderPlaybackState> {
               .clamp(0.0, 1.0);
 
     final snapshot = ReaderLocationSnapshot(
+      apiBaseUrl: apiBaseUrl,
       projectId: projectId,
       positionMs: currentPosition,
       totalDurationMs: syncArtifact.totalDurationMs,

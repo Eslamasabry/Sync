@@ -2,7 +2,7 @@ import 'package:sync_flutter/core/config/runtime_connection_settings.dart';
 
 const defaultProjectId = String.fromEnvironment(
   'SYNC_PROJECT_ID',
-  defaultValue: 'demo-book',
+  defaultValue: '',
 );
 
 const defaultApiBaseUrl = String.fromEnvironment(

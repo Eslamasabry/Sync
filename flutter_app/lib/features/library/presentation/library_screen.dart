@@ -30,6 +30,10 @@ class LibraryProjectSnapshot {
     this.latestJobPercent,
     this.latestJobAttempt,
     this.latestJobTerminalReason,
+    this.lifecyclePhase,
+    this.lifecycleNextAction,
+    this.lifecycleMissingRequirements = const <String>[],
+    this.lifecycleIsReadable = false,
   });
 
   final RuntimeConnectionSettings settings;
@@ -46,6 +50,10 @@ class LibraryProjectSnapshot {
   final int? latestJobPercent;
   final int? latestJobAttempt;
   final String? latestJobTerminalReason;
+  final String? lifecyclePhase;
+  final String? lifecycleNextAction;
+  final List<String> lifecycleMissingRequirements;
+  final bool lifecycleIsReadable;
 
   bool get hasActiveJob =>
       latestJobStatus == 'queued' || latestJobStatus == 'running';
@@ -69,6 +77,7 @@ class ApiLibraryProjectSummaryLoader implements LibraryProjectSummaryLoader {
       authToken: settings.authToken,
     );
     final detail = await api.fetchProjectDetail(settings.projectId);
+    final lifecycle = _asMapOrNull(detail['lifecycle']);
     final assets = _asObjectList(detail['assets']);
     final latestJobSummary = _asMapOrNull(detail['latest_job']);
     AlignmentJobResult? latestJob;
@@ -111,6 +120,12 @@ class ApiLibraryProjectSummaryLoader implements LibraryProjectSummaryLoader {
       latestJobTerminalReason:
           latestJob?.terminalReason ??
           latestJobSummary?['terminal_reason']?.toString(),
+      lifecyclePhase: lifecycle?['phase']?.toString(),
+      lifecycleNextAction: lifecycle?['next_action']?.toString(),
+      lifecycleMissingRequirements: _asStringList(
+        lifecycle?['missing_requirements'],
+      ),
+      lifecycleIsReadable: lifecycle?['is_readable'] == true,
     );
   }
 }
@@ -177,6 +192,18 @@ final libraryOfflineSnapshotProvider = FutureProvider.autoDispose
       );
     });
 
+final libraryServerProjectsProvider =
+    FutureProvider.autoDispose<List<ProjectListItem>>((ref) async {
+      final settings = await ref.watch(
+        runtimeConnectionSettingsProvider.future,
+      );
+      final api = SyncApiClient(
+        baseUrl: settings.apiBaseUrl,
+        authToken: settings.authToken,
+      );
+      return api.fetchProjects();
+    });
+
 class LibraryScreen extends ConsumerWidget {
   const LibraryScreen({super.key});
 
@@ -205,16 +232,16 @@ class LibraryScreen extends ConsumerWidget {
           builder: (context, constraints) {
             final isWide = constraints.maxWidth >= 1120;
             final importSection = _LibrarySection(
-              title: 'Import Book',
+              title: 'Add a Book',
               description:
-                  'Start with the book and audio files, then let Sync create the project and queue alignment from this device.',
+                  'Choose the book, add the audiobook, and start building a synced reading experience from this device.',
               icon: Icons.upload_file_rounded,
               child: _ImportComposer(state: importState),
             );
             final currentTargetSection = _LibrarySection(
-              title: 'Current Reader Target',
+              title: 'Continue Reading',
               description:
-                  'Keep the active backend target, offline cache state, and the quickest return path into reading in one place.',
+                  'Keep the current book, reading progress, and device download state together so resuming stays immediate.',
               icon: Icons.radio_button_checked_rounded,
               footer: Wrap(
                 spacing: 10,
@@ -224,14 +251,17 @@ class LibraryScreen extends ConsumerWidget {
                     onPressed: () =>
                         ref.read(homeTabProvider.notifier).showReader(),
                     icon: const Icon(Icons.book_online_rounded),
-                    label: const Text('Continue Reader'),
+                    label: const Text('Continue Book'),
                   ),
                   currentSettings.maybeWhen(
-                    data: (settings) => OutlinedButton.icon(
-                      onPressed: () => _forgetConnection(context, ref, settings),
-                      icon: const Icon(Icons.delete_outline_rounded),
-                      label: const Text('Forget Target'),
-                    ),
+                    data: (settings) => settings.projectId.trim().isEmpty
+                        ? const SizedBox.shrink()
+                        : OutlinedButton.icon(
+                            onPressed: () =>
+                                _forgetConnection(context, ref, settings),
+                            icon: const Icon(Icons.delete_outline_rounded),
+                            label: const Text('Remove From Shelf'),
+                          ),
                     orElse: () => const SizedBox.shrink(),
                   ),
                 ],
@@ -258,14 +288,15 @@ class LibraryScreen extends ConsumerWidget {
                   padding: EdgeInsets.symmetric(vertical: 12),
                   child: LinearProgressIndicator(),
                 ),
-                error: (error, _) =>
-                    Text('Could not load the current target. $error'),
+                error: (error, _) => Text(
+                  'Could not load the current book. ${formatSyncApiError(error)}',
+                ),
               ),
             );
             final queueSection = _LibrarySection(
-              title: 'Processing Queue',
+              title: 'Getting Ready',
               description:
-                  'Watch projects that are still ingesting, transcribing, or aligning without leaving the library.',
+                  'Watch books that are still being prepared before they are fully ready to read.',
               icon: Icons.sync_rounded,
               child: recentConnections.when(
                 data: (items) => _ProcessingQueueList(
@@ -279,20 +310,21 @@ class LibraryScreen extends ConsumerWidget {
                   padding: EdgeInsets.symmetric(vertical: 12),
                   child: CircularProgressIndicator(),
                 ),
-                error: (error, _) =>
-                    Text('Could not inspect recent projects. $error'),
+                error: (error, _) => Text(
+                  'Could not inspect recent projects. ${formatSyncApiError(error)}',
+                ),
               ),
             );
             final recentBooksSection = _LibrarySection(
-              title: 'Recent Books',
+              title: 'Books on This Device',
               description:
-                  'Device-side reading history so you can resume from the last meaningful spot, not just the last project.',
+                  'Books you have already opened here, with your place and progress kept close.',
               icon: Icons.history_edu_rounded,
               child: recentLocations.when(
                 data: (items) {
                   if (items.isEmpty) {
                     return const Text(
-                      'No local reading history yet. Open a book in Reader to start building a device-side library trail.',
+                      'No books have been opened on this device yet. Start reading once and they will appear here.',
                     );
                   }
                   return Column(
@@ -309,20 +341,21 @@ class LibraryScreen extends ConsumerWidget {
                   padding: EdgeInsets.symmetric(vertical: 16),
                   child: CircularProgressIndicator(),
                 ),
-                error: (error, _) =>
-                    Text('Could not read library history. $error'),
+                error: (error, _) => Text(
+                  'Could not read library history. ${formatSyncApiError(error)}',
+                ),
               ),
             );
             final recentProjectsSection = _LibrarySection(
-              title: 'Recent Server Projects',
+              title: 'Your Books',
               description:
-                  'Saved backend targets with alignment state, cached status, and a direct path back into each project.',
+                  'Every book on your shelf, with readiness, progress, and device availability in one place.',
               icon: Icons.dns_rounded,
               child: recentConnections.when(
                 data: (items) {
                   if (items.isEmpty) {
                     return const Text(
-                      'Save a backend target from the Reader connection sheet to reuse it here.',
+                      'Books you choose from the reader will appear here so you can reopen them quickly.',
                     );
                   }
                   return Column(
@@ -349,10 +382,38 @@ class LibraryScreen extends ConsumerWidget {
                   padding: EdgeInsets.symmetric(vertical: 16),
                   child: CircularProgressIndicator(),
                 ),
-                error: (error, _) =>
-                    Text('Could not read recent connections. $error'),
+                error: (error, _) => Text(
+                  'Could not read recent connections. ${formatSyncApiError(error)}',
+                ),
               ),
             );
+
+            if (!isWide) {
+              return _LibraryMobileHome(
+                importState: importState,
+                currentSettings: currentSettings,
+                currentProject: currentProject,
+                recentConnections: recentConnections,
+                recentLocations: recentLocations,
+                audioDownload: audioDownload,
+                onOpenReader: () =>
+                    ref.read(homeTabProvider.notifier).showReader(),
+                onOpenConnection: (settings) =>
+                    _openConnection(context, ref, settings),
+                onSetTarget: (settings) =>
+                    _setConnectionTarget(context, ref, settings),
+                onForgetConnection: (settings) =>
+                    _forgetConnection(context, ref, settings),
+                onDownloadAudio: (settings) =>
+                    _downloadProjectAudio(context, ref, settings),
+                onRemoveAudio: (settings) =>
+                    _removeProjectAudio(context, ref, settings),
+                onResumeRecentBook: (item) =>
+                    _resumeRecentBook(context, ref, item),
+                onOpenServerProject: (project) =>
+                    _setServerProjectTarget(context, ref, project),
+              );
+            }
 
             return SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
@@ -396,18 +457,7 @@ class LibraryScreen extends ConsumerWidget {
                               ),
                             ),
                           ],
-                        )
-                      else ...[
-                        importSection,
-                        const SizedBox(height: 16),
-                        currentTargetSection,
-                        const SizedBox(height: 16),
-                        queueSection,
-                        const SizedBox(height: 16),
-                        recentBooksSection,
-                        const SizedBox(height: 16),
-                        recentProjectsSection,
-                      ],
+                        ),
                     ],
                   ),
                 ),
@@ -456,8 +506,7 @@ class LibraryScreen extends ConsumerWidget {
       ref,
       settings,
       showReader: true,
-      feedback:
-          'Opened ${settings.normalizedProjectId} on ${settings.shortHost}.',
+      feedback: 'Opened the selected book on ${settings.shortHost}.',
     );
   }
 
@@ -472,7 +521,7 @@ class LibraryScreen extends ConsumerWidget {
       settings,
       showReader: false,
       feedback:
-          'Set ${settings.normalizedProjectId} on ${settings.shortHost} as the current target.',
+          'Set the selected book on ${settings.shortHost} as your current book.',
     );
   }
 
@@ -496,7 +545,7 @@ class LibraryScreen extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Forgot ${settings.normalizedProjectId} on ${settings.shortHost}.',
+            'Removed the saved book from your shelf on ${settings.shortHost}.',
           ),
         ),
       );
@@ -537,15 +586,55 @@ class LibraryScreen extends ConsumerWidget {
     ReaderLocationSnapshot snapshot,
   ) async {
     final current = await ref.read(runtimeConnectionSettingsProvider.future);
+    final recentSettings = await ref.read(
+      recentRuntimeConnectionSettingsProvider.future,
+    );
     if (!context.mounted) {
       return;
     }
-    final settings = RuntimeConnectionSettings(
-      apiBaseUrl: current.apiBaseUrl,
-      projectId: snapshot.projectId,
-      authToken: current.authToken,
-    );
+    final settings = recentSettings
+            .cast<RuntimeConnectionSettings?>()
+            .firstWhere(
+              (item) => item?.identityKey == snapshot.identityKey,
+              orElse: () => null,
+            ) ??
+        RuntimeConnectionSettings(
+          apiBaseUrl: snapshot.normalizedApiBaseUrl.isEmpty
+              ? current.apiBaseUrl
+              : snapshot.normalizedApiBaseUrl,
+          projectId: snapshot.projectId,
+          authToken:
+              snapshot.normalizedApiBaseUrl.isEmpty ||
+                  snapshot.normalizedApiBaseUrl == current.normalizedApiBaseUrl
+              ? current.authToken
+              : '',
+        );
     await _openConnection(context, ref, settings);
+  }
+
+  Future<void> _setServerProjectTarget(
+    BuildContext context,
+    WidgetRef ref,
+    ProjectListItem project,
+  ) async {
+    final currentSettings = await ref.read(
+      runtimeConnectionSettingsProvider.future,
+    );
+    if (!context.mounted) {
+      return;
+    }
+    final isReadyToOpen =
+        project.lifecycle?.isReadable == true ||
+        project.latestJob?.status == 'completed';
+    await _applyConnection(
+      context,
+      ref,
+      currentSettings.copyWith(projectId: project.projectId),
+      showReader: isReadyToOpen,
+      feedback: isReadyToOpen
+          ? 'Opened ${project.title}.'
+          : 'Selected ${project.title}. You can watch progress from the library while sync finishes.',
+    );
   }
 }
 
@@ -609,12 +698,12 @@ class _LibraryHero extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  'Import, align, and reopen books from one calm workspace.',
+                  'Build a shelf that is ready to read, not just uploaded.',
                   style: theme.textTheme.headlineLarge?.copyWith(height: 0.98),
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Attach EPUB and audio, monitor jobs, and keep your reader target and offline cache close without turning the app into a generic file manager.',
+                  'Add books, watch sync progress, keep downloads on-device, and jump back into the exact page you left without detouring through setup screens.',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: palette.textMuted,
                     height: 1.5,
@@ -631,7 +720,7 @@ class _LibraryHero extends StatelessWidget {
                   children: [
                     Expanded(
                       child: _LibraryMetric(
-                        label: 'Saved targets',
+                        label: 'Books on shelf',
                         value: '$recentConnectionCount',
                         icon: Icons.cloud_queue_rounded,
                       ),
@@ -639,7 +728,7 @@ class _LibraryHero extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: _LibraryMetric(
-                        label: 'Resume points',
+                        label: 'Books on device',
                         value: '$recentBookCount',
                         icon: Icons.menu_book_rounded,
                       ),
@@ -667,8 +756,8 @@ class _LibraryHero extends StatelessWidget {
                       Expanded(
                         child: Text(
                           hasDraft
-                              ? 'Draft in progress'
-                              : 'Workspace ready',
+                              ? 'Book draft in progress'
+                              : 'Shelf is ready',
                           style: theme.textTheme.labelLarge,
                         ),
                       ),
@@ -734,6 +823,324 @@ class _LibraryMetric extends StatelessWidget {
   }
 }
 
+class _LibraryMobileHome extends ConsumerWidget {
+  const _LibraryMobileHome({
+    required this.importState,
+    required this.currentSettings,
+    required this.currentProject,
+    required this.recentConnections,
+    required this.recentLocations,
+    required this.audioDownload,
+    required this.onOpenReader,
+    required this.onOpenConnection,
+    required this.onSetTarget,
+    required this.onForgetConnection,
+    required this.onDownloadAudio,
+    required this.onRemoveAudio,
+    required this.onResumeRecentBook,
+    required this.onOpenServerProject,
+  });
+
+  final LibraryImportState importState;
+  final AsyncValue<RuntimeConnectionSettings> currentSettings;
+  final AsyncValue<ReaderProjectBundle> currentProject;
+  final AsyncValue<List<RuntimeConnectionSettings>> recentConnections;
+  final AsyncValue<List<ReaderLocationSnapshot>> recentLocations;
+  final ReaderAudioDownloadState audioDownload;
+  final VoidCallback onOpenReader;
+  final Future<void> Function(RuntimeConnectionSettings settings)
+  onOpenConnection;
+  final Future<void> Function(RuntimeConnectionSettings settings) onSetTarget;
+  final Future<void> Function(RuntimeConnectionSettings settings)
+  onForgetConnection;
+  final Future<void> Function(RuntimeConnectionSettings settings)
+  onDownloadAudio;
+  final Future<void> Function(RuntimeConnectionSettings settings) onRemoveAudio;
+  final Future<void> Function(ReaderLocationSnapshot item) onResumeRecentBook;
+  final Future<void> Function(ProjectListItem project) onOpenServerProject;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = ReaderPalette.of(context);
+    final theme = Theme.of(context);
+    final serverProjects = ref.watch(libraryServerProjectsProvider);
+
+    return CustomScrollView(
+      slivers: [
+        SliverAppBar(
+          pinned: true,
+          surfaceTintColor: Colors.transparent,
+          backgroundColor: palette.backgroundBase.withValues(alpha: 0.96),
+          titleSpacing: 20,
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Sync', style: theme.textTheme.headlineSmall),
+              Text(
+                'Continue reading, add a book, or keep titles offline.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: palette.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate([
+              _MobileSectionCard(
+                title: 'Continue Reading',
+                subtitle:
+                    'Return to the book you are already reading, with progress and downloads ready.',
+                child: currentSettings.when(
+                  data: (settings) {
+                    final hasProject = settings.normalizedProjectId.isNotEmpty;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _ProjectTargetSummary(
+                          settings: settings,
+                          onOpen: () => onOpenConnection(settings),
+                        ),
+                        const SizedBox(height: 12),
+                        FilledButton.icon(
+                          onPressed: hasProject ? onOpenReader : null,
+                          icon: const Icon(Icons.play_circle_rounded),
+                          label: Text(
+                            hasProject
+                                ? 'Continue book'
+                                : 'Choose a book first',
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                  loading: () => const LinearProgressIndicator(),
+                  error: (error, _) => Text(formatSyncApiError(error)),
+                ),
+              ),
+              const SizedBox(height: 14),
+              _MobileSectionCard(
+                title: 'Add a Book',
+                subtitle:
+                    'Choose the EPUB, add the audiobook files, and let Sync prepare the timeline.',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _ImportProgressRail(state: importState),
+                    const SizedBox(height: 12),
+                    _ImportComposer(state: importState),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              _MobileSectionCard(
+                title: 'Your Books',
+                subtitle:
+                    'Pick a book from your server. Ready books open directly, and syncing books stay visible here.',
+                child: serverProjects.when(
+                  data: (projects) {
+                    if (projects.isEmpty) {
+                      return Text(
+                        'No books found yet. Add one above to create your first book on this server.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: palette.textMuted,
+                        ),
+                      );
+                    }
+                    return Column(
+                      children: [
+                        for (final project in projects.take(6))
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(project.title),
+                            subtitle: Text(
+                              [
+                                if (project.language?.isNotEmpty == true)
+                                  project.language,
+                                '${project.audioAssetCount} audio',
+                                _projectListStatusLabel(project),
+                              ].whereType<String>().join(' • '),
+                            ),
+                            trailing: const Icon(Icons.chevron_right_rounded),
+                            onTap: () => onOpenServerProject(project),
+                          ),
+                      ],
+                    );
+                  },
+                  loading: () => const LinearProgressIndicator(),
+                  error: (error, _) => Text(formatSyncApiError(error)),
+                ),
+              ),
+              const SizedBox(height: 14),
+              _MobileSectionCard(
+                title: 'Getting Ready',
+                subtitle:
+                    'Keep an eye on books that are still being prepared before they move onto your main shelf.',
+                child: recentConnections.when(
+                  data: (items) => _ProcessingQueueList(
+                    connections: items.take(6).toList(growable: false),
+                    currentIdentityKey:
+                        currentSettings.asData?.value.identityKey,
+                    onSetTarget: onSetTarget,
+                    onOpen: onOpenConnection,
+                  ),
+                  loading: () => const LinearProgressIndicator(),
+                  error: (error, _) => Text(formatSyncApiError(error)),
+                ),
+              ),
+              const SizedBox(height: 14),
+              _MobileSectionCard(
+                title: 'Books on This Device',
+                subtitle:
+                    'Books you have already opened here, with your place saved.',
+                child: recentLocations.when(
+                  data: (items) {
+                    if (items.isEmpty) {
+                      return Text(
+                        'Once you open a book on this device, it will appear here for quick return.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: palette.textMuted,
+                        ),
+                      );
+                    }
+                    return Column(
+                      children: [
+                        for (final item in items.take(4))
+                          _LibraryBookTile(
+                            snapshot: item,
+                            onResume: () => onResumeRecentBook(item),
+                          ),
+                      ],
+                    );
+                  },
+                  loading: () => const LinearProgressIndicator(),
+                  error: (error, _) => Text(formatSyncApiError(error)),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+String _projectListStatusLabel(ProjectListItem project) {
+  final lifecyclePhase = project.lifecycle?.phase;
+  if (lifecyclePhase != null && lifecyclePhase.isNotEmpty) {
+    return _lifecyclePhaseLabel(lifecyclePhase);
+  }
+  final status = project.latestJob?.status ?? project.status;
+  return switch (status) {
+    'completed' => 'Ready',
+    'running' => 'Syncing',
+    'queued' => 'Queued',
+    'failed' => 'Needs attention',
+    'cancelled' => 'Cancelled',
+    _ => _capitalizeLabel(status.replaceAll('_', ' ')),
+  };
+}
+
+String _lifecyclePhaseLabel(String phase) {
+  return switch (phase) {
+    'draft' => 'Needs files',
+    'ready_to_align' => 'Ready to sync',
+    'aligning' => 'Syncing',
+    'ready_to_read' => 'Ready',
+    'attention_needed' => 'Needs attention',
+    _ => _capitalizeLabel(phase.replaceAll('_', ' ')),
+  };
+}
+
+class _MobileSectionCard extends StatelessWidget {
+  const _MobileSectionCard({
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
+
+  final String title;
+  final String subtitle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final theme = Theme.of(context);
+    return Material(
+      color: palette.backgroundElevated,
+      borderRadius: BorderRadius.circular(24),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: palette.borderSubtle),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: theme.textTheme.titleLarge),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: palette.textMuted,
+                ),
+              ),
+              const SizedBox(height: 14),
+              child,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ImportProgressRail extends StatelessWidget {
+  const _ImportProgressRail({required this.state});
+
+  final LibraryImportState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = ReaderPalette.of(context);
+    final steps = [
+      ('Book', state.epubFile != null),
+      ('Audio', state.audioFiles.isNotEmpty),
+      ('Details', state.title.trim().isNotEmpty),
+      ('Sync', state.status == LibraryImportStatus.completed),
+    ];
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final step in steps)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: step.$2
+                  ? palette.accentSoft.withValues(alpha: 0.75)
+                  : palette.backgroundBase,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: palette.borderSubtle),
+            ),
+            child: Text(
+              step.$1,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: step.$2 ? palette.textPrimary : palette.textMuted,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _LibrarySection extends StatelessWidget {
   const _LibrarySection({
     required this.title,
@@ -779,9 +1186,9 @@ class _LibrarySection extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               description,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: palette.textMuted,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
             ),
             const SizedBox(height: 16),
             child,
@@ -883,16 +1290,25 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
                       icon: const Icon(Icons.audiotrack_rounded),
                       label: Text(
                         widget.state.audioFiles.isEmpty
-                            ? 'Choose Audio'
-                            : 'Replace Audio',
+                            ? 'Choose Audiobook'
+                            : 'Replace Audiobook',
                       ),
                     ),
+                    if (widget.state.epubFile != null ||
+                        widget.state.audioFiles.isNotEmpty)
+                      OutlinedButton.icon(
+                        onPressed: widget.state.isBusy
+                            ? null
+                            : actions.scanNearbyFiles,
+                        icon: const Icon(Icons.travel_explore_rounded),
+                        label: const Text('Scan Nearby Files'),
+                      ),
                   ],
                 ),
                 if (!hasDraft) ...[
                   const SizedBox(height: 12),
                   Text(
-                    'Attach the book first, then the audiobook files. Multi-file audio is fine.',
+                    'Attach the book or audiobook first. Sync will look nearby for the rest.',
                     style: Theme.of(
                       context,
                     ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
@@ -956,11 +1372,7 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
             if (!split) {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  metadata,
-                  const SizedBox(height: 16),
-                  workflow,
-                ],
+                children: [metadata, const SizedBox(height: 16), workflow],
               );
             }
             return Row(
@@ -982,6 +1394,17 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
             detail: _formatBytes(widget.state.epubFile!.sizeBytes),
           ),
         ],
+        if (widget.state.suggestedEpubFile != null &&
+            widget.state.epubFile == null) ...[
+          _SuggestedImportTile(
+            icon: Icons.menu_book_rounded,
+            label: 'Nearby book found',
+            name: widget.state.suggestedEpubFile!.name,
+            detail: _formatBytes(widget.state.suggestedEpubFile!.sizeBytes),
+            actionLabel: 'Use This Book',
+            onUse: actions.useSuggestedEpubFile,
+          ),
+        ],
         if (widget.state.audioFiles.isNotEmpty) ...[
           if (widget.state.epubFile == null) const SizedBox(height: 4),
           for (final audio in widget.state.audioFiles)
@@ -997,6 +1420,21 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
                 icon: const Icon(Icons.close_rounded),
               ),
             ),
+        ],
+        if (widget.state.suggestedAudioFiles.isNotEmpty &&
+            widget.state.audioFiles.isEmpty) ...[
+          _SuggestedImportTile(
+            icon: Icons.headphones_rounded,
+            label: 'Nearby audiobook found',
+            name: widget.state.suggestedAudioFiles.length == 1
+                ? widget.state.suggestedAudioFiles.first.name
+                : '${widget.state.suggestedAudioFiles.length} audiobook files',
+            detail: widget.state.suggestedAudioFiles.length == 1
+                ? _formatBytes(widget.state.suggestedAudioFiles.first.sizeBytes)
+                : 'Same folder as the selected book',
+            actionLabel: 'Use These Files',
+            onUse: actions.useSuggestedAudioFiles,
+          ),
         ],
         if (widget.state.message != null) ...[
           const SizedBox(height: 14),
@@ -1296,7 +1734,7 @@ class _ImportCompletionBanner extends ConsumerWidget {
                 child: LinearProgressIndicator(),
               ),
               error: (error, _) => Text(
-                'Live status unavailable right now. $error',
+                'Live status unavailable right now. ${formatSyncApiError(error)}',
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
@@ -1381,6 +1819,64 @@ class _ImportFileTile extends StatelessWidget {
   }
 }
 
+class _SuggestedImportTile extends StatelessWidget {
+  const _SuggestedImportTile({
+    required this.icon,
+    required this.label,
+    required this.name,
+    required this.detail,
+    required this.actionLabel,
+    required this.onUse,
+  });
+
+  final IconData icon;
+  final String label;
+  final String name;
+  final String detail;
+  final String actionLabel;
+  final VoidCallback onUse;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: palette.accentSoft.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: palette.accentPrimary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: Theme.of(context).textTheme.labelLarge),
+                const SizedBox(height: 4),
+                Text(name, style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: 4),
+                Text(
+                  detail,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.tonal(onPressed: onUse, child: Text(actionLabel)),
+        ],
+      ),
+    );
+  }
+}
+
 class _LibraryBookTile extends StatelessWidget {
   const _LibraryBookTile({required this.snapshot, required this.onResume});
 
@@ -1390,6 +1886,7 @@ class _LibraryBookTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = ReaderPalette.of(context);
+    final progressPercent = (snapshot.progressFraction * 100).round();
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
@@ -1416,14 +1913,18 @@ class _LibraryBookTile extends StatelessWidget {
               children: [
                 Text(snapshot.sectionTitle ?? snapshot.projectId),
                 const SizedBox(height: 6),
+                _LibraryProgressMeter(
+                  label: 'Reading progress',
+                  percent: progressPercent,
+                ),
+                const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    _LibraryStatusChip(label: snapshot.projectId),
-                    _LibraryStatusChip(
-                      label: '${(snapshot.progressFraction * 100).round()}%',
-                    ),
+                    if (snapshot.shortHost.isNotEmpty)
+                      _LibraryStatusChip(label: snapshot.shortHost),
+                    _LibraryStatusChip(label: '$progressPercent% complete'),
                     _LibraryStatusChip(
                       label: snapshot.updatedAt
                           .toLocal()
@@ -1447,7 +1948,7 @@ class _LibraryBookTile extends StatelessWidget {
               const SizedBox(height: 8),
               FilledButton.tonal(
                 onPressed: onResume,
-                child: const Text('Resume'),
+                child: const Text('Continue'),
               ),
             ],
           ),
@@ -1465,16 +1966,39 @@ class _ProjectTargetSummary extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (settings.projectId.trim().isEmpty) {
+      final palette = ReaderPalette.of(context);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(settings.shortHost),
+          const SizedBox(height: 8),
+          Text(
+            'No book is selected yet. Add one below or choose one from your shelf, then come back here to continue reading.',
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+          ),
+          const SizedBox(height: 12),
+          FilledButton.tonalIcon(
+            onPressed: onOpen,
+            icon: const Icon(Icons.link_rounded),
+            label: const Text('Choose a Book'),
+          ),
+        ],
+      );
+    }
+
     final snapshot = ref.watch(libraryProjectSnapshotProvider(settings));
     final offline = ref.watch(libraryOfflineSnapshotProvider(settings));
     return snapshot.when(
       data: (value) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${settings.shortHost} • ${settings.normalizedProjectId}'),
+          Text(value.title),
           const SizedBox(height: 8),
           Text(
-            value.statusNarrative,
+            '${settings.shortHost} • ${value.statusNarrative}',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: ReaderPalette.of(context).textMuted,
             ),
@@ -1483,7 +2007,7 @@ class _ProjectTargetSummary extends ConsumerWidget {
             const SizedBox(height: 12),
             _LibraryProgressMeter(
               label: value.latestJobStage == null
-                  ? 'Latest job progress'
+                  ? 'Preparation progress'
                   : _capitalizeLabel(
                       value.latestJobStage!.replaceAll('_', ' '),
                     ),
@@ -1514,7 +2038,7 @@ class _ProjectTargetSummary extends ConsumerWidget {
       loading: () => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${settings.shortHost} • ${settings.normalizedProjectId}'),
+          Text('Current book'),
           const SizedBox(height: 10),
           const LinearProgressIndicator(),
         ],
@@ -1522,10 +2046,10 @@ class _ProjectTargetSummary extends ConsumerWidget {
       error: (error, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${settings.shortHost} • ${settings.normalizedProjectId}'),
+          Text('Current book'),
           const SizedBox(height: 8),
           Text(
-            'Could not fetch project snapshot. $error',
+            'Could not fetch project snapshot. ${formatSyncApiError(error)}',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
         ],
@@ -1552,6 +2076,33 @@ class _CurrentTargetOfflineManager extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = ReaderPalette.of(context);
+    if (settings.projectId.trim().isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        decoration: BoxDecoration(
+          color: palette.backgroundBase,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: palette.borderSubtle),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Books on This Device',
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Device downloads start after you choose a book. Pick one from your shelf or add a new one first.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+            ),
+          ],
+        ),
+      );
+    }
     final offline = ref.watch(libraryOfflineSnapshotProvider(settings));
 
     String message;
@@ -1560,44 +2111,44 @@ class _CurrentTargetOfflineManager extends ConsumerWidget {
     final bundle = project.asData?.value;
     if (project.isLoading) {
       message =
-          'Reader workspace is still connecting for this target. Offline details will sharpen once the project bundle loads.';
+          'Book details are still loading. Device download options will sharpen as soon as the reading bundle is ready.';
     } else if (project.hasError) {
       message =
-          'Offline controls are available, but the live reader bundle is not reachable right now. Reopen the reader or refresh once the backend responds.';
+          'This book is not reachable live right now. You can still manage device copies here and refresh when the connection comes back.';
     } else if (bundle == null || bundle.totalAudioAssets == 0) {
       message =
-          'This target has no playable audiobook assets yet. Text and sync caches can still exist, but there is no audio package to download.';
+          'This book does not have playable audiobook files yet. Text can still load, but there is no audio package to store on the device.';
     } else if (downloadState.status == ReaderAudioDownloadStatus.downloading) {
       message =
-          'Downloading audio ${downloadState.completedAssets + 1} of ${downloadState.totalAssets > 0 ? downloadState.totalAssets : bundle.totalAudioAssets} for offline playback.';
+          'Saving audio ${downloadState.completedAssets + 1} of ${downloadState.totalAssets > 0 ? downloadState.totalAssets : bundle.totalAudioAssets} to this device for offline reading.';
       actions = [
         FilledButton.tonalIcon(
           onPressed: null,
           icon: const Icon(Icons.download_rounded),
-          label: const Text('Downloading'),
+          label: const Text('Saving to Device'),
         ),
       ];
     } else if (bundle.hasCompleteOfflineAudio) {
       message =
-          'All audiobook files for the current target are stored locally. You can remove them here without leaving the library.';
+          'This book is fully stored on this device. You can remove the local audio here whenever you need space.';
       actions = [
         FilledButton.tonalIcon(
           onPressed: downloadState.isBusy ? null : onRemove,
           icon: const Icon(Icons.delete_outline_rounded),
-          label: const Text('Remove Offline Audio'),
+          label: const Text('Remove From Device'),
         ),
       ];
     } else {
       message =
-          'Audio is still streaming for this target. Download it here to make the current project fully portable on this device.';
+          'Audio is still streaming for this book. Save it here to make the reading experience available offline.';
       actions = [
         FilledButton.tonalIcon(
           onPressed: downloadState.isBusy ? null : onDownload,
           icon: const Icon(Icons.download_for_offline_rounded),
           label: Text(
             bundle.cachedAudioAssets > 0
-                ? 'Download Remaining'
-                : 'Download Audio',
+                ? 'Save Remaining Audio'
+                : 'Save Audio to Device',
           ),
         ),
       ];
@@ -1615,7 +2166,7 @@ class _CurrentTargetOfflineManager extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Offline Manager',
+            'Books on This Device',
             style: Theme.of(context).textTheme.labelLarge,
           ),
           const SizedBox(height: 8),
@@ -1683,7 +2234,7 @@ class _ProcessingQueueList extends StatelessWidget {
   Widget build(BuildContext context) {
     if (connections.isEmpty) {
       return const Text(
-        'No recent projects yet. Import a book to start an alignment queue.',
+        'No books are getting ready right now. Add one and its progress will appear here.',
       );
     }
 
@@ -1779,7 +2330,7 @@ class _QueueSnapshotTile extends ConsumerWidget {
                       runSpacing: 8,
                       children: [
                         if (isCurrentTarget)
-                          const _LibraryStatusChip(label: 'Current target'),
+                          const _LibraryStatusChip(label: 'Current book'),
                         _LibraryStatusChip(
                           label:
                               '${value.audioAssetCount} audio • ${value.epubAssetCount} EPUB',
@@ -1796,11 +2347,11 @@ class _QueueSnapshotTile extends ConsumerWidget {
                   if (!isCurrentTarget)
                     TextButton(
                       onPressed: onSetTarget,
-                      child: const Text('Set Target'),
+                      child: const Text('Make Current'),
                     ),
                   FilledButton.tonal(
                     onPressed: onOpen,
-                    child: const Text('Reader'),
+                    child: const Text('Open Book'),
                   ),
                 ],
               ),
@@ -1856,18 +2407,23 @@ class _ProjectSnapshotTile extends ConsumerWidget {
       loading: () => ListTile(
         contentPadding: EdgeInsets.zero,
         leading: const Icon(Icons.cloud_outlined),
-        title: Text(settings.normalizedProjectId),
-        subtitle: const Padding(
-          padding: EdgeInsets.only(top: 8),
-          child: LinearProgressIndicator(),
+        title: const Text('Saved book'),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(settings.shortHost),
+            const SizedBox(height: 8),
+            const LinearProgressIndicator(),
+          ],
         ),
       ),
       error: (error, _) => ListTile(
         contentPadding: EdgeInsets.zero,
         leading: const Icon(Icons.cloud_off_rounded),
-        title: Text(settings.normalizedProjectId),
+        title: const Text('Saved book'),
         subtitle: Text(
-          'Could not load project snapshot. $error',
+          '${settings.shortHost} • Could not load this saved book. ${formatSyncApiError(error)}',
           style: theme.textTheme.bodyMedium,
         ),
         trailing: FilledButton.tonal(
@@ -1986,7 +2542,7 @@ class _ProjectSnapshotCard extends StatelessWidget {
             runSpacing: 8,
             children: [
               if (isCurrentTarget)
-                const _LibraryStatusChip(label: 'Current target'),
+                const _LibraryStatusChip(label: 'Current book'),
               _LibraryStatusChip(label: value.projectStatusLabel),
               if (value.latestJobLabel case final jobLabel?)
                 _LibraryStatusChip(label: jobLabel),
@@ -2044,12 +2600,12 @@ class _ProjectSnapshotCard extends StatelessWidget {
                   onSetTarget: onSetTarget,
                   onOpenReader: onOpen,
                 ),
-                child: const Text('Workspace'),
+                child: const Text('Book Details'),
               ),
               if (!isCurrentTarget)
                 TextButton(
                   onPressed: onSetTarget,
-                  child: const Text('Set Target'),
+                  child: const Text('Make Current'),
                 ),
               if (value.audioAssetCount > 0)
                 TextButton(
@@ -2065,17 +2621,17 @@ class _ProjectSnapshotCard extends StatelessWidget {
                     offlineValue != null &&
                             offlineValue.cachedAudioAssets >=
                                 value.audioAssetCount
-                        ? 'Remove Audio'
+                        ? 'Remove From Device'
                         : offlineValue != null &&
                               offlineValue.cachedAudioAssets > 0
-                        ? 'Download Rest'
-                        : 'Download Audio',
+                        ? 'Save Remaining'
+                        : 'Save to Device',
                   ),
                 ),
-              TextButton(onPressed: onForget, child: const Text('Forget')),
+              TextButton(onPressed: onForget, child: const Text('Remove')),
               FilledButton.tonal(
                 onPressed: onOpen,
-                child: const Text('Reader'),
+                child: const Text('Open Book'),
               ),
             ],
           ),
@@ -2099,12 +2655,12 @@ class _ProjectSnapshotSummaryRow extends StatelessWidget {
     final offlineValue = offline.asData?.value;
     final cards = <Widget>[
       _ProjectMicroStat(
-        label: 'Server payload',
+        label: 'Book size',
         value: _formatBytes(value.totalSizeBytes),
-        hint: '${value.assetCount} assets on backend',
+        hint: '${value.assetCount} files saved for this book',
       ),
       _ProjectMicroStat(
-        label: 'Offline footprint',
+        label: 'On this device',
         value: offlineValue == null
             ? 'Checking...'
             : offlineValue.cachedAudioBytes > 0
@@ -2117,7 +2673,7 @@ class _ProjectSnapshotSummaryRow extends StatelessWidget {
             : offlineValue.offlineNarrative(value.audioAssetCount),
       ),
       _ProjectMicroStat(
-        label: 'Last movement',
+        label: 'Last update',
         value: value.updatedAt == null
             ? 'Unknown'
             : _formatTimestamp(value.updatedAt!),
@@ -2309,7 +2865,7 @@ class _ProjectDetailsSheet extends StatelessWidget {
                 Text(snapshot.title, style: theme.textTheme.headlineSmall),
                 const SizedBox(height: 8),
                 Text(
-                  '${snapshot.settings.shortHost} • ${snapshot.settings.normalizedProjectId}',
+                  snapshot.settings.shortHost,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: palette.textMuted,
                   ),
@@ -2371,8 +2927,9 @@ class _ProjectDetailsSheet extends StatelessWidget {
                       padding: EdgeInsets.symmetric(vertical: 12),
                       child: LinearProgressIndicator(),
                     ),
-                    error: (error, _) =>
-                        Text('Could not load job history. $error'),
+                    error: (error, _) => Text(
+                      'Could not load job history. ${formatSyncApiError(error)}',
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -2888,55 +3445,104 @@ List<Map<String, dynamic>> _asObjectList(Object? value) {
       .toList(growable: false);
 }
 
+List<String> _asStringList(Object? value) {
+  if (value is! List) {
+    return const [];
+  }
+  return value.map((item) => item.toString()).toList(growable: false);
+}
+
 extension on LibraryProjectSnapshot {
   String get statusHeadline {
+    if (lifecyclePhase == 'draft') {
+      if (lifecycleMissingRequirements.contains('epub') &&
+          lifecycleMissingRequirements.contains('audio')) {
+        return 'This book still needs the EPUB and the audiobook.';
+      }
+      if (lifecycleMissingRequirements.contains('epub')) {
+        return 'This book still needs the EPUB file.';
+      }
+      if (lifecycleMissingRequirements.contains('audio')) {
+        return 'This book still needs the audiobook files.';
+      }
+    }
+    if (lifecyclePhase == 'ready_to_align') {
+      return 'Everything is attached. This book is ready to sync.';
+    }
+    if (lifecyclePhase == 'ready_to_read') {
+      return 'This book is ready for playback-driven reading.';
+    }
+    if (lifecyclePhase == 'attention_needed') {
+      return 'This book needs attention before it is ready again.';
+    }
     switch (latestJobStatus) {
       case 'running':
-        return 'Alignment is actively building the reading timeline.';
+        return 'This book is being prepared for synced reading.';
       case 'queued':
-        return 'This project is waiting for the next alignment worker slot.';
+        return 'This book is lined up and waiting for its sync pass.';
       case 'failed':
-        return 'The latest alignment attempt stopped before export.';
+        return 'The latest sync pass stopped before the book was ready.';
       case 'completed':
-        return 'Sync is ready for playback-driven reading.';
+        return 'This book is ready for playback-driven reading.';
     }
     if (projectStatus == 'ready') {
       return 'This book is ready to read.';
     }
-    return 'Project state is available, but not fully synced yet.';
+    return 'This book exists, but it is not fully synced yet.';
   }
 
   String get statusNarrative {
+    if (lifecyclePhase == 'draft') {
+      if (lifecycleMissingRequirements.contains('epub') &&
+          lifecycleMissingRequirements.contains('audio')) {
+        return 'Start by attaching the book file and the audiobook. Once both are present, sync can begin.';
+      }
+      if (lifecycleMissingRequirements.contains('epub')) {
+        return 'The audiobook is attached, but the book file is still missing.';
+      }
+      if (lifecycleMissingRequirements.contains('audio')) {
+        return 'The book file is attached, but the audiobook still needs to be added.';
+      }
+    }
+    if (lifecyclePhase == 'ready_to_align') {
+      return 'The book file and audiobook are attached. Start the sync pass when you are ready.';
+    }
+    if (lifecyclePhase == 'ready_to_read') {
+      return 'The latest completed reading bundle is ready. Open the book now, or save audio to this device for offline reading.';
+    }
     if (latestJobStatus == 'running') {
       final stage = latestJobStage == null
           ? 'the current stage'
           : _capitalizeLabel(latestJobStage!.replaceAll('_', ' '));
       final percent = latestJobPercent == null ? '' : ' at $latestJobPercent%';
-      return 'The latest attempt is moving through $stage$percent. You can stay in the library to monitor progress or open the reader and inspect the live project state.';
+      return 'The latest sync pass is moving through $stage$percent. Stay here to watch progress or open the book to inspect the live state.';
     }
     if (latestJobStatus == 'queued') {
-      return 'Assets are attached and the job is queued. Nothing is wrong here yet; the project is simply waiting for execution.';
+      return 'The files are attached and the sync pass is queued. Nothing is wrong yet; the book is simply waiting its turn.';
     }
     if (latestJobStatus == 'failed') {
       return latestJobTerminalReason == null
-          ? 'The last attempt failed. Open the project workspace and recent attempts to inspect where it stopped.'
-          : 'The last attempt failed because "$latestJobTerminalReason". Retry or inspect the recent attempt timeline before reopening the reader.';
+          ? 'The last sync pass failed. Open the book details and recent attempts to inspect where it stopped.'
+          : 'The last sync pass failed because "$latestJobTerminalReason". Retry or inspect recent attempts before reopening the book.';
     }
     if (latestJobStatus == 'completed') {
-      return 'The latest attempt finished successfully. Reader content, sync data, and cached assets can now be reopened with minimal friction.';
+      return 'The latest sync pass finished successfully. Reader content, timings, and cached assets can now reopen with minimal friction.';
     }
     if (projectStatus == 'ready') {
-      return 'This project is structurally ready, but there is no recent alignment attempt to summarize yet.';
+      return 'This book is structurally ready, but there is no recent sync pass to summarize yet.';
     }
-    return 'This project exists on the backend, but it still needs a successful alignment pass before it becomes a polished reading target.';
+    return 'This book exists on the server, but it still needs a successful sync pass before it becomes a polished reading target.';
   }
 
   String get projectStatusLabel {
+    if (lifecyclePhase != null && lifecyclePhase!.isNotEmpty) {
+      return 'Book ${_lifecyclePhaseLabel(lifecyclePhase!)}';
+    }
     final normalized = projectStatus.replaceAll('_', ' ').trim();
     if (normalized.isEmpty) {
       return 'Project unknown';
     }
-    return 'Project ${_capitalizeLabel(normalized)}';
+    return 'Book ${_capitalizeLabel(normalized)}';
   }
 
   String? get latestJobLabel {
@@ -2961,26 +3567,44 @@ extension on LibraryProjectSnapshot {
     required bool isCurrentTarget,
   }) {
     if (!isCurrentTarget) {
-      return 'Set target';
+      return 'Make current';
+    }
+    switch (lifecycleNextAction) {
+      case 'attach_epub':
+        return 'Add EPUB';
+      case 'attach_audio':
+        return 'Add audiobook';
+      case 'start_alignment':
+        return 'Start sync';
+      case 'monitor_alignment':
+        return 'Watch progress';
+      case 'open_reader':
+        if (audioAssetCount > 0 &&
+            (offline == null || offline.cachedAudioAssets < audioAssetCount)) {
+          return 'Save audio';
+        }
+        return 'Open book';
+      case 'retry_alignment':
+        return 'Inspect issue';
     }
     switch (latestJobStatus) {
       case 'running':
-        return 'Monitor alignment';
+        return 'Watch progress';
       case 'queued':
-        return 'Hold in queue';
+        return 'Keep in queue';
       case 'failed':
-        return 'Inspect failure';
+        return 'Inspect issue';
       case 'completed':
         if (audioAssetCount > 0 &&
             (offline == null || offline.cachedAudioAssets < audioAssetCount)) {
-          return 'Download audio';
+          return 'Save audio';
         }
-        return 'Open reader';
+        return 'Open book';
     }
     if (projectStatus == 'ready') {
-      return 'Open reader';
+      return 'Open book';
     }
-    return 'Review workspace';
+    return 'Review details';
   }
 
   String recommendedActionHint({
@@ -2988,28 +3612,48 @@ extension on LibraryProjectSnapshot {
     required bool isCurrentTarget,
   }) {
     if (!isCurrentTarget) {
-      return 'Make this the active project first, then reopen Reader or manage offline state from the library.';
+      return 'Make this your current book first, then reopen it or manage device downloads from the library.';
+    }
+    switch (lifecycleNextAction) {
+      case 'attach_epub':
+        return 'Attach the EPUB first so the app has the text it needs before syncing.';
+      case 'attach_audio':
+        return 'Attach the audiobook next so the app can build synced reading playback.';
+      case 'start_alignment':
+        return 'Everything is attached. Start sync when you want the app to build timings and reading data.';
+      case 'monitor_alignment':
+        return 'The sync pass is already in motion. Stay here for progress or open the book to inspect the live state.';
+      case 'open_reader':
+        if (audioAssetCount > 0 &&
+            (offline == null || offline.cachedAudioAssets < audioAssetCount)) {
+          return 'The book is ready. Save the audiobook to this device next if you want resilient offline reading.';
+        }
+        return 'The synced reading bundle is ready now. Open the book and continue where you left off.';
+      case 'retry_alignment':
+        return latestJobTerminalReason == null
+            ? 'The last sync pass needs a closer look before trying again.'
+            : 'The last sync pass needs attention because "$latestJobTerminalReason". Review the recent attempts first.';
     }
     switch (latestJobStatus) {
       case 'running':
-        return 'Stay in the library if you want job visibility, or jump into Reader to inspect the live state while the timeline builds.';
+        return 'Stay in the library if you want progress visibility, or open the book to inspect the live state while timings build.';
       case 'queued':
-        return 'No intervention yet. The job is waiting for execution, so keep the project parked here.';
+        return 'No action yet. The sync pass is waiting to start, so keep the book parked here.';
       case 'failed':
         return latestJobTerminalReason == null
             ? 'Read the recent attempt history before trying again.'
-            : 'The latest attempt stopped with "$latestJobTerminalReason". Check attempts before reopening the reader.';
+            : 'The latest sync pass stopped with "$latestJobTerminalReason". Check attempts before reopening the book.';
       case 'completed':
         if (audioAssetCount > 0 &&
             (offline == null || offline.cachedAudioAssets < audioAssetCount)) {
-          return 'The sync is ready. Pull the audiobook onto the device next if you want a resilient offline reading target.';
+          return 'The sync is ready. Save the audiobook to this device next if you want resilient offline reading.';
         }
-        return 'Everything needed for a polished reading session is available. Jump straight into Reader.';
+        return 'Everything needed for a polished reading session is available. Jump straight into the book.';
     }
     if (projectStatus == 'ready') {
-      return 'The structure exists, but there is no recent attempt summary to display. Open the reader or inspect the workspace.';
+      return 'The structure exists, but there is no recent attempt summary to display. Open the book or inspect its details.';
     }
-    return 'This project still needs a successful alignment pass before it becomes a clean reading target.';
+    return 'This book still needs a successful sync pass before it becomes a clean reading target.';
   }
 }
 
@@ -3055,19 +3699,19 @@ extension on LibraryImportState {
       case LibraryImportStatus.picking:
         return 'Choosing files';
       case LibraryImportStatus.creatingProject:
-        return 'Creating project';
+        return 'Creating book';
       case LibraryImportStatus.uploadingEpub:
         return 'Uploading EPUB';
       case LibraryImportStatus.uploadingAudio:
         return 'Uploading audio';
       case LibraryImportStatus.startingJob:
-        return 'Starting job';
+        return 'Starting sync';
       case LibraryImportStatus.completed:
-        return 'Alignment queued';
+        return 'Sync queued';
       case LibraryImportStatus.failed:
         return 'Needs attention';
       case LibraryImportStatus.ready:
-        return 'Draft ready';
+        return 'Book draft ready';
       case LibraryImportStatus.idle:
         return null;
     }
@@ -3079,20 +3723,20 @@ extension on LibraryImportState {
         return null;
       case LibraryImportStatus.ready:
         return canStartImport
-            ? 'Everything required for the first alignment pass is attached.'
+            ? 'Everything required for the first sync pass is attached.'
             : 'The draft has started, but at least one required input is still missing.';
       case LibraryImportStatus.picking:
         return 'Selecting source files on this device.';
       case LibraryImportStatus.creatingProject:
-        return 'Creating the backend project shell before uploads begin.';
+        return 'Creating the book space before uploads begin.';
       case LibraryImportStatus.uploadingEpub:
-        return 'The book file is on its way to the backend.';
+        return 'The book file is on its way to the server.';
       case LibraryImportStatus.uploadingAudio:
-        return 'Audio files are uploading in sequence so the timeline order stays explicit.';
+        return 'Audio files are uploading in sequence so reading order stays explicit.';
       case LibraryImportStatus.startingJob:
-        return 'Assets are attached. The app is now asking the backend to start alignment.';
+        return 'Files are attached. The app is now asking the server to start sync.';
       case LibraryImportStatus.completed:
-        return 'The backend accepted the job, and this project can now be monitored from the library or opened in Reader.';
+        return 'The server accepted the sync pass, and this book can now be monitored from the library or opened in the reader.';
       case LibraryImportStatus.failed:
         return 'The draft is preserved, so you can correct the problem and launch again.';
     }

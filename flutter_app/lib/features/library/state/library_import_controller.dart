@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sync_flutter/core/config/runtime_connection_settings.dart';
 import 'package:sync_flutter/core/config/runtime_connection_settings_controller.dart';
 import 'package:sync_flutter/core/import/import_file_picker.dart';
+import 'package:sync_flutter/core/network/sync_api_client.dart';
 import 'package:sync_flutter/core/navigation/home_shell_controller.dart';
 import 'package:sync_flutter/features/reader/state/reader_events_provider.dart';
 import 'package:sync_flutter/features/reader/state/reader_playback_controller.dart';
@@ -30,6 +31,8 @@ class LibraryImportState {
     required this.language,
     required this.audioFiles,
     this.epubFile,
+    this.suggestedEpubFile,
+    this.suggestedAudioFiles = const <ImportPickedFile>[],
     this.message,
     this.projectId,
     this.jobId,
@@ -40,11 +43,17 @@ class LibraryImportState {
   final String title;
   final String language;
   final ImportPickedFile? epubFile;
+  final ImportPickedFile? suggestedEpubFile;
   final List<ImportPickedFile> audioFiles;
+  final List<ImportPickedFile> suggestedAudioFiles;
   final String? message;
   final String? projectId;
   final String? jobId;
   final DateTime? completedAt;
+
+  bool get hasDraftSelection => epubFile != null || audioFiles.isNotEmpty;
+  bool get hasSuggestions =>
+      suggestedEpubFile != null || suggestedAudioFiles.isNotEmpty;
 
   bool get canStartImport =>
       title.trim().isNotEmpty &&
@@ -59,12 +68,53 @@ class LibraryImportState {
       status == LibraryImportStatus.uploadingAudio ||
       status == LibraryImportStatus.startingJob;
 
+  String? get missingRequirementsMessage {
+    final missing = <String>[];
+    if (title.trim().isEmpty) {
+      missing.add('book title');
+    }
+    if (epubFile == null) {
+      missing.add('EPUB');
+    }
+    if (audioFiles.isEmpty) {
+      missing.add('audiobook');
+    }
+    if (missing.isEmpty) {
+      return null;
+    }
+    if (missing.length == 1) {
+      return 'Add the ${missing.single} to keep going.';
+    }
+    if (missing.length == 2) {
+      return 'Add the ${missing.first} and ${missing.last} to keep going.';
+    }
+    return 'Add the ${missing[0]}, ${missing[1]}, and ${missing[2]} to keep going.';
+  }
+
+  String get flowSummary {
+    return switch (status) {
+      LibraryImportStatus.creatingProject => 'Creating your book space',
+      LibraryImportStatus.uploadingEpub => 'Uploading the book file',
+      LibraryImportStatus.uploadingAudio => 'Uploading audiobook files',
+      LibraryImportStatus.startingJob => 'Starting sync',
+      LibraryImportStatus.completed => 'Sync started',
+      LibraryImportStatus.failed => 'Needs attention',
+      LibraryImportStatus.picking => 'Looking at files',
+      LibraryImportStatus.ready || LibraryImportStatus.idle =>
+        canStartImport
+            ? 'Ready to start sync'
+            : missingRequirementsMessage ?? 'Add your book and audiobook',
+    };
+  }
+
   LibraryImportState copyWith({
     LibraryImportStatus? status,
     String? title,
     String? language,
     ImportPickedFile? epubFile,
+    ImportPickedFile? suggestedEpubFile,
     List<ImportPickedFile>? audioFiles,
+    List<ImportPickedFile>? suggestedAudioFiles,
     String? message,
     String? projectId,
     String? jobId,
@@ -74,13 +124,21 @@ class LibraryImportState {
     bool clearJobId = false,
     bool clearCompletedAt = false,
     bool clearEpub = false,
+    bool clearSuggestedEpub = false,
+    bool clearSuggestedAudio = false,
   }) {
     return LibraryImportState(
       status: status ?? this.status,
       title: title ?? this.title,
       language: language ?? this.language,
       epubFile: clearEpub ? null : epubFile ?? this.epubFile,
+      suggestedEpubFile: clearSuggestedEpub
+          ? null
+          : suggestedEpubFile ?? this.suggestedEpubFile,
       audioFiles: audioFiles ?? this.audioFiles,
+      suggestedAudioFiles: clearSuggestedAudio
+          ? const <ImportPickedFile>[]
+          : suggestedAudioFiles ?? this.suggestedAudioFiles,
       message: clearMessage ? null : message ?? this.message,
       projectId: clearProjectId ? null : projectId ?? this.projectId,
       jobId: clearJobId ? null : jobId ?? this.jobId,
@@ -106,46 +164,183 @@ class LibraryImportController extends Notifier<LibraryImportState> {
   }
 
   void setTitle(String value) {
-    state = state.copyWith(title: value);
+    state = _draftUpdate(title: value);
   }
 
   void setLanguage(String value) {
-    state = state.copyWith(language: value);
+    state = _draftUpdate(language: value);
   }
 
   Future<void> pickEpub() async {
-    state = state.copyWith(
+    final previousDraft = _draftUpdate();
+    state = previousDraft.copyWith(
       status: LibraryImportStatus.picking,
       clearMessage: true,
     );
     final file = await ref.read(importFilePickerProvider).pickEpub();
+    if (file == null) {
+      state = previousDraft.copyWith(clearMessage: true);
+      return;
+    }
+    final derivedTitle = _titleFromFilename(file.name);
+    final suggestedAudio = await ref
+        .read(importFilePickerProvider)
+        .findNearbyAudioFiles(file, preferredTitle: derivedTitle);
+    final shouldAutofillAudio =
+        previousDraft.audioFiles.isEmpty && suggestedAudio.isNotEmpty;
     state = state.copyWith(
-      status: file == null
-          ? LibraryImportStatus.idle
-          : LibraryImportStatus.ready,
+      status: _draftStatusFor(
+        title: previousDraft.title.trim().isEmpty
+            ? derivedTitle
+            : previousDraft.title,
+        epubFile: file,
+        audioFiles: shouldAutofillAudio
+            ? suggestedAudio
+            : previousDraft.audioFiles,
+      ),
       epubFile: file,
+      suggestedAudioFiles: shouldAutofillAudio
+          ? const <ImportPickedFile>[]
+          : suggestedAudio,
+      audioFiles: shouldAutofillAudio ? suggestedAudio : previousDraft.audioFiles,
+      title: previousDraft.title.trim().isEmpty ? derivedTitle : previousDraft.title,
+      message: shouldAutofillAudio
+          ? 'Found audiobook files in the same folder and added them for you.'
+          : suggestedAudio.isNotEmpty
+              ? 'Book added. I also found audiobook files nearby.'
+              : previousDraft.audioFiles.isEmpty
+              ? 'Book added. Next, add the audiobook to start sync.'
+              : 'Book replaced. Your audiobook files are still attached.',
+      clearSuggestedEpub: true,
     );
   }
 
   Future<void> pickAudioFiles() async {
-    state = state.copyWith(
+    final previousDraft = _draftUpdate();
+    state = previousDraft.copyWith(
       status: LibraryImportStatus.picking,
       clearMessage: true,
     );
     final files = await ref.read(importFilePickerProvider).pickAudioFiles();
+    if (files.isEmpty) {
+      state = previousDraft.copyWith(clearMessage: true);
+      return;
+    }
+    final suggestedEpub = previousDraft.epubFile != null
+        ? null
+        : await ref
+              .read(importFilePickerProvider)
+              .findNearbyEpubFile(files.first, preferredTitle: previousDraft.title);
+    final shouldAutofillEpub =
+        previousDraft.epubFile == null && suggestedEpub != null;
     state = state.copyWith(
-      status: files.isEmpty
-          ? LibraryImportStatus.idle
-          : LibraryImportStatus.ready,
+      status: _draftStatusFor(
+        title: previousDraft.title,
+        epubFile: shouldAutofillEpub ? suggestedEpub : previousDraft.epubFile,
+        audioFiles: files,
+      ),
       audioFiles: files,
+      epubFile: shouldAutofillEpub ? suggestedEpub : previousDraft.epubFile,
+      suggestedEpubFile: shouldAutofillEpub ? null : suggestedEpub,
+      clearSuggestedAudio: true,
+      title: previousDraft.title.trim().isEmpty && shouldAutofillEpub
+          ? _titleFromFilename(suggestedEpub.name)
+          : previousDraft.title,
+      message: shouldAutofillEpub
+          ? 'Found a nearby EPUB in the same folder and added it for you.'
+          : suggestedEpub != null
+              ? 'Audiobook added. I also found a nearby EPUB.'
+              : previousDraft.epubFile == null
+              ? 'Audiobook added. Next, add the EPUB to start sync.'
+              : 'Audiobook updated. Your book file is still attached.',
+    );
+  }
+
+  void useSuggestedAudioFiles() {
+    if (state.suggestedAudioFiles.isEmpty) {
+      return;
+    }
+    state = _draftUpdate(
+      audioFiles: state.suggestedAudioFiles,
+      clearSuggestedAudio: true,
+      message: 'Added nearby audiobook files to your import.',
+    );
+  }
+
+  void useSuggestedEpubFile() {
+    final suggested = state.suggestedEpubFile;
+    if (suggested == null) {
+      return;
+    }
+    state = _draftUpdate(
+      epubFile: suggested,
+      clearSuggestedEpub: true,
+      title: state.title.trim().isEmpty
+          ? _titleFromFilename(suggested.name)
+          : state.title,
+      message: 'Added the nearby EPUB to your import.',
+    );
+  }
+
+  Future<void> scanNearbyFiles() async {
+    final previousDraft = _draftUpdate();
+    final picker = ref.read(importFilePickerProvider);
+    final baseTitle = previousDraft.title.trim().isEmpty
+        ? (previousDraft.epubFile != null
+              ? _titleFromFilename(previousDraft.epubFile!.name)
+              : null)
+        : previousDraft.title.trim();
+    final suggestedAudio = previousDraft.epubFile == null
+        ? const <ImportPickedFile>[]
+        : await picker.findNearbyAudioFiles(
+            previousDraft.epubFile!,
+            preferredTitle: baseTitle,
+          );
+    final suggestedEpub =
+        previousDraft.epubFile == null && previousDraft.audioFiles.isNotEmpty
+        ? await picker.findNearbyEpubFile(
+            previousDraft.audioFiles.first,
+            preferredTitle: baseTitle,
+          )
+        : null;
+
+    final shouldAutofillAudio =
+        previousDraft.audioFiles.isEmpty && suggestedAudio.isNotEmpty;
+    final shouldAutofillEpub =
+        previousDraft.epubFile == null && suggestedEpub != null;
+
+    state = previousDraft.copyWith(
+      status: _draftStatusFor(
+        title: previousDraft.title,
+        epubFile: shouldAutofillEpub ? suggestedEpub : previousDraft.epubFile,
+        audioFiles: shouldAutofillAudio
+            ? suggestedAudio
+            : previousDraft.audioFiles,
+      ),
+      audioFiles: shouldAutofillAudio ? suggestedAudio : previousDraft.audioFiles,
+      epubFile: shouldAutofillEpub ? suggestedEpub : previousDraft.epubFile,
+      suggestedAudioFiles: shouldAutofillAudio
+          ? const <ImportPickedFile>[]
+          : suggestedAudio,
+      suggestedEpubFile: shouldAutofillEpub ? null : suggestedEpub,
+      message: _nearbyScanMessage(
+        suggestedAudioCount: suggestedAudio.length,
+        foundEpub: suggestedEpub != null,
+        autoAppliedAudio: shouldAutofillAudio,
+        autoAppliedEpub: shouldAutofillEpub,
+      ),
     );
   }
 
   void removeAudioFile(String name) {
-    state = state.copyWith(
-      audioFiles: state.audioFiles
+    final nextAudioFiles = state.audioFiles
           .where((file) => file.name != name)
-          .toList(growable: false),
+          .toList(growable: false);
+    state = _draftUpdate(
+      audioFiles: nextAudioFiles,
+      message: nextAudioFiles.isEmpty
+          ? 'Audiobook removed. Add another audiobook file to keep going.'
+          : 'Audiobook selection updated.',
     );
   }
 
@@ -153,8 +348,8 @@ class LibraryImportController extends Notifier<LibraryImportState> {
     if (!state.canStartImport) {
       state = state.copyWith(
         status: LibraryImportStatus.failed,
-        message:
-            'Choose an EPUB, at least one audio file, and enter a title first.',
+        message: state.missingRequirementsMessage ??
+            'Complete the book setup before starting sync.',
       );
       return;
     }
@@ -165,7 +360,7 @@ class LibraryImportController extends Notifier<LibraryImportState> {
     try {
       state = state.copyWith(
         status: LibraryImportStatus.creatingProject,
-        message: 'Creating project shell...',
+        message: 'Creating the book project...',
         clearProjectId: true,
         clearJobId: true,
         clearCompletedAt: true,
@@ -178,7 +373,7 @@ class LibraryImportController extends Notifier<LibraryImportState> {
       state = state.copyWith(
         status: LibraryImportStatus.uploadingEpub,
         projectId: project.projectId,
-        message: 'Uploading EPUB...',
+        message: 'Uploading the book file...',
       );
       final epubAsset = await api.uploadAsset(
         projectId: project.projectId,
@@ -204,7 +399,7 @@ class LibraryImportController extends Notifier<LibraryImportState> {
 
       state = state.copyWith(
         status: LibraryImportStatus.startingJob,
-        message: 'Starting alignment job...',
+        message: 'Starting sync...',
       );
       final job = await api.createAlignmentJob(
         projectId: project.projectId,
@@ -234,13 +429,19 @@ class LibraryImportController extends Notifier<LibraryImportState> {
         status: LibraryImportStatus.completed,
         projectId: project.projectId,
         jobId: job.jobId,
-        message: 'Project created and alignment started.',
+        message:
+            'Everything is uploaded. Sync is running now, and this book will be ready to open as soon as processing finishes.',
         completedAt: DateTime.now().toUtc(),
       );
     } catch (error) {
+      final failedStage = state.status;
       state = state.copyWith(
         status: LibraryImportStatus.failed,
-        message: 'Import failed. $error',
+        message: _importFailureMessage(
+          error,
+          stage: failedStage,
+          projectId: state.projectId,
+        ),
       );
     }
   }
@@ -260,4 +461,116 @@ class LibraryImportController extends Notifier<LibraryImportState> {
     }
     ref.read(homeTabProvider.notifier).showReader();
   }
+
+  LibraryImportState _draftUpdate({
+    String? title,
+    String? language,
+    ImportPickedFile? epubFile,
+    List<ImportPickedFile>? audioFiles,
+    ImportPickedFile? suggestedEpubFile,
+    List<ImportPickedFile>? suggestedAudioFiles,
+    String? message,
+    bool clearMessage = false,
+    bool clearSuggestedEpub = false,
+    bool clearSuggestedAudio = false,
+  }) {
+    final nextTitle = title ?? state.title;
+    final nextLanguage = language ?? state.language;
+    final nextEpub = epubFile ?? state.epubFile;
+    final nextAudioFiles = audioFiles ?? state.audioFiles;
+    return state.copyWith(
+      status: _draftStatusFor(
+        title: nextTitle,
+        epubFile: nextEpub,
+        audioFiles: nextAudioFiles,
+      ),
+      title: nextTitle,
+      language: nextLanguage,
+      epubFile: epubFile,
+      audioFiles: nextAudioFiles,
+      suggestedEpubFile: suggestedEpubFile,
+      suggestedAudioFiles: suggestedAudioFiles,
+      message: message,
+      clearMessage: clearMessage,
+      clearProjectId: true,
+      clearJobId: true,
+      clearCompletedAt: true,
+      clearSuggestedEpub: clearSuggestedEpub,
+      clearSuggestedAudio: clearSuggestedAudio,
+    );
+  }
+}
+
+LibraryImportStatus _draftStatusFor({
+  required String title,
+  required ImportPickedFile? epubFile,
+  required List<ImportPickedFile> audioFiles,
+}) {
+  return title.trim().isEmpty && epubFile == null && audioFiles.isEmpty
+      ? LibraryImportStatus.idle
+      : LibraryImportStatus.ready;
+}
+
+String _titleFromFilename(String name) {
+  final withoutExtension = name.replaceFirst(RegExp(r'\.[^.]+$'), '');
+  return withoutExtension
+      .replaceAll(RegExp(r'[_-]+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+}
+
+String _importFailureMessage(
+  Object error, {
+  required LibraryImportStatus stage,
+  required String? projectId,
+}) {
+  final detail = formatSyncApiError(error);
+  final prefix = switch (stage) {
+    LibraryImportStatus.creatingProject =>
+      'Could not create the project shell.',
+    LibraryImportStatus.uploadingEpub =>
+      'The project was created, but the EPUB upload failed.',
+    LibraryImportStatus.uploadingAudio =>
+      'The project exists, but one of the audio uploads failed.',
+    LibraryImportStatus.startingJob =>
+      'The files uploaded, but the alignment job could not start.',
+    _ => 'Import failed.',
+  };
+  if (projectId == null || projectId.isEmpty) {
+    return '$prefix $detail';
+  }
+  return '$prefix $detail Project: $projectId';
+}
+
+String? _nearbyScanMessage({
+  required int suggestedAudioCount,
+  required bool foundEpub,
+  required bool autoAppliedAudio,
+  required bool autoAppliedEpub,
+}) {
+  if (!autoAppliedAudio &&
+      !autoAppliedEpub &&
+      suggestedAudioCount == 0 &&
+      !foundEpub) {
+    return 'No likely nearby book or audiobook files were found.';
+  }
+  if (autoAppliedAudio && autoAppliedEpub) {
+    return 'Found matching book and audiobook files nearby and added them for you.';
+  }
+  if (autoAppliedAudio) {
+    return 'Found nearby audiobook files and added them for you.';
+  }
+  if (autoAppliedEpub) {
+    return 'Found a nearby EPUB and added it for you.';
+  }
+  if (suggestedAudioCount > 0 && foundEpub) {
+    return 'Found nearby book and audiobook candidates. Review them below.';
+  }
+  if (suggestedAudioCount > 0) {
+    return 'Found nearby audiobook candidates. Review them below.';
+  }
+  if (foundEpub) {
+    return 'Found a nearby EPUB candidate. Review it below.';
+  }
+  return null;
 }

@@ -8,6 +8,7 @@ import 'package:sync_flutter/features/reader/data/reader_artifact_cache.dart';
 import 'package:sync_flutter/features/reader/state/sample_reader_data.dart';
 
 enum ReaderContentSource {
+  selectionRequired,
   api,
   offlineCache,
   artifactPending,
@@ -103,6 +104,10 @@ class ReaderRepository {
   final ReaderAudioCache _audioCache;
 
   Future<ReaderProjectBundle> loadProject(String projectId) async {
+    if (projectId.trim().isEmpty) {
+      return _selectionRequiredBundle();
+    }
+
     ReaderModel readerModel;
     SyncArtifact syncArtifact;
     Map<String, dynamic>? projectDetail;
@@ -286,6 +291,24 @@ class ReaderRepository {
     );
   }
 
+  ReaderProjectBundle _selectionRequiredBundle() {
+    return ReaderProjectBundle(
+      projectId: '',
+      readerModel: _placeholderReaderModel(
+        projectId: '',
+        title: 'Choose a book',
+      ),
+      syncArtifact: _emptySyncArtifact(''),
+      source: ReaderContentSource.selectionRequired,
+      audioUrls: const [],
+      totalAudioAssets: 0,
+      cachedAudioAssets: 0,
+      hasCompleteOfflineAudio: false,
+      statusMessage:
+          'Connect to a server, then import a book or choose an existing project from Library.',
+    );
+  }
+
   Future<ReaderProjectBundle> _buildBackendStateBundle({
     required String projectId,
     required DioException error,
@@ -444,14 +467,11 @@ bool _shouldUseDemoFallback({
 }
 
 String _userFacingMessage(DioException error) {
-  final statusCode = error.response?.statusCode;
-  if (statusCode == 404) {
-    return 'Project artifacts are not ready yet. Upload the EPUB and finish an alignment job first.';
-  }
-  if (statusCode == 409) {
-    return 'Project assets exist, but the requested reader or sync artifact is not available yet.';
-  }
-  return 'The backend project could not be loaded. ${error.message ?? 'Retry after the API finishes processing.'}';
+  return formatSyncApiError(
+    error,
+    fallback:
+        'The backend project could not be loaded. Retry after the API finishes processing.',
+  );
 }
 
 ReaderContentSource _sourceFromProjectState({

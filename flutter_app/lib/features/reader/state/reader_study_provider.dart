@@ -63,7 +63,9 @@ class ReaderStudyEntriesController
   Future<void> removeEntry(String id) async {
     final projectId = await ref.read(projectIdProvider.future);
     final existing = state.asData?.value ?? const <ReaderStudyEntry>[];
-    final next = existing.where((entry) => entry.id != id).toList(growable: false);
+    final next = existing
+        .where((entry) => entry.id != id)
+        .toList(growable: false);
     state = AsyncData(next);
     await ref.read(readerStudyStoreProvider).saveProject(projectId, next);
   }

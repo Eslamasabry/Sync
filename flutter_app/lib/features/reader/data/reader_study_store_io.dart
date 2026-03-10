@@ -23,17 +23,26 @@ class FileReaderStudyStore implements ReaderStudyStore {
 
     return payload
         .whereType<Map>()
-        .map((item) => ReaderStudyEntry.fromJson(Map<String, dynamic>.from(item)))
+        .map(
+          (item) => ReaderStudyEntry.fromJson(Map<String, dynamic>.from(item)),
+        )
         .toList(growable: false)
       ..sort((left, right) => right.createdAt.compareTo(left.createdAt));
   }
 
   @override
-  Future<void> saveProject(String projectId, List<ReaderStudyEntry> entries) async {
+  Future<void> saveProject(
+    String projectId,
+    List<ReaderStudyEntry> entries,
+  ) async {
     final studyFile = await _studyFile(projectId);
     await studyFile.parent.create(recursive: true);
-    final payload = entries.map((entry) => entry.toJson()).toList(growable: false);
-    await studyFile.writeAsString(const JsonEncoder.withIndent('  ').convert(payload));
+    final payload = entries
+        .map((entry) => entry.toJson())
+        .toList(growable: false);
+    await studyFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(payload),
+    );
   }
 
   Future<File> _studyFile(String projectId) async {

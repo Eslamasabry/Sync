@@ -10,17 +10,45 @@ class FileReaderLocationStore implements ReaderLocationStore {
   final Directory? baseDirectory;
 
   @override
-  Future<ReaderLocationSnapshot?> loadProject(String projectId) async {
-    final locationFile = await _locationFile(projectId);
-    if (!await locationFile.exists()) {
-      return null;
+  Future<ReaderLocationSnapshot?> loadProject(
+    String projectId, {
+    String? apiBaseUrl,
+  }) async {
+    final exactLocationFile = await _locationFile(
+      projectId,
+      apiBaseUrl: apiBaseUrl,
+    );
+    if (await exactLocationFile.exists()) {
+      final payload = jsonDecode(await exactLocationFile.readAsString());
+      if (payload is! Map) {
+        return null;
+      }
+      return ReaderLocationSnapshot.fromJson(Map<String, dynamic>.from(payload));
     }
 
-    final payload = jsonDecode(await locationFile.readAsString());
-    if (payload is! Map) {
-      return null;
+    if (apiBaseUrl == null || apiBaseUrl.trim().isEmpty) {
+      final legacyLocationFile = await _legacyLocationFile(projectId);
+      if (await legacyLocationFile.exists()) {
+        final payload = jsonDecode(await legacyLocationFile.readAsString());
+        if (payload is! Map) {
+          return null;
+        }
+        return ReaderLocationSnapshot.fromJson(Map<String, dynamic>.from(payload));
+      }
     }
-    return ReaderLocationSnapshot.fromJson(Map<String, dynamic>.from(payload));
+
+    final snapshots = await loadRecent();
+    for (final snapshot in snapshots) {
+      if (snapshot.normalizedProjectId == projectId.trim()) {
+        if (apiBaseUrl == null ||
+            apiBaseUrl.trim().isEmpty ||
+            snapshot.normalizedApiBaseUrl.toLowerCase() ==
+                apiBaseUrl.trim().toLowerCase()) {
+          return snapshot;
+        }
+      }
+    }
+    return null;
   }
 
   @override
@@ -57,7 +85,10 @@ class FileReaderLocationStore implements ReaderLocationStore {
 
   @override
   Future<void> storeProject(ReaderLocationSnapshot snapshot) async {
-    final locationFile = await _locationFile(snapshot.projectId);
+    final locationFile = await _locationFile(
+      snapshot.projectId,
+      apiBaseUrl: snapshot.apiBaseUrl,
+    );
     await locationFile.parent.create(recursive: true);
     await locationFile.writeAsString(
       const JsonEncoder.withIndent('  ').convert(snapshot.toJson()),
@@ -65,16 +96,37 @@ class FileReaderLocationStore implements ReaderLocationStore {
   }
 
   @override
-  Future<void> removeProject(String projectId) async {
-    final locationFile = await _locationFile(projectId);
+  Future<void> removeProject(String projectId, {String? apiBaseUrl}) async {
+    final locationFile = await _locationFile(projectId, apiBaseUrl: apiBaseUrl);
     if (await locationFile.exists()) {
       await locationFile.delete();
     }
+    if (apiBaseUrl == null || apiBaseUrl.trim().isEmpty) {
+      final legacyLocationFile = await _legacyLocationFile(projectId);
+      if (await legacyLocationFile.exists()) {
+        await legacyLocationFile.delete();
+      }
+    }
   }
 
-  Future<File> _locationFile(String projectId) async {
+  Future<File> _locationFile(String projectId, {String? apiBaseUrl}) async {
+    final normalizedProjectId = projectId.trim();
+    final normalizedApiBaseUrl = apiBaseUrl?.trim() ?? '';
+    if (normalizedApiBaseUrl.isEmpty) {
+      return _legacyLocationFile(normalizedProjectId);
+    }
     final projectsDirectory = await _projectsDirectory();
-    return File('${projectsDirectory.path}/$projectId/reading_location.json');
+    final encodedIdentityKey = Uri.encodeComponent(
+      '${normalizedApiBaseUrl.toLowerCase()}|$normalizedProjectId',
+    );
+    return File(
+      '${projectsDirectory.path}/$encodedIdentityKey/reading_location.json',
+    );
+  }
+
+  Future<File> _legacyLocationFile(String projectId) async {
+    final projectsDirectory = await _projectsDirectory();
+    return File('${projectsDirectory.path}/${projectId.trim()}/reading_location.json');
   }
 
   Future<Directory> _projectsDirectory() async {

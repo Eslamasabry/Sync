@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sync_flutter/core/config/app_config.dart';
 import 'package:sync_flutter/core/config/runtime_connection_settings.dart';
 import 'package:sync_flutter/core/config/runtime_connection_settings_controller.dart';
+import 'package:sync_flutter/core/network/sync_api_client.dart';
 import 'package:sync_flutter/core/theme/sync_theme.dart';
 import 'package:sync_flutter/features/reader/data/reader_repository.dart';
 import 'package:sync_flutter/features/reader/data/reader_study_store.dart';
@@ -51,6 +52,58 @@ class ReaderScreen extends ConsumerWidget {
         ref.invalidate(readerProjectProvider);
       }
     });
+
+    final isCompact = MediaQuery.sizeOf(context).width < 1180;
+    if (isCompact) {
+      return _ReaderMobileScaffold(
+        project: project,
+        bundle: bundle,
+        settings: activeSettings,
+        playback: playback,
+        latestEvent: latestEvent,
+        audioDownload: audioDownload,
+        studyEntries: studyEntries.asData?.value ?? const [],
+        onRefresh: () => ref.invalidate(readerProjectProvider),
+        onOpenConnectionSettings: () => _showConnectionSettingsSheet(
+          context,
+          activeSettings,
+          recentConnections.asData?.value ?? const [],
+        ),
+        onOpenNavigation: bundle == null
+            ? null
+            : () => _showNavigationSheet(context, bundle, controller.seekTo),
+        onOpenGapInspector: bundle == null
+            ? null
+            : () => _showGapInspectorSheet(
+                context,
+                bundle,
+                playback.displayedPositionMs,
+                controller.seekTo,
+              ),
+        onToggleTheme: controller.toggleTheme,
+        onTogglePlayback: bundle == null
+            ? null
+            : () => controller.togglePlayback(
+                bundle.syncArtifact.totalDurationMs,
+              ),
+        onSeekStart: controller.beginScrub,
+        onSeekUpdate: controller.updateScrub,
+        onSeekCommit: controller.commitScrub,
+        onRewind: controller.rewind15Seconds,
+        onForward: controller.forward15Seconds,
+        onSetSpeed: controller.setSpeed,
+        onSetFontScale: controller.setFontScale,
+        onSetLineHeight: controller.setLineHeight,
+        onSetParagraphSpacing: controller.setParagraphSpacing,
+        onToggleFollowPlayback: controller.toggleFollowPlayback,
+        onToggleHighContrast: controller.toggleHighContrastMode,
+        onToggleLeftHanded: controller.toggleLeftHandedMode,
+        onStartBook: controller.seekToContentStart,
+        onDownload: audioActions.downloadCurrentProject,
+        onRemove: audioActions.removeCurrentProjectAudio,
+        onTokenTap: (token) => controller.seekTo(token.startMs),
+      );
+    }
 
     return Scaffold(
       body: Stack(
@@ -104,7 +157,8 @@ class ReaderScreen extends ConsumerWidget {
                           _ReaderStateStrip(
                             project: project,
                             settings: activeSettings,
-                            onRefresh: () => ref.invalidate(readerProjectProvider),
+                            onRefresh: () =>
+                                ref.invalidate(readerProjectProvider),
                             onOpenConnectionSettings: () =>
                                 _showConnectionSettingsSheet(
                                   context,
@@ -140,20 +194,26 @@ class ReaderScreen extends ConsumerWidget {
                                     Positioned(
                                       bottom: 16,
                                       left: playback.leftHandedMode ? 16 : null,
-                                      right: playback.leftHandedMode ? null : 16,
+                                      right: playback.leftHandedMode
+                                          ? null
+                                          : 16,
                                       child: _ReaderFocusOverlay(
                                         playback: playback,
                                         hasPlayableContent:
                                             bundle != null &&
-                                            bundle.syncArtifact.totalDurationMs >
+                                            bundle
+                                                    .syncArtifact
+                                                    .totalDurationMs >
                                                 0,
                                         onTogglePlayback: bundle == null
                                             ? null
                                             : () => controller.togglePlayback(
-                                                bundle.syncArtifact.totalDurationMs,
+                                                bundle
+                                                    .syncArtifact
+                                                    .totalDurationMs,
                                               ),
-                                        onToggleDistractionFree:
-                                            controller.toggleDistractionFreeMode,
+                                        onToggleDistractionFree: controller
+                                            .toggleDistractionFreeMode,
                                         onRewind: controller.rewind15Seconds,
                                         onForward: controller.forward15Seconds,
                                       ),
@@ -164,114 +224,121 @@ class ReaderScreen extends ConsumerWidget {
                                   builder: (context, constraints) {
                                     final isWide = constraints.maxWidth >= 1180;
                                     final controlPanel = _ControlDock(
-                                  bundle: bundle,
-                                  playback: playback,
-                                  latestEvent: latestEvent,
-                                  audioDownload: audioDownload,
-                                  onDownload:
-                                      audioActions.downloadCurrentProject,
-                                  onRemove:
-                                      audioActions.removeCurrentProjectAudio,
-                                  onRefresh: () =>
-                                      ref.invalidate(readerProjectProvider),
-                                  onStartBook: controller.seekToContentStart,
-                                  onJumpToOutro: controller.seekToContentEnd,
-                                  onSeekStart: controller.beginScrub,
-                                  onSeekUpdate: controller.updateScrub,
-                                  onSeekCommit: controller.commitScrub,
-                                  onRewind: controller.rewind15Seconds,
-                                  onForward: controller.forward15Seconds,
-                                  onTogglePlayback: bundle == null
-                                      ? null
-                                      : () => controller.togglePlayback(
-                                          bundle.syncArtifact.totalDurationMs,
-                                        ),
-                                  onSetSpeed: controller.setSpeed,
-                                  onJumpToStart: playback.hasLeadingMatter
-                                      ? controller.seekToContentStart
-                                      : null,
-                                  onJumpToEnd: playback.hasTrailingMatter
-                                      ? controller.seekToContentEnd
-                                      : null,
-                                  onSetFontScale: controller.setFontScale,
-                                  onSetLineHeight: controller.setLineHeight,
-                                  onSetParagraphSpacing:
-                                      controller.setParagraphSpacing,
-                                  onToggleFollowPlayback:
-                                      controller.toggleFollowPlayback,
-                                  onToggleDistractionFree:
-                                      controller.toggleDistractionFreeMode,
-                                  onToggleHighContrast:
-                                      controller.toggleHighContrastMode,
-                                  onToggleLeftHanded:
-                                      controller.toggleLeftHandedMode,
-                                  onOpenGapInspector: bundle == null
-                                      ? null
-                                      : () => _showGapInspectorSheet(
-                                          context,
-                                          bundle,
-                                          playback.displayedPositionMs,
-                                          controller.seekTo,
-                                        ),
-                                  onJumpToNextConfidentSpan: bundle == null
-                                      ? null
-                                      : () {
-                                          final nextStart =
-                                              _nextConfidentSpanStartMs(
-                                                bundle.syncArtifact,
-                                                playback.displayedPositionMs,
-                                              );
-                                          if (nextStart != null) {
-                                            controller.seekTo(nextStart);
-                                          }
-                                        },
-                                  studyEntries:
-                                      studyEntries.asData?.value ?? const [],
-                                  onAddBookmark: bundle == null
-                                      ? null
-                                      : () => studyActions.addEntry(
-                                          _studyDraftForPosition(
-                                            bundle,
-                                            playback.displayedPositionMs,
-                                            ReaderStudyEntryType.bookmark,
-                                          ),
-                                        ),
-                                  onAddHighlight: bundle == null
-                                      ? null
-                                      : () => studyActions.addEntry(
-                                          _studyDraftForPosition(
-                                            bundle,
-                                            playback.displayedPositionMs,
-                                            ReaderStudyEntryType.highlight,
-                                          ),
-                                        ),
-                                  onAddNote: bundle == null
-                                      ? null
-                                      : () => _showNoteComposerSheet(
-                                          context,
-                                          onSave: (note) =>
-                                              studyActions.addEntry(
-                                                _studyDraftForPosition(
-                                                  bundle,
-                                                  playback.displayedPositionMs,
-                                                  ReaderStudyEntryType.note,
-                                                  note: note,
-                                                ),
-                                              ),
-                                        ),
-                                  onOpenReviewTray: bundle == null
-                                      ? null
-                                      : () => _showReviewTraySheet(
-                                          context,
+                                      bundle: bundle,
+                                      playback: playback,
+                                      latestEvent: latestEvent,
+                                      audioDownload: audioDownload,
+                                      onDownload:
+                                          audioActions.downloadCurrentProject,
+                                      onRemove: audioActions
+                                          .removeCurrentProjectAudio,
+                                      onRefresh: () =>
+                                          ref.invalidate(readerProjectProvider),
+                                      onStartBook:
+                                          controller.seekToContentStart,
+                                      onJumpToOutro:
+                                          controller.seekToContentEnd,
+                                      onSeekStart: controller.beginScrub,
+                                      onSeekUpdate: controller.updateScrub,
+                                      onSeekCommit: controller.commitScrub,
+                                      onRewind: controller.rewind15Seconds,
+                                      onForward: controller.forward15Seconds,
+                                      onTogglePlayback: bundle == null
+                                          ? null
+                                          : () => controller.togglePlayback(
+                                              bundle
+                                                  .syncArtifact
+                                                  .totalDurationMs,
+                                            ),
+                                      onSetSpeed: controller.setSpeed,
+                                      onJumpToStart: playback.hasLeadingMatter
+                                          ? controller.seekToContentStart
+                                          : null,
+                                      onJumpToEnd: playback.hasTrailingMatter
+                                          ? controller.seekToContentEnd
+                                          : null,
+                                      onSetFontScale: controller.setFontScale,
+                                      onSetLineHeight: controller.setLineHeight,
+                                      onSetParagraphSpacing:
+                                          controller.setParagraphSpacing,
+                                      onToggleFollowPlayback:
+                                          controller.toggleFollowPlayback,
+                                      onToggleDistractionFree:
+                                          controller.toggleDistractionFreeMode,
+                                      onToggleHighContrast:
+                                          controller.toggleHighContrastMode,
+                                      onToggleLeftHanded:
+                                          controller.toggleLeftHandedMode,
+                                      onOpenGapInspector: bundle == null
+                                          ? null
+                                          : () => _showGapInspectorSheet(
+                                              context,
+                                              bundle,
+                                              playback.displayedPositionMs,
+                                              controller.seekTo,
+                                            ),
+                                      onJumpToNextConfidentSpan: bundle == null
+                                          ? null
+                                          : () {
+                                              final nextStart =
+                                                  _nextConfidentSpanStartMs(
+                                                    bundle.syncArtifact,
+                                                    playback
+                                                        .displayedPositionMs,
+                                                  );
+                                              if (nextStart != null) {
+                                                controller.seekTo(nextStart);
+                                              }
+                                            },
+                                      studyEntries:
                                           studyEntries.asData?.value ??
-                                              const [],
-                                          controller.seekTo,
-                                          studyActions.removeEntry,
-                                        ),
-                                  onApplyPreset: controller.applyPreset,
-                                  onMarkLoopStart: controller.markLoopStart,
-                                  onMarkLoopEnd: controller.markLoopEnd,
-                                  onClearLoop: controller.clearLoop,
+                                          const [],
+                                      onAddBookmark: bundle == null
+                                          ? null
+                                          : () => studyActions.addEntry(
+                                              _studyDraftForPosition(
+                                                bundle,
+                                                playback.displayedPositionMs,
+                                                ReaderStudyEntryType.bookmark,
+                                              ),
+                                            ),
+                                      onAddHighlight: bundle == null
+                                          ? null
+                                          : () => studyActions.addEntry(
+                                              _studyDraftForPosition(
+                                                bundle,
+                                                playback.displayedPositionMs,
+                                                ReaderStudyEntryType.highlight,
+                                              ),
+                                            ),
+                                      onAddNote: bundle == null
+                                          ? null
+                                          : () => _showNoteComposerSheet(
+                                              context,
+                                              onSave: (note) =>
+                                                  studyActions.addEntry(
+                                                    _studyDraftForPosition(
+                                                      bundle,
+                                                      playback
+                                                          .displayedPositionMs,
+                                                      ReaderStudyEntryType.note,
+                                                      note: note,
+                                                    ),
+                                                  ),
+                                            ),
+                                      onOpenReviewTray: bundle == null
+                                          ? null
+                                          : () => _showReviewTraySheet(
+                                              context,
+                                              studyEntries.asData?.value ??
+                                                  const [],
+                                              controller.seekTo,
+                                              studyActions.removeEntry,
+                                            ),
+                                      onApplyPreset: controller.applyPreset,
+                                      onMarkLoopStart: controller.markLoopStart,
+                                      onMarkLoopEnd: controller.markLoopEnd,
+                                      onClearLoop: controller.clearLoop,
                                     );
 
                                     if (isWide) {
@@ -297,14 +364,15 @@ class ReaderScreen extends ConsumerWidget {
                                                             ?.value ??
                                                         const [],
                                                   ),
-                                              onTokenTap: (token) =>
-                                                  controller.seekTo(
-                                                    token.startMs,
-                                                  ),
+                                              onTokenTap: (token) => controller
+                                                  .seekTo(token.startMs),
                                             ),
                                           ),
                                           const SizedBox(width: 16),
-                                          SizedBox(width: 320, child: controlPanel),
+                                          SizedBox(
+                                            width: 320,
+                                            child: controlPanel,
+                                          ),
                                         ],
                                       );
                                     }
@@ -314,33 +382,68 @@ class ReaderScreen extends ConsumerWidget {
                                             .clamp(360.0, 680.0)
                                             .toDouble();
 
-                                    return ListView(
-                                      children: [
-                                        SizedBox(
-                                          height: readerHeight,
-                                          child: _ReaderStage(
-                                            project: project,
-                                            playback: playback,
-                                            onRetry: () => ref.invalidate(
-                                              readerProjectProvider,
-                                            ),
-                                            settings: activeSettings,
-                                            onOpenConnectionSettings: () =>
-                                                _showConnectionSettingsSheet(
-                                                  context,
-                                                  activeSettings,
-                                                  recentConnections
-                                                          .asData
-                                                          ?.value ??
-                                                      const [],
-                                                ),
-                                            onTokenTap: (token) =>
-                                                controller.seekTo(token.startMs),
-                                          ),
+                                    return _ReaderMobileLayout(
+                                      project: project,
+                                      bundle: bundle,
+                                      settings: activeSettings,
+                                      playback: playback,
+                                      stageHeight: readerHeight,
+                                      stage: _ReaderStage(
+                                        project: project,
+                                        playback: playback,
+                                        onRetry: () => ref.invalidate(
+                                          readerProjectProvider,
                                         ),
-                                        const SizedBox(height: 16),
-                                        controlPanel,
-                                      ],
+                                        settings: activeSettings,
+                                        onOpenConnectionSettings: () =>
+                                            _showConnectionSettingsSheet(
+                                              context,
+                                              activeSettings,
+                                              recentConnections.asData?.value ??
+                                                  const [],
+                                            ),
+                                        onTokenTap: (token) =>
+                                            controller.seekTo(token.startMs),
+                                      ),
+                                      controlPanel: controlPanel,
+                                      onToggleTheme: controller.toggleTheme,
+                                      onOpenConnectionSettings: () =>
+                                          _showConnectionSettingsSheet(
+                                            context,
+                                            activeSettings,
+                                            recentConnections.asData?.value ??
+                                                const [],
+                                          ),
+                                      onOpenNavigation: bundle == null
+                                          ? null
+                                          : () => _showNavigationSheet(
+                                              context,
+                                              bundle,
+                                              controller.seekTo,
+                                            ),
+                                      onOpenGapInspector: bundle == null
+                                          ? null
+                                          : () => _showGapInspectorSheet(
+                                              context,
+                                              bundle,
+                                              playback.displayedPositionMs,
+                                              controller.seekTo,
+                                            ),
+                                      onTogglePlayback: bundle == null
+                                          ? null
+                                          : () => controller.togglePlayback(
+                                              bundle
+                                                  .syncArtifact
+                                                  .totalDurationMs,
+                                            ),
+                                      onRewind: controller.rewind15Seconds,
+                                      onForward: controller.forward15Seconds,
+                                      onSeekStart: controller.beginScrub,
+                                      onSeekUpdate: controller.updateScrub,
+                                      onSeekCommit: controller.commitScrub,
+                                      onStartBook: playback.hasLeadingMatter
+                                          ? controller.seekToContentStart
+                                          : null,
                                     );
                                   },
                                 ),
@@ -527,6 +630,14 @@ class _ReaderStateStrip extends StatelessWidget {
 
   static _ReaderStateSummary? _stateSummary(ReaderProjectBundle bundle) {
     final fallback = switch (bundle.source) {
+      ReaderContentSource.selectionRequired => _ReaderStateSummary(
+        title: 'Choose a project first',
+        message:
+            bundle.statusMessage ??
+            'Pick a backend target or import a book before opening the reader.',
+        canRefresh: false,
+        isProblem: false,
+      ),
       ReaderContentSource.offlineCache => null,
       ReaderContentSource.artifactPending => _ReaderStateSummary(
         title: 'Artifacts still processing',
@@ -567,6 +678,414 @@ class _ReaderStateSummary {
   final String message;
   final bool canRefresh;
   final bool isProblem;
+}
+
+class _ReaderMobileScaffold extends StatelessWidget {
+  const _ReaderMobileScaffold({
+    required this.project,
+    required this.bundle,
+    required this.settings,
+    required this.playback,
+    required this.latestEvent,
+    required this.audioDownload,
+    required this.studyEntries,
+    required this.onRefresh,
+    required this.onOpenConnectionSettings,
+    required this.onOpenNavigation,
+    required this.onOpenGapInspector,
+    required this.onToggleTheme,
+    required this.onTogglePlayback,
+    required this.onSeekStart,
+    required this.onSeekUpdate,
+    required this.onSeekCommit,
+    required this.onRewind,
+    required this.onForward,
+    required this.onSetSpeed,
+    required this.onSetFontScale,
+    required this.onSetLineHeight,
+    required this.onSetParagraphSpacing,
+    required this.onToggleFollowPlayback,
+    required this.onToggleHighContrast,
+    required this.onToggleLeftHanded,
+    required this.onStartBook,
+    required this.onDownload,
+    required this.onRemove,
+    required this.onTokenTap,
+  });
+
+  final AsyncValue<ReaderProjectBundle> project;
+  final ReaderProjectBundle? bundle;
+  final RuntimeConnectionSettings settings;
+  final ReaderPlaybackState playback;
+  final Map<String, dynamic>? latestEvent;
+  final ReaderAudioDownloadState audioDownload;
+  final List<ReaderStudyEntry> studyEntries;
+  final VoidCallback onRefresh;
+  final VoidCallback onOpenConnectionSettings;
+  final VoidCallback? onOpenNavigation;
+  final VoidCallback? onOpenGapInspector;
+  final VoidCallback onToggleTheme;
+  final VoidCallback? onTogglePlayback;
+  final void Function(double) onSeekStart;
+  final void Function(double) onSeekUpdate;
+  final Future<void> Function(double) onSeekCommit;
+  final VoidCallback onRewind;
+  final VoidCallback onForward;
+  final ValueChanged<double> onSetSpeed;
+  final ValueChanged<double> onSetFontScale;
+  final ValueChanged<double> onSetLineHeight;
+  final ValueChanged<double> onSetParagraphSpacing;
+  final VoidCallback onToggleFollowPlayback;
+  final VoidCallback onToggleHighContrast;
+  final VoidCallback onToggleLeftHanded;
+  final Future<void> Function() onStartBook;
+  final Future<void> Function() onDownload;
+  final Future<void> Function() onRemove;
+  final ValueChanged<SyncToken> onTokenTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final theme = Theme.of(context);
+    final currentBundle = bundle;
+    final title =
+        currentBundle != null &&
+            currentBundle.readerModel.title.trim().isNotEmpty
+        ? currentBundle.readerModel.title
+        : 'Reader';
+    final subtitle = switch (currentBundle?.source) {
+      ReaderContentSource.selectionRequired =>
+        'Connect to a server, then choose or import a book from Library.',
+      ReaderContentSource.offlineCache =>
+        'Offline cache loaded on this device.',
+      ReaderContentSource.artifactPending =>
+        'Sync is still processing. You can leave this screen and come back later.',
+      ReaderContentSource.projectError =>
+        'This project needs attention before it can be read cleanly.',
+      ReaderContentSource.demoFallback => 'Demo content is active.',
+      ReaderContentSource.api || null => settings.shortHost,
+    };
+    void showReaderSettingsSheet() {
+      showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (context) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Reader settings', style: theme.textTheme.headlineSmall),
+              const SizedBox(height: 12),
+              _CompactSliderRow(
+                label: 'Text size',
+                value: playback.fontScale,
+                min: 0.85,
+                max: 1.5,
+                onChanged: onSetFontScale,
+              ),
+              _CompactSliderRow(
+                label: 'Line height',
+                value: playback.lineHeight,
+                min: 1.3,
+                max: 2.0,
+                onChanged: onSetLineHeight,
+              ),
+              _CompactSliderRow(
+                label: 'Paragraph spacing',
+                value: playback.paragraphSpacing,
+                min: 0.8,
+                max: 1.8,
+                onChanged: onSetParagraphSpacing,
+              ),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: playback.followPlayback,
+                onChanged: (_) => onToggleFollowPlayback(),
+                title: const Text('Follow playback'),
+              ),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: playback.highContrastMode,
+                onChanged: (_) => onToggleHighContrast(),
+                title: const Text('High contrast'),
+              ),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: playback.leftHandedMode,
+                onChanged: (_) => onToggleLeftHanded(),
+                title: const Text('Left-handed controls'),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      );
+    }
+
+    void showReaderDetailsSheet() {
+      showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (context) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Project details', style: theme.textTheme.headlineSmall),
+                const SizedBox(height: 12),
+                if (currentBundle != null)
+                  _ReaderDiagnosticsBanner(
+                    bundle: currentBundle,
+                    playback: playback,
+                  ),
+                const SizedBox(height: 12),
+                if (currentBundle != null && currentBundle.totalAudioAssets > 0)
+                  _AudioDownloadBanner(
+                    bundle: currentBundle,
+                    downloadState: audioDownload,
+                    onDownload: onDownload,
+                    onRemove: onRemove,
+                  ),
+                if (latestEvent != null) ...[
+                  const SizedBox(height: 12),
+                  _JobEventBanner(event: latestEvent!),
+                ],
+                if (onOpenGapInspector != null) ...[
+                  const SizedBox(height: 12),
+                  FilledButton.tonalIcon(
+                    onPressed: onOpenGapInspector,
+                    icon: const Icon(Icons.radar_rounded),
+                    label: const Text('Open sync inspector'),
+                  ),
+                ],
+                if (studyEntries.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    '${studyEntries.length} saved study items on this device.',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: palette.backgroundBase,
+      appBar: AppBar(
+        backgroundColor: palette.backgroundBase,
+        surfaceTintColor: Colors.transparent,
+        titleSpacing: 18,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleLarge,
+            ),
+            Text(
+              subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: palette.textMuted,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            onPressed: onOpenNavigation,
+            icon: const Icon(Icons.toc_rounded),
+            tooltip: 'Contents',
+          ),
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              switch (value) {
+                case 'connection':
+                  onOpenConnectionSettings();
+                case 'details':
+                  showReaderDetailsSheet();
+                case 'settings':
+                  showReaderSettingsSheet();
+                case 'theme':
+                  onToggleTheme();
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'settings', child: Text('Reader settings')),
+              PopupMenuItem(value: 'details', child: Text('Project details')),
+              PopupMenuItem(value: 'connection', child: Text('Connection')),
+              PopupMenuItem(value: 'theme', child: Text('Toggle theme')),
+            ],
+          ),
+        ],
+      ),
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            if (currentBundle != null &&
+                currentBundle.source != ReaderContentSource.api)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                child: _SourceBanner(
+                  source: currentBundle.source,
+                  message: currentBundle.statusMessage,
+                  onRefresh: onRefresh,
+                ),
+              ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: _ReaderStage(
+                  project: project,
+                  playback: playback,
+                  onRetry: onRefresh,
+                  settings: settings,
+                  onOpenConnectionSettings: onOpenConnectionSettings,
+                  onTokenTap: onTokenTap,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: palette.backgroundElevated,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: palette.borderSubtle),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: onRewind,
+                        icon: const Icon(Icons.replay_10_rounded),
+                      ),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: onTogglePlayback,
+                          icon: Icon(
+                            playback.isPlaying
+                                ? Icons.pause_circle_filled_rounded
+                                : Icons.play_circle_fill_rounded,
+                          ),
+                          label: Text(playback.isPlaying ? 'Pause' : 'Play'),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: onForward,
+                        icon: const Icon(Icons.forward_10_rounded),
+                      ),
+                    ],
+                  ),
+                  Slider(
+                    value: playback.totalDurationMs == 0
+                        ? 0
+                        : playback.displayedPositionMs
+                              .clamp(0, playback.totalDurationMs)
+                              .toDouble(),
+                    min: 0,
+                    max: playback.totalDurationMs <= 0
+                        ? 1
+                        : playback.totalDurationMs.toDouble(),
+                    onChangeStart: onSeekStart,
+                    onChanged: onSeekUpdate,
+                    onChangeEnd: (value) => onSeekCommit(value),
+                  ),
+                  Row(
+                    children: [
+                      Text(
+                        ReaderScreen._formatMs(playback.displayedPositionMs),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                      const Spacer(),
+                      Text(
+                        ReaderScreen._formatMs(playback.totalDurationMs),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      _DiagnosticsChip(
+                        label: '${playback.speed.toStringAsFixed(1)}x pace',
+                      ),
+                      if (playback.hasLeadingMatter)
+                        FilledButton.tonalIcon(
+                          onPressed: () => onStartBook(),
+                          icon: const Icon(Icons.skip_next_rounded),
+                          label: const Text('Start book'),
+                        ),
+                      IconButton(
+                        onPressed: showReaderDetailsSheet,
+                        icon: const Icon(Icons.info_outline_rounded),
+                        tooltip: 'Project details',
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CompactSliderRow extends StatelessWidget {
+  const _CompactSliderRow({
+    required this.label,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+  });
+
+  final String label;
+  final double value;
+  final double min;
+  final double max;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label),
+        Slider(
+          value: value.clamp(min, max),
+          min: min,
+          max: max,
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
 }
 
 class _ReaderTransitionCard extends StatelessWidget {
@@ -648,6 +1167,8 @@ class _ReaderHeroBar extends StatelessWidget {
     final subtitle = project.when(
       data: (bundle) => bundle.source == ReaderContentSource.demoFallback
           ? 'Demo reader loaded while the backend is unavailable.'
+          : bundle.source == ReaderContentSource.selectionRequired
+          ? 'Choose a project from Library before opening the reader.'
           : bundle.readerModel.sections.isEmpty
           ? 'The project is connected, but reader artifacts are still thin.'
           : 'Synchronized reading for ${bundle.projectId}.',
@@ -799,24 +1320,30 @@ class _ReaderStage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = ReaderPalette.of(context);
+    final isCompact = MediaQuery.sizeOf(context).width < 1180;
+    final stageRadius = BorderRadius.circular(isCompact ? 22 : 28);
     return Semantics(
       container: true,
       label: 'Reader stage',
       child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: palette.borderSubtle),
-          color: palette.backgroundElevated,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 18,
-              offset: const Offset(0, 10),
-            ),
-          ],
+          borderRadius: stageRadius,
+          border: isCompact ? null : Border.all(color: palette.borderSubtle),
+          color: isCompact
+              ? palette.backgroundBase
+              : palette.backgroundElevated,
+          boxShadow: isCompact
+              ? null
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 18,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: stageRadius,
           child: project.when(
             data: (bundle) => _ReaderLoadedView(
               bundle: bundle,
@@ -825,7 +1352,7 @@ class _ReaderStage extends StatelessWidget {
             ),
             loading: () => _ReaderLoadingView(settings: settings),
             error: (error, _) => _ReaderErrorView(
-              message: error.toString(),
+              message: formatSyncApiError(error),
               settings: settings,
               onRetry: onRetry,
               onOpenConnectionSettings: onOpenConnectionSettings,
@@ -833,6 +1360,276 @@ class _ReaderStage extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ReaderMobileLayout extends StatelessWidget {
+  const _ReaderMobileLayout({
+    required this.project,
+    required this.bundle,
+    required this.settings,
+    required this.playback,
+    required this.stageHeight,
+    required this.stage,
+    required this.controlPanel,
+    required this.onToggleTheme,
+    required this.onOpenConnectionSettings,
+    required this.onOpenNavigation,
+    required this.onOpenGapInspector,
+    required this.onTogglePlayback,
+    required this.onRewind,
+    required this.onForward,
+    required this.onSeekStart,
+    required this.onSeekUpdate,
+    required this.onSeekCommit,
+    required this.onStartBook,
+  });
+
+  final AsyncValue<ReaderProjectBundle> project;
+  final ReaderProjectBundle? bundle;
+  final RuntimeConnectionSettings settings;
+  final ReaderPlaybackState playback;
+  final double stageHeight;
+  final Widget stage;
+  final Widget controlPanel;
+  final VoidCallback onToggleTheme;
+  final VoidCallback onOpenConnectionSettings;
+  final VoidCallback? onOpenNavigation;
+  final VoidCallback? onOpenGapInspector;
+  final VoidCallback? onTogglePlayback;
+  final VoidCallback onRewind;
+  final VoidCallback onForward;
+  final void Function(double) onSeekStart;
+  final void Function(double) onSeekUpdate;
+  final Future<void> Function(double) onSeekCommit;
+  final Future<void> Function()? onStartBook;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final theme = Theme.of(context);
+    final title = project.maybeWhen(
+      data: (value) => value.readerModel.title,
+      orElse: () => settings.normalizedProjectId,
+    );
+    final subtitle = bundle == null
+        ? 'Connect a project, then read and listen from one focused mobile surface.'
+        : switch (bundle!.source) {
+            ReaderContentSource.selectionRequired =>
+              'Choose a project from Library before opening the reader',
+            ReaderContentSource.api => 'Live sync from ${settings.shortHost}',
+            ReaderContentSource.offlineCache =>
+              'Offline cache from this device',
+            ReaderContentSource.artifactPending =>
+              'Artifacts are still processing',
+            ReaderContentSource.projectError =>
+              'Latest artifacts need attention',
+            ReaderContentSource.demoFallback =>
+              'Demo content while the backend is unavailable',
+          };
+
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          decoration: BoxDecoration(
+            color: palette.backgroundElevated,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: palette.borderSubtle),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: palette.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: onToggleTheme,
+                    icon: Icon(
+                      playback.themeMode == ThemeMode.light
+                          ? Icons.nightlight_round
+                          : Icons.wb_sunny_outlined,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: onOpenConnectionSettings,
+                    icon: const Icon(Icons.tune_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _DiagnosticsChip(label: settings.shortHost),
+                  if (bundle != null)
+                    _DiagnosticsChip(
+                      label: _ReaderDiagnosticsBanner._artifactSourceLabel(
+                        bundle!.source,
+                      ),
+                    ),
+                  if (bundle?.hasAnyAudio == true)
+                    _DiagnosticsChip(
+                      label: bundle!.hasCompleteOfflineAudio
+                          ? 'Offline audio'
+                          : bundle!.audioUrls.isNotEmpty
+                          ? 'Audio ready'
+                          : 'Text only',
+                    ),
+                ],
+              ),
+              if (onStartBook != null &&
+                  bundle != null &&
+                  playback.displayedPositionMs <
+                      bundle!.syncArtifact.contentStartMs) ...[
+                const SizedBox(height: 12),
+                FilledButton.tonalIcon(
+                  onPressed: onStartBook == null ? null : () => onStartBook!(),
+                  icon: const Icon(Icons.skip_next_rounded),
+                  label: const Text('Skip Intro'),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        SizedBox(height: stageHeight, child: stage),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+          decoration: BoxDecoration(
+            color: palette.backgroundElevated,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: palette.borderSubtle),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      ReaderScreen._formatMs(playback.displayedPositionMs),
+                      style: theme.textTheme.labelLarge,
+                    ),
+                  ),
+                  if (bundle != null)
+                    Text(
+                      ReaderScreen._formatMs(
+                        bundle!.syncArtifact.totalDurationMs,
+                      ),
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: palette.textMuted,
+                      ),
+                    ),
+                ],
+              ),
+              if (bundle != null) ...[
+                Slider(
+                  value: playback.displayedPositionMs
+                      .clamp(0, bundle!.syncArtifact.totalDurationMs)
+                      .toDouble(),
+                  max: bundle!.syncArtifact.totalDurationMs > 0
+                      ? bundle!.syncArtifact.totalDurationMs.toDouble()
+                      : 1,
+                  onChangeStart: onSeekStart,
+                  onChanged: onSeekUpdate,
+                  onChangeEnd: onSeekCommit,
+                ),
+              ],
+              Row(
+                children: [
+                  IconButton(
+                    onPressed: onRewind,
+                    icon: const Icon(Icons.replay_10_rounded),
+                  ),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: onTogglePlayback,
+                      icon: Icon(
+                        playback.isPlaying
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                      ),
+                      label: Text(playback.isPlaying ? 'Pause' : 'Play'),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: onForward,
+                    icon: const Icon(Icons.forward_10_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: onOpenNavigation,
+                      icon: const Icon(Icons.auto_stories_rounded),
+                      label: const Text('Navigate'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: () => showModalBottomSheet<void>(
+                        context: context,
+                        isScrollControlled: true,
+                        showDragHandle: true,
+                        backgroundColor: theme.colorScheme.surface,
+                        builder: (context) => SafeArea(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            child: controlPanel,
+                          ),
+                        ),
+                      ),
+                      icon: const Icon(Icons.tune_rounded),
+                      label: const Text('Tools'),
+                    ),
+                  ),
+                ],
+              ),
+              if (onOpenGapInspector != null) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: onOpenGapInspector,
+                    icon: const Icon(Icons.radar_rounded),
+                    label: const Text('Inspect sync quality'),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1469,6 +2266,7 @@ class _ConnectionSettingsSheetState
   late final TextEditingController _authTokenController;
   final _formKey = GlobalKey<FormState>();
   bool _isSaving = false;
+  bool _showAdvancedTarget = false;
 
   @override
   void initState() {
@@ -1482,6 +2280,7 @@ class _ConnectionSettingsSheetState
     _authTokenController = TextEditingController(
       text: widget.initialSettings.authToken,
     );
+    _showAdvancedTarget = widget.initialSettings.projectId.trim().isNotEmpty;
   }
 
   @override
@@ -1511,10 +2310,13 @@ class _ConnectionSettingsSheetState
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Connection Settings', style: theme.textTheme.headlineSmall),
+              Text(
+                'Connect to your server',
+                style: theme.textTheme.headlineSmall,
+              ),
               const SizedBox(height: 8),
               Text(
-                'These values stay on this device only. Point the release APK at your own server, token, and project without rebuilding.',
+                'These values stay on this device only. For normal use, just connect to the server and pick a book from Library.',
                 style: theme.textTheme.bodyMedium,
               ),
               if (_connectionHint(currentDraft) case final hint?) ...[
@@ -1523,7 +2325,7 @@ class _ConnectionSettingsSheetState
               ],
               if (widget.recentConnections.isNotEmpty) ...[
                 const SizedBox(height: 20),
-                Text('Recent Connections', style: theme.textTheme.titleMedium),
+                Text('Recent Servers', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 10),
                 Wrap(
                   spacing: 10,
@@ -1531,9 +2333,7 @@ class _ConnectionSettingsSheetState
                   children: [
                     for (final recent in widget.recentConnections)
                       InputChip(
-                        label: Text(
-                          '${recent.shortHost} • ${recent.normalizedProjectId}',
-                        ),
+                        label: Text(recent.shortHost),
                         avatar: Icon(
                           recent.hasAuthToken
                               ? Icons.lock_outline_rounded
@@ -1572,18 +2372,6 @@ class _ConnectionSettingsSheetState
               ),
               const SizedBox(height: 14),
               TextFormField(
-                controller: _projectIdController,
-                decoration: const InputDecoration(labelText: 'Project ID'),
-                validator: (value) {
-                  if ((value?.trim() ?? '').isEmpty) {
-                    return 'Project ID is required.';
-                  }
-                  return null;
-                },
-                onChanged: (_) => setState(() {}),
-              ),
-              const SizedBox(height: 14),
-              TextFormField(
                 controller: _authTokenController,
                 decoration: const InputDecoration(
                   labelText: 'Auth Token',
@@ -1592,9 +2380,31 @@ class _ConnectionSettingsSheetState
                 obscureText: true,
                 onChanged: (_) => setState(() {}),
               ),
+              const SizedBox(height: 10),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: _showAdvancedTarget,
+                title: const Text('Advanced: open one book directly'),
+                subtitle: const Text(
+                  'Most people can ignore this. After connecting, choose a book from Library instead.',
+                ),
+                onChanged: (value) =>
+                    setState(() => _showAdvancedTarget = value),
+              ),
+              if (_showAdvancedTarget) ...[
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _projectIdController,
+                  decoration: const InputDecoration(
+                    labelText: 'Project ID',
+                    hintText: 'Optional advanced target',
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ],
               const SizedBox(height: 16),
               Text(
-                'Privacy: server URL, project ID, and token stay on this device. They are never committed or uploaded by the app.',
+                'Privacy: server URL, token, and any optional direct-book target stay on this device. They are never committed or uploaded by the app.',
                 style: theme.textTheme.bodySmall,
               ),
               const SizedBox(height: 18),
@@ -1625,6 +2435,7 @@ class _ConnectionSettingsSheetState
     _apiBaseUrlController.text = recent.normalizedApiBaseUrl;
     _projectIdController.text = recent.normalizedProjectId;
     _authTokenController.text = recent.authToken;
+    _showAdvancedTarget = recent.normalizedProjectId.isNotEmpty;
     setState(() {});
   }
 
@@ -1649,7 +2460,7 @@ class _ConnectionSettingsSheetState
     setState(() => _isSaving = true);
     final settings = RuntimeConnectionSettings(
       apiBaseUrl: _apiBaseUrlController.text.trim(),
-      projectId: _projectIdController.text.trim(),
+      projectId: _showAdvancedTarget ? _projectIdController.text.trim() : '',
       authToken: _authTokenController.text.trim(),
     );
     await ref.read(runtimeConnectionSettingsProvider.notifier).save(settings);
@@ -1912,6 +2723,7 @@ class _ReaderLoadingView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = ReaderPalette.of(context);
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
       child: Container(
@@ -1924,36 +2736,67 @@ class _ReaderLoadingView extends StatelessWidget {
         ),
         child: SingleChildScrollView(
           child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 18),
-            Text(
-              'Opening reader workspace',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Connecting to ${settings.shortHost} for project ${settings.normalizedProjectId}.',
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: const [
-                _DiagnosticsChip(label: 'Connect to backend'),
-                _DiagnosticsChip(label: 'Load reader model'),
-                _DiagnosticsChip(label: 'Load sync timeline'),
-              ],
-            ),
-            if (_connectionHint(settings) case final hint?) ...[
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 18),
+              Text('Preparing your book', style: theme.textTheme.headlineSmall),
+              const SizedBox(height: 10),
+              Text(
+                'We are opening ${settings.normalizedProjectId} from ${settings.shortHost} and checking whether synced audio is ready.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: palette.textMuted,
+                ),
+              ),
               const SizedBox(height: 16),
-              _ConnectionHintBanner(message: hint),
-            ],
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                decoration: BoxDecoration(
+                  color: palette.backgroundBase,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: palette.borderSubtle),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'What happens next',
+                      style: theme.textTheme.labelLarge,
+                    ),
+                    const SizedBox(height: 10),
+                    const _StatusStep(
+                      step: '1',
+                      title: 'Open your book',
+                      detail: 'Load the reader copy and progress state.',
+                    ),
+                    const SizedBox(height: 10),
+                    const _StatusStep(
+                      step: '2',
+                      title: 'Attach sync data',
+                      detail: 'Check whether word timings are ready.',
+                    ),
+                    const SizedBox(height: 10),
+                    const _StatusStep(
+                      step: '3',
+                      title: 'Unlock playback',
+                      detail: 'Use local or streamed audio when available.',
+                    ),
+                  ],
+                ),
+              ),
+              if (_connectionHint(settings) case final hint?) ...[
+                const SizedBox(height: 16),
+                _ConnectionHintBanner(message: hint),
+              ],
+              const SizedBox(height: 14),
+              Text(
+                'If you just imported this book, it is normal for the first open to take a moment.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: palette.textMuted,
+                ),
+              ),
             ],
           ),
         ),
@@ -2502,6 +3345,7 @@ class _SourceBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = ReaderPalette.of(context);
+    final theme = Theme.of(context);
     final isFallback =
         source == ReaderContentSource.demoFallback ||
         source == ReaderContentSource.offlineCache;
@@ -2520,28 +3364,114 @@ class _SourceBanner extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: palette.borderSubtle),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Text(
-              message ??
-                  switch (source) {
-                    ReaderContentSource.api => 'Backend project loaded.',
-                    ReaderContentSource.offlineCache =>
-                      'Cached reader artifacts loaded from this device.',
-                    ReaderContentSource.artifactPending =>
-                      'Backend project is available, but reader artifacts are still processing.',
-                    ReaderContentSource.projectError =>
-                      'Backend project loaded, but the latest reader artifacts are incomplete.',
-                    ReaderContentSource.demoFallback =>
-                      'Demo data loaded because the API is unavailable.',
-                  },
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: palette.backgroundElevated.withValues(alpha: 0.78),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  _sourceIcon(source),
+                  size: 18,
+                  color: palette.textPrimary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _sourceHeadline(source),
+                      style: theme.textTheme.labelLarge,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      message ?? _sourceDetail(source),
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (_sourceFootnote(source) case final footnote?) ...[
+            const SizedBox(height: 10),
+            Text(
+              footnote,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: palette.textMuted,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: onRefresh,
+              child: const Text('Refresh'),
             ),
           ),
-          TextButton(onPressed: onRefresh, child: const Text('Refresh')),
         ],
       ),
     );
+  }
+
+  static IconData _sourceIcon(ReaderContentSource source) {
+    return switch (source) {
+      ReaderContentSource.api => Icons.check_circle_outline_rounded,
+      ReaderContentSource.selectionRequired => Icons.menu_book_rounded,
+      ReaderContentSource.offlineCache => Icons.offline_pin_rounded,
+      ReaderContentSource.artifactPending => Icons.hourglass_top_rounded,
+      ReaderContentSource.projectError => Icons.error_outline_rounded,
+      ReaderContentSource.demoFallback => Icons.wifi_off_rounded,
+    };
+  }
+
+  static String _sourceHeadline(ReaderContentSource source) {
+    return switch (source) {
+      ReaderContentSource.api => 'Ready to read',
+      ReaderContentSource.selectionRequired => 'Choose a book first',
+      ReaderContentSource.offlineCache => 'Offline copy opened',
+      ReaderContentSource.artifactPending => 'Your book is still syncing',
+      ReaderContentSource.projectError => 'This book needs another sync pass',
+      ReaderContentSource.demoFallback => 'Demo book is open for now',
+    };
+  }
+
+  static String _sourceDetail(ReaderContentSource source) {
+    return switch (source) {
+      ReaderContentSource.api =>
+        'Everything needed for reading is loaded from your backend.',
+      ReaderContentSource.selectionRequired =>
+        'Pick a project from Library to bring the reader to life.',
+      ReaderContentSource.offlineCache =>
+        'You can keep reading from this device even if the backend is offline.',
+      ReaderContentSource.artifactPending =>
+        'The upload finished, but the reader text or sync timeline is not ready yet.',
+      ReaderContentSource.projectError =>
+        'The latest artifacts are incomplete, so this screen cannot render the finished book yet.',
+      ReaderContentSource.demoFallback =>
+        'Connect your own backend to replace the demo content with a real project.',
+    };
+  }
+
+  static String? _sourceFootnote(ReaderContentSource source) {
+    return switch (source) {
+      ReaderContentSource.artifactPending =>
+        'You can stay here and refresh, or return from Library after the worker finishes.',
+      ReaderContentSource.projectError =>
+        'Open the project again after a retry or a fresh alignment run.',
+      _ => null,
+    };
   }
 }
 
@@ -2604,7 +3534,7 @@ class _AudioDownloadBanner extends StatelessWidget {
       _ when bundle.cachedAudioAssets > 0 =>
         'Partial offline audio: ${bundle.cachedAudioAssets} of ${bundle.totalAudioAssets} files downloaded.',
       _ =>
-        'Audio will stream from the backend until you download it for offline playback.',
+        'You can start reading now. Download audio when you want full offline playback.',
     };
 
     final trailingMessage = switch (downloadState.status) {
@@ -2627,8 +3557,26 @@ class _AudioDownloadBanner extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(message, style: theme.textTheme.bodyMedium),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _DiagnosticsChip(
+                label: bundle.hasCompleteOfflineAudio
+                    ? 'Offline listening ready'
+                    : bundle.cachedAudioAssets > 0
+                    ? '${bundle.cachedAudioAssets}/${bundle.totalAudioAssets} files saved'
+                    : 'Streaming by default',
+              ),
+              if (bundle.totalAudioAssets > 0)
+                _DiagnosticsChip(
+                  label: '${bundle.totalAudioAssets} audio files',
+                ),
+            ],
+          ),
           if (trailingMessage != null) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text(
               trailingMessage,
               style: theme.textTheme.labelMedium?.copyWith(
@@ -2704,7 +3652,7 @@ class _ContentWindowBanner extends StatelessWidget {
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
             child: Text(
-              'Intro detected before the book starts at '
+              'Audiobook intro detected before the book starts at '
               '${ReaderScreen._formatMs(syncArtifact.contentStartMs)}'
               ' (${ReaderScreen._formatMs(remainingMs)} away).',
               style: Theme.of(context).textTheme.labelLarge,
@@ -2715,6 +3663,56 @@ class _ContentWindowBanner extends StatelessWidget {
             TextButton(onPressed: onJumpToOutro, child: const Text('Outro')),
         ],
       ),
+    );
+  }
+}
+
+class _StatusStep extends StatelessWidget {
+  const _StatusStep({
+    required this.step,
+    required this.title,
+    required this.detail,
+  });
+
+  final String step;
+  final String title;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: palette.accentSoft,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: palette.borderSubtle),
+          ),
+          alignment: Alignment.center,
+          child: Text(step, style: theme.textTheme.labelLarge),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: theme.textTheme.labelLarge),
+              const SizedBox(height: 2),
+              Text(
+                detail,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: palette.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -2834,6 +3832,7 @@ class _ReaderDiagnosticsBanner extends StatelessWidget {
 
   static String _artifactSourceLabel(ReaderContentSource source) {
     return switch (source) {
+      ReaderContentSource.selectionRequired => 'Artifacts: choose project',
       ReaderContentSource.api => 'Artifacts: live API',
       ReaderContentSource.offlineCache => 'Artifacts: offline cache',
       ReaderContentSource.artifactPending => 'Artifacts: pending',
@@ -3453,8 +4452,7 @@ class _ParagraphBlock extends StatelessWidget {
                 context,
                 token: paragraph.tokens[index],
                 syncToken:
-                    syncIndex[
-                        '${section.id}:${paragraph.index}:${paragraph.tokens[index].index}'],
+                    syncIndex['${section.id}:${paragraph.index}:${paragraph.tokens[index].index}'],
                 isActive:
                     activeLocationKey ==
                     '${section.id}:${paragraph.index}:${paragraph.tokens[index].index}',

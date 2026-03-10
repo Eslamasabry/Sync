@@ -8,14 +8,17 @@ class FileReaderLocationStore implements ReaderLocationStore {
   final Directory? baseDirectory;
 
   @override
-  Future<ReaderLocationSnapshot?> loadProject(String projectId) async => null;
+  Future<ReaderLocationSnapshot?> loadProject(
+    String projectId, {
+    String? apiBaseUrl,
+  }) async => null;
 
   @override
   Future<List<ReaderLocationSnapshot>> loadRecent() async =>
       const <ReaderLocationSnapshot>[];
 
   @override
-  Future<void> removeProject(String projectId) async {}
+  Future<void> removeProject(String projectId, {String? apiBaseUrl}) async {}
 
   @override
   Future<void> storeProject(ReaderLocationSnapshot snapshot) async {}

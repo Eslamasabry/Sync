@@ -3,11 +3,16 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from sync_backend.api.errors import ApiError, api_error_handler
+from sync_backend.api.errors import (
+    ApiError,
+    api_error_handler,
+    request_validation_error_handler,
+)
 from sync_backend.api.realtime import broker
 from sync_backend.api.router import build_api_router
 from sync_backend.config import get_settings
@@ -67,6 +72,7 @@ def create_app() -> FastAPI:
             allowed_hosts=settings.trusted_host_values,
         )
     app.add_exception_handler(ApiError, api_error_handler)
+    app.add_exception_handler(RequestValidationError, request_validation_error_handler)
     app.include_router(build_api_router(), prefix=settings.api_v1_prefix)
     return app
 

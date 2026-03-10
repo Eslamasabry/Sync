@@ -9,6 +9,7 @@ import 'package:sync_flutter/core/config/app_config.dart';
 import 'package:sync_flutter/core/config/runtime_connection_settings.dart';
 import 'package:sync_flutter/core/config/runtime_connection_settings_controller.dart';
 import 'package:sync_flutter/core/config/runtime_connection_settings_storage_types.dart';
+import 'package:sync_flutter/core/navigation/home_shell_controller.dart';
 import 'package:sync_flutter/core/playback/playback_driver.dart';
 import 'package:sync_flutter/core/network/sync_api_client.dart';
 import 'package:sync_flutter/features/reader/data/reader_repository.dart';
@@ -118,8 +119,21 @@ class _MemoryReaderLocationStore implements ReaderLocationStore {
   final Map<String, ReaderLocationSnapshot> _items;
 
   @override
-  Future<ReaderLocationSnapshot?> loadProject(String projectId) async =>
-      _items[projectId];
+  Future<ReaderLocationSnapshot?> loadProject(
+    String projectId, {
+    String? apiBaseUrl,
+  }) async {
+    if (apiBaseUrl == null || apiBaseUrl.trim().isEmpty) {
+      return _items[projectId];
+    }
+    for (final item in _items.values) {
+      if (item.projectId == projectId &&
+          item.normalizedApiBaseUrl == apiBaseUrl.trim()) {
+        return item;
+      }
+    }
+    return null;
+  }
 
   @override
   Future<List<ReaderLocationSnapshot>> loadRecent() async {
@@ -129,8 +143,16 @@ class _MemoryReaderLocationStore implements ReaderLocationStore {
   }
 
   @override
-  Future<void> removeProject(String projectId) async {
-    _items.remove(projectId);
+  Future<void> removeProject(String projectId, {String? apiBaseUrl}) async {
+    if (apiBaseUrl == null || apiBaseUrl.trim().isEmpty) {
+      _items.remove(projectId);
+      return;
+    }
+    _items.removeWhere(
+      (_, item) =>
+          item.projectId == projectId &&
+          item.normalizedApiBaseUrl == apiBaseUrl.trim(),
+    );
   }
 
   @override
@@ -461,6 +483,17 @@ ProviderContainer _playbackContainer({
   final fakeDriver = driver ?? _FakePlaybackDriver();
   return ProviderContainer(
     overrides: [
+      runtimeConnectionSettingsStorageProvider.overrideWithValue(
+        _MemoryRuntimeConnectionSettingsStorage(
+          recent: const [
+            RuntimeConnectionSettings(
+              apiBaseUrl: 'http://localhost:8000/v1',
+              projectId: 'demo-book',
+              authToken: '',
+            ),
+          ],
+        ),
+      ),
       readerLocationStoreProvider.overrideWithValue(
         locationStore ?? _MemoryReaderLocationStore(),
       ),
@@ -605,12 +638,14 @@ void main() {
   });
 
   testWidgets('renders reader shell and playback controls', (tester) async {
-    await _pumpReaderApp(tester, repository: _FakeReaderRepository());
+    final container = await _pumpReaderApp(
+      tester,
+      repository: _FakeReaderRepository(),
+    );
+    container.read(homeTabProvider.notifier).showReader();
+    await tester.pumpAndSettle();
 
-    expect(find.textContaining('Live API'), findsOneWidget);
     expect(find.text('Moby-Dick'), findsAtLeastNWidgets(1));
-    expect(find.text('Speed'), findsOneWidget);
-    expect(find.text('Download Audio'), findsOneWidget);
     expect(find.text('Connection'), findsAtLeastNWidgets(1));
     expect(find.text('Navigate'), findsOneWidget);
   });
@@ -665,7 +700,10 @@ void main() {
       'Call',
     );
 
-    expect(afterStyle.backgroundColor, isNot(equals(beforeStyle.backgroundColor)));
+    expect(
+      afterStyle.backgroundColor,
+      isNot(equals(beforeStyle.backgroundColor)),
+    );
   });
 
   testWidgets('left-handed HUD moves the focus overlay to the lower left', (
@@ -704,8 +742,10 @@ void main() {
     await _pumpReaderApp(tester, repository: _FakeReaderRepository());
 
     final beforeSize =
-        _tokenStyleFromRichText(_readerParagraphRichText(tester), 'Call')
-            .fontSize ??
+        _tokenStyleFromRichText(
+          _readerParagraphRichText(tester),
+          'Call',
+        ).fontSize ??
         0;
 
     await tester.ensureVisible(find.text('Reading surface'));
@@ -718,8 +758,10 @@ void main() {
     await tester.pumpAndSettle();
 
     final afterSize =
-        _tokenStyleFromRichText(_readerParagraphRichText(tester), 'Call')
-            .fontSize ??
+        _tokenStyleFromRichText(
+          _readerParagraphRichText(tester),
+          'Call',
+        ).fontSize ??
         0;
 
     expect(afterSize, greaterThan(beforeSize));
@@ -736,7 +778,14 @@ void main() {
     expect(find.text('Contents'), findsOneWidget);
     expect(find.text('Loomings'), findsAtLeastNWidgets(1));
 
-    await tester.enterText(find.byType(TextField), 'Ishmael');
+    await tester.enterText(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.labelText == 'Search text',
+      ),
+      'Ishmael',
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Search Results'), findsOneWidget);
@@ -747,21 +796,31 @@ void main() {
     tester,
   ) async {
     final settingsStorage = _MemoryRuntimeConnectionSettingsStorage();
-    await _pumpReaderApp(
+    final container = await _pumpReaderApp(
       tester,
       repository: _FakeReaderRepository(),
       settingsStorage: settingsStorage,
     );
+    container.read(homeTabProvider.notifier).showReader();
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('Connection').first);
     await tester.pumpAndSettle();
 
     await tester.enterText(
-      find.byType(TextFormField).at(0),
+      find.widgetWithText(TextFormField, 'Backend URL'),
       'https://sync.example.ts.net/v1',
     );
-    await tester.enterText(find.byType(TextFormField).at(1), 'private-book');
-    await tester.enterText(find.byType(TextFormField).at(2), 'secret-token');
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Auth Token'),
+      'secret-token',
+    );
+    await tester.tap(find.text('Advanced: open one book directly'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Project ID'),
+      'private-book',
+    );
     await tester.tap(find.text('Save and Reload'));
     await tester.pumpAndSettle();
 
@@ -799,9 +858,9 @@ void main() {
     await tester.tap(find.text('Connection').first);
     await tester.pumpAndSettle();
 
-    expect(find.text('Recent Connections'), findsOneWidget);
-    expect(find.text('100.64.0.2:8000 • tailscale-book'), findsOneWidget);
-    expect(find.text('localhost:8000 • local-book'), findsOneWidget);
+    expect(find.text('Recent Servers'), findsOneWidget);
+    expect(find.text('100.64.0.2:8000'), findsWidgets);
+    expect(find.text('localhost:8000'), findsWidgets);
     expect(
       find.textContaining('localhost points to the phone itself'),
       findsOneWidget,
@@ -820,7 +879,7 @@ void main() {
 
     expect(find.text('Start Book'), findsOneWidget);
     expect(
-      find.textContaining('Intro detected before the book starts'),
+      find.textContaining('Audiobook intro detected before the book starts'),
       findsOneWidget,
     );
   });
@@ -889,6 +948,7 @@ void main() {
       locationStore: _MemoryReaderLocationStore(
         initial: {
           'demo-book': ReaderLocationSnapshot(
+            apiBaseUrl: 'http://localhost:8000/v1',
             projectId: 'demo-book',
             positionMs: 2600,
             totalDurationMs: demoSyncArtifact.totalDurationMs,
@@ -966,7 +1026,11 @@ void main() {
   testWidgets('shows the reader error state when a real project load fails', (
     tester,
   ) async {
-    await _pumpReaderApp(tester, repository: _FailingReaderRepository());
+    final container = await _pumpReaderApp(
+      tester,
+      repository: _FailingReaderRepository(),
+    );
+    container.read(homeTabProvider.notifier).showReader();
     await tester.pumpAndSettle();
 
     expect(find.text('Reader failed to load'), findsOneWidget);
@@ -993,7 +1057,7 @@ void main() {
     await _pumpReaderApp(tester, repository: _PendingReaderRepository());
     await tester.pumpAndSettle();
 
-    expect(find.text('Artifacts still processing'), findsOneWidget);
+    expect(find.text('Your book is still syncing'), findsOneWidget);
     expect(find.textContaining('still processing'), findsAtLeastNWidgets(1));
     expect(
       find.textContaining('there is no normalized reader model to render yet'),

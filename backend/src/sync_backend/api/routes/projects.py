@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from http import HTTPStatus
 from typing import Annotated
 from uuid import UUID
@@ -28,6 +29,8 @@ from sync_backend.api.schemas import (
     ProjectCreateResponse,
     ProjectDetailResponse,
     ProjectJobHistoryResponse,
+    ProjectListItemResponse,
+    ProjectListResponse,
     ReaderModelResponse,
     SyncArtifactResponse,
     TranscriptArtifactResponse,
@@ -37,6 +40,7 @@ from sync_backend.models import (
     AlignmentJob,
     Asset,
     MatchArtifact,
+    Project,
     ReaderModelArtifact,
     SyncArtifact,
     TranscriptArtifact,
@@ -55,6 +59,7 @@ from sync_backend.services import (
     get_project_or_404,
     get_reader_model_artifact_or_404,
     get_transcript_artifact_or_404,
+    mark_job_enqueue_failed,
     parse_uuid,
     register_asset,
     store_uploaded_asset,
@@ -64,6 +69,7 @@ from sync_backend.workers.pipeline import run_alignment_job_inline, run_alignmen
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 DbSession = Annotated[Session, Depends(get_db_session)]
+UPLOAD_SIZE_LIMIT_ENV = "SYNC_UPLOAD_MAX_BYTES"
 
 
 def _as_uuid(value: str | None) -> UUID | None:
@@ -96,6 +102,23 @@ def _job_summary(job: AlignmentJob) -> JobSummary:
         terminal_reason=job.terminal_reason,
         created_at=job.created_at,
         updated_at=job.updated_at,
+    )
+
+
+def _project_list_item(
+    project: Project,
+    latest_job: AlignmentJob | None,
+) -> ProjectListItemResponse:
+    assets = list(project.assets)
+    return ProjectListItemResponse(
+        project_id=UUID(project.id),
+        title=project.title,
+        language=project.language,
+        status=project.status,
+        updated_at=project.updated_at,
+        asset_count=len(assets),
+        audio_asset_count=sum(1 for asset in assets if asset.kind == "audio"),
+        latest_job=_job_summary(latest_job) if latest_job else None,
     )
 
 
@@ -156,6 +179,43 @@ def _validate_upload_metadata(*, filename: str, content_type: str, payload: byte
             status_code=status.HTTP_400_BAD_REQUEST,
             details={"content_type_length": len(content_type)},
         )
+
+
+def _upload_size_limit_bytes() -> int | None:
+    raw_value = os.getenv(UPLOAD_SIZE_LIMIT_ENV, "").strip()
+    if not raw_value:
+        return None
+
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return None
+
+    return value if value > 0 else None
+
+
+def _raise_upload_too_large(
+    *,
+    filename: str,
+    max_size_bytes: int,
+    request_content_length_bytes: int | None = None,
+    size_bytes: int | None = None,
+) -> None:
+    details: dict[str, int | str] = {
+        "filename": filename,
+        "max_size_bytes": max_size_bytes,
+    }
+    if request_content_length_bytes is not None:
+        details["request_content_length_bytes"] = request_content_length_bytes
+    if size_bytes is not None:
+        details["size_bytes"] = size_bytes
+
+    raise ApiError(
+        code="asset_too_large",
+        message="Uploaded asset exceeds the configured size limit",
+        status_code=HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+        details=details,
+    )
 
 
 def _sync_response(project_id: str, artifact: SyncArtifact) -> SyncArtifactResponse:
@@ -411,6 +471,24 @@ async def create_project_route(
     )
 
 
+@router.get("", response_model=ProjectListResponse)
+async def list_projects_route(session: DbSession) -> ProjectListResponse:
+    projects = list(
+        session.scalars(
+            select(Project).order_by(Project.updated_at.desc(), Project.created_at.desc())
+        )
+    )
+    return ProjectListResponse(
+        projects=[
+            _project_list_item(
+                project,
+                get_latest_job(session=session, project_id=project.id),
+            )
+            for project in projects
+        ],
+    )
+
+
 @router.post(
     "/{project_id}/assets",
     status_code=status.HTTP_201_CREATED,
@@ -444,33 +522,86 @@ async def upload_asset_route(
     project_id: str,
     kind: Annotated[str, Form(pattern="^(epub|audio)$")],
     file: Annotated[UploadFile, File()],
+    request: Request,
     session: DbSession,
 ) -> AssetCreateResponse:
     object_store = get_object_store()
     filename = file.filename or "upload.bin"
     content_type = file.content_type or "application/octet-stream"
+    size_limit_bytes = _upload_size_limit_bytes()
+    if size_limit_bytes is not None:
+        content_length_header = request.headers.get("content-length")
+        request_content_length: int | None = None
+        if content_length_header:
+            try:
+                request_content_length = int(content_length_header)
+            except ValueError:
+                request_content_length = None
+            else:
+                if request_content_length > size_limit_bytes:
+                    _raise_upload_too_large(
+                        filename=filename,
+                        max_size_bytes=size_limit_bytes,
+                        request_content_length_bytes=request_content_length,
+                    )
+
     payload = await file.read()
+    if size_limit_bytes is not None and len(payload) > size_limit_bytes:
+        _raise_upload_too_large(
+            filename=filename,
+            max_size_bytes=size_limit_bytes,
+            size_bytes=len(payload),
+        )
     _validate_upload_metadata(
         filename=filename,
         content_type=content_type,
         payload=payload,
     )
-    asset = store_uploaded_asset(
-        session=session,
-        project_id=project_id,
-        kind=kind,
-        filename=filename,
-        content_type=content_type,
-        payload=payload,
-        object_store=object_store,
-    )
-    if kind == "epub":
-        generate_reader_model_artifact(
+    try:
+        asset = store_uploaded_asset(
             session=session,
             project_id=project_id,
-            asset=asset,
+            kind=kind,
+            filename=filename,
+            content_type=content_type,
+            payload=payload,
             object_store=object_store,
         )
+    except ApiError:
+        raise
+    except Exception as exc:
+        raise ApiError(
+            code="asset_upload_failed",
+            message="Sync could not store the uploaded asset",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            details={
+                "filename": filename,
+                "error_type": type(exc).__name__,
+            },
+        ) from exc
+    if kind == "epub":
+        try:
+            generate_reader_model_artifact(
+                session=session,
+                project_id=project_id,
+                asset=asset,
+                object_store=object_store,
+            )
+        except ApiError:
+            raise
+        except Exception as exc:
+            asset.status = "invalid"
+            session.add(asset)
+            session.commit()
+            raise ApiError(
+                code="epub_processing_failed",
+                message="The EPUB uploaded, but Sync could not generate a reader model from it",
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                details={
+                    "asset_id": asset.id,
+                    "error_type": type(exc).__name__,
+                },
+            ) from exc
     return AssetCreateResponse(
         asset_id=UUID(asset.id),
         upload_mode=asset.upload_mode,
@@ -540,10 +671,36 @@ async def create_job_route(
         )
         settings = get_settings()
         if settings.app_env != "test":
-            if settings.use_inline_job_execution:
-                background_tasks.add_task(run_alignment_job_inline, project_id, job.id)
-            else:
-                run_alignment_job_task.delay(project_id, job.id)
+            try:
+                if settings.use_inline_job_execution:
+                    background_tasks.add_task(run_alignment_job_inline, project_id, job.id)
+                else:
+                    run_alignment_job_task.delay(project_id, job.id)
+            except Exception as exc:
+                failed_job = mark_job_enqueue_failed(
+                    session=session,
+                    project_id=project_id,
+                    job_id=job.id,
+                )
+                await broker.broadcast(
+                    project_id=project_id,
+                    event_type="job.failed",
+                    job_id=failed_job.id,
+                    payload={
+                        "stage": failed_job.progress_stage,
+                        "percent": failed_job.progress_percent,
+                        "terminal_reason": failed_job.terminal_reason,
+                    },
+                )
+                raise ApiError(
+                    code="job_dispatch_failed",
+                    message="Sync could not start background processing for this job",
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    details={
+                        "job_id": job.id,
+                        "error_type": type(exc).__name__,
+                    },
+                ) from exc
     return JobCreateResponse(
         job_id=UUID(job.id),
         status=job.status,

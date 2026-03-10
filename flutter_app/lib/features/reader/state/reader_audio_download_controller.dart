@@ -140,7 +140,8 @@ class ReaderAudioDownloadController extends Notifier<ReaderAudioDownloadState> {
         completedAssets: state.completedAssets,
         totalAssets: state.totalAssets,
         projectId: projectId,
-        message: 'Audio download failed for $projectId. $error',
+        message:
+            'Audio download failed for $projectId. ${formatSyncApiError(error)}',
         activeAssetId: state.activeAssetId,
       );
     }
@@ -180,7 +181,8 @@ class ReaderAudioDownloadController extends Notifier<ReaderAudioDownloadState> {
         completedAssets: 0,
         totalAssets: 0,
         projectId: projectId,
-        message: 'Could not remove downloaded audio for $projectId. $error',
+        message:
+            'Could not remove downloaded audio for $projectId. ${formatSyncApiError(error)}',
         activeAssetId: null,
       );
     }

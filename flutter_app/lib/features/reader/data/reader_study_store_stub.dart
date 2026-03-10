@@ -12,5 +12,8 @@ class FileReaderStudyStore implements ReaderStudyStore {
       const <ReaderStudyEntry>[];
 
   @override
-  Future<void> saveProject(String projectId, List<ReaderStudyEntry> entries) async {}
+  Future<void> saveProject(
+    String projectId,
+    List<ReaderStudyEntry> entries,
+  ) async {}
 }

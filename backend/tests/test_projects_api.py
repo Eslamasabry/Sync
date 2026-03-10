@@ -97,7 +97,8 @@ def upload_test_epub_asset(
         files={"file": (filename, make_test_epub_bytes(), "application/epub+zip")},
     )
     assert response.status_code == 201
-    return response.json()["asset_id"]
+    payload = response.json()
+    return str(payload["asset_id"])
 
 
 def upload_test_audio_asset(
@@ -113,7 +114,8 @@ def upload_test_audio_asset(
         files={"file": (filename, make_test_wav_bytes(duration_seconds), "audio/wav")},
     )
     assert response.status_code == 201
-    return response.json()["asset_id"]
+    payload = response.json()
+    return str(payload["asset_id"])
 
 
 def test_project_asset_job_flow(client: TestClient) -> None:
@@ -159,6 +161,50 @@ def test_project_asset_job_flow(client: TestClient) -> None:
     assert job_detail_response.json()["retry_of_job_id"] is None
 
 
+def test_list_projects_returns_latest_first_with_job_summary(client: TestClient) -> None:
+    first_project_id = client.post(
+        "/v1/projects",
+        json={"title": "First Project", "language": "en"},
+    ).json()["project_id"]
+    second_project_id = client.post(
+        "/v1/projects",
+        json={"title": "Second Project", "language": "fr"},
+    ).json()["project_id"]
+
+    epub_asset_id = upload_test_epub_asset(
+        client,
+        project_id=second_project_id,
+        filename="second.epub",
+    )
+    audio_asset_id = upload_test_audio_asset(
+        client,
+        project_id=second_project_id,
+        filename="second.wav",
+    )
+    client.post(
+        f"/v1/projects/{second_project_id}/jobs",
+        json={
+            "job_type": "alignment",
+            "book_asset_id": epub_asset_id,
+            "audio_asset_ids": [audio_asset_id],
+        },
+    )
+
+    response = client.get("/v1/projects")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [project["project_id"] for project in payload["projects"]] == [
+        second_project_id,
+        first_project_id,
+    ]
+    assert payload["projects"][0]["title"] == "Second Project"
+    assert payload["projects"][0]["audio_asset_count"] == 1
+    assert payload["projects"][0]["asset_count"] == 2
+    assert payload["projects"][0]["latest_job"]["status"] == "queued"
+    assert payload["projects"][1]["latest_job"] is None
+
+
 def test_project_job_history_is_empty_for_new_project(client: TestClient) -> None:
     project_id = client.post(
         "/v1/projects",
@@ -171,6 +217,37 @@ def test_project_job_history_is_empty_for_new_project(client: TestClient) -> Non
     payload = response.json()
     assert payload["project_id"] == project_id
     assert payload["jobs"] == []
+
+
+def test_project_title_must_include_visible_characters(client: TestClient) -> None:
+    response = client.post(
+        "/v1/projects",
+        json={"title": "   ", "language": "en"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "project_title_invalid"
+
+
+def test_request_validation_errors_use_api_error_envelope(client: TestClient) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Validation Project", "language": "en"},
+    ).json()["project_id"]
+
+    response = client.post(
+        f"/v1/projects/{project_id}/jobs",
+        json={"job_type": "alignment", "book_asset_id": str(uuid4()), "audio_asset_ids": []},
+    )
+
+    assert response.status_code == 422
+    payload = response.json()
+    assert payload["error"]["code"] == "request_validation_failed"
+    assert payload["error"]["message"] == "The request payload is invalid"
+    assert payload["error"]["details"]["errors"][0]["location"] == [
+        "body",
+        "audio_asset_ids",
+    ]
 
 
 def test_project_job_history_returns_reverse_chronological_jobs(client: TestClient) -> None:
@@ -262,6 +339,36 @@ def test_epub_upload_generates_reader_model(client: TestClient) -> None:
     first_token = reader_model["sections"][0]["paragraphs"][0]["tokens"][0]
     assert first_token["text"] == "Call"
     assert first_token["normalized"] == "call"
+
+
+def test_invalid_epub_upload_returns_typed_error_and_marks_asset_invalid(
+    client: TestClient,
+) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Broken Upload", "language": "en"},
+    ).json()["project_id"]
+
+    upload_response = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "epub"},
+        files={
+            "file": (
+                "broken.epub",
+                b"not-a-real-epub",
+                "application/epub+zip",
+            )
+        },
+    )
+
+    assert upload_response.status_code == 422
+    assert upload_response.json()["error"]["code"] == "epub_processing_failed"
+
+    project_response = client.get(f"/v1/projects/{project_id}")
+    assert project_response.status_code == 200
+    assets = project_response.json()["assets"]
+    assert len(assets) == 1
+    assert assets[0]["status"] == "invalid"
 
 
 def test_uploaded_asset_content_can_be_downloaded(client: TestClient) -> None:
@@ -383,6 +490,34 @@ def test_upload_rejects_empty_payload(client: TestClient) -> None:
     assert upload_response.json()["error"]["code"] == "asset_empty_upload"
 
 
+def test_upload_rejects_payload_that_exceeds_configured_size_limit(
+    client: TestClient,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SYNC_UPLOAD_MAX_BYTES", "128")
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Limited Upload Project", "language": "en"},
+    ).json()["project_id"]
+
+    payload = make_test_wav_bytes(duration_seconds=0.25)
+    upload_response = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "audio"},
+        files={"file": ("large.wav", payload, "audio/wav")},
+    )
+
+    assert upload_response.status_code == 413
+    body = upload_response.json()
+    assert body["error"]["code"] == "asset_too_large"
+    assert body["error"]["details"]["filename"] == "large.wav"
+    assert body["error"]["details"]["max_size_bytes"] == 128
+
+    project_response = client.get(f"/v1/projects/{project_id}")
+    assert project_response.status_code == 200
+    assert project_response.json()["assets"] == []
+
+
 def test_upload_rejects_filename_that_exceeds_storage_limit(client: TestClient) -> None:
     project_id = client.post(
         "/v1/projects",
@@ -397,6 +532,40 @@ def test_upload_rejects_filename_that_exceeds_storage_limit(client: TestClient) 
 
     assert upload_response.status_code == 400
     assert upload_response.json()["error"]["code"] == "asset_filename_invalid"
+
+
+def test_upload_storage_failure_returns_typed_api_error(
+    client: TestClient,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    project_id = client.post(
+        "/v1/projects",
+        json={"title": "Storage Failure Project", "language": "en"},
+    ).json()["project_id"]
+
+    def explode_store(**_: object) -> object:
+        raise RuntimeError("synthetic object-store outage")
+
+    monkeypatch.setattr(
+        "sync_backend.api.routes.projects.store_uploaded_asset",
+        explode_store,
+    )
+
+    upload_response = client.post(
+        f"/v1/projects/{project_id}/assets/upload",
+        data={"kind": "audio"},
+        files={"file": ("clip.wav", make_test_wav_bytes(duration_seconds=0.25), "audio/wav")},
+    )
+
+    assert upload_response.status_code == 503
+    body = upload_response.json()
+    assert body["error"]["code"] == "asset_upload_failed"
+    assert body["error"]["details"]["filename"] == "clip.wav"
+    assert body["error"]["details"]["error_type"] == "RuntimeError"
+
+    project_response = client.get(f"/v1/projects/{project_id}")
+    assert project_response.status_code == 200
+    assert project_response.json()["assets"] == []
 
 
 def test_create_job_dispatches_inline_execution_when_configured(
@@ -451,6 +620,65 @@ def test_create_job_dispatches_inline_execution_when_configured(
     assert response.status_code == 201
     job_id = response.json()["job_id"]
     assert inline_calls == [(project_id, job_id)]
+
+
+def test_create_job_marks_job_failed_when_dispatch_fails(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "dispatch-failure.db"
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("JOB_EXECUTION_MODE", "celery")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{database_path}")
+    monkeypatch.setenv("ALIGNMENT_WORKDIR", str(tmp_path / "artifacts"))
+    get_settings.cache_clear()
+    reset_db_caches()
+    broker.reset()
+
+    def explode_delay(project_id: str, job_id: str) -> None:
+        raise RuntimeError(f"broker unavailable for {project_id}/{job_id}")
+
+    monkeypatch.setattr(
+        "sync_backend.api.routes.projects.run_alignment_job_task.delay",
+        explode_delay,
+    )
+
+    with TestClient(create_app()) as dispatch_client:
+        project_id = dispatch_client.post(
+            "/v1/projects",
+            json={"title": "Dispatch Failure Project", "language": "en"},
+        ).json()["project_id"]
+
+        book_asset_id = upload_test_epub_asset(
+            dispatch_client,
+            project_id=project_id,
+            filename="dispatch.epub",
+        )
+        audio_asset_id = upload_test_audio_asset(
+            dispatch_client,
+            project_id=project_id,
+            filename="dispatch.wav",
+        )
+
+        response = dispatch_client.post(
+            f"/v1/projects/{project_id}/jobs",
+            json={
+                "job_type": "alignment",
+                "book_asset_id": book_asset_id,
+                "audio_asset_ids": [audio_asset_id],
+            },
+        )
+
+        assert response.status_code == 503
+        payload = response.json()
+        assert payload["error"]["code"] == "job_dispatch_failed"
+        assert payload["error"]["details"]["job_id"]
+
+        job_id = payload["error"]["details"]["job_id"]
+        job_response = dispatch_client.get(f"/v1/projects/{project_id}/jobs/{job_id}")
+        assert job_response.status_code == 200
+        assert job_response.json()["status"] == "failed"
+        assert job_response.json()["terminal_reason"] == "enqueue_failed"
 
 
 def test_duplicate_job_request_reuses_existing_job_without_redispatch(

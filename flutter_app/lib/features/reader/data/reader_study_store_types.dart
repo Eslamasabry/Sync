@@ -38,7 +38,8 @@ class ReaderStudyEntry {
   }
 
   factory ReaderStudyEntry.fromJson(Map<String, dynamic> json) {
-    final typeName = json['type'] as String? ?? ReaderStudyEntryType.bookmark.name;
+    final typeName =
+        json['type'] as String? ?? ReaderStudyEntryType.bookmark.name;
     return ReaderStudyEntry(
       id: json['id'] as String? ?? '',
       projectId: json['project_id'] as String? ?? '',
@@ -72,7 +73,10 @@ class NoopReaderStudyStore implements ReaderStudyStore {
       const <ReaderStudyEntry>[];
 
   @override
-  Future<void> saveProject(String projectId, List<ReaderStudyEntry> entries) async {}
+  Future<void> saveProject(
+    String projectId,
+    List<ReaderStudyEntry> entries,
+  ) async {}
 }
 
 int _asInt(Object? value) {

@@ -167,7 +167,10 @@ void main() {
     final client = SyncApiClient(
       baseUrl: 'http://${server.address.host}:${server.port}/v1',
     );
-    final project = await client.createProject(title: 'Imported Book', language: 'en');
+    final project = await client.createProject(
+      title: 'Imported Book',
+      language: 'en',
+    );
     final job = await client.createAlignmentJob(
       projectId: project.projectId,
       bookAssetId: 'book-asset-1',

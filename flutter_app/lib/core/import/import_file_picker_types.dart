@@ -16,6 +16,16 @@ abstract class ImportFilePicker {
   Future<ImportPickedFile?> pickEpub();
 
   Future<List<ImportPickedFile>> pickAudioFiles();
+
+  Future<List<ImportPickedFile>> findNearbyAudioFiles(
+    ImportPickedFile seedFile, {
+    String? preferredTitle,
+  });
+
+  Future<ImportPickedFile?> findNearbyEpubFile(
+    ImportPickedFile seedFile, {
+    String? preferredTitle,
+  });
 }
 
 class NoopImportFilePicker implements ImportFilePicker {
@@ -27,4 +37,16 @@ class NoopImportFilePicker implements ImportFilePicker {
 
   @override
   Future<ImportPickedFile?> pickEpub() async => null;
+
+  @override
+  Future<List<ImportPickedFile>> findNearbyAudioFiles(
+    ImportPickedFile seedFile, {
+    String? preferredTitle,
+  }) async => const <ImportPickedFile>[];
+
+  @override
+  Future<ImportPickedFile?> findNearbyEpubFile(
+    ImportPickedFile seedFile, {
+    String? preferredTitle,
+  }) async => null;
 }

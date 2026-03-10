@@ -9,4 +9,16 @@ class PlatformImportFilePicker implements ImportFilePicker {
 
   @override
   Future<ImportPickedFile?> pickEpub() async => null;
+
+  @override
+  Future<List<ImportPickedFile>> findNearbyAudioFiles(
+    ImportPickedFile seedFile, {
+    String? preferredTitle,
+  }) async => const <ImportPickedFile>[];
+
+  @override
+  Future<ImportPickedFile?> findNearbyEpubFile(
+    ImportPickedFile seedFile, {
+    String? preferredTitle,
+  }) async => null;
 }

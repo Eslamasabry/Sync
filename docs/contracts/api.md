@@ -32,6 +32,32 @@ Safe defaults:
 - `AlignmentJob`
 - `SyncArtifact`
 
+### Project lifecycle envelope
+
+Project responses include a derived `lifecycle` object alongside the stored `status`.
+
+- `status` remains the persisted backend status and may stay coarse while service ownership evolves.
+- `lifecycle.phase` is the frontend-oriented state for library and reader flows.
+- `lifecycle.next_action` is the recommended primary UI action.
+- `lifecycle.missing_requirements` uses the current MVP asset taxonomy only: `epub` and `audio`.
+
+`lifecycle.phase` values:
+
+- `draft`: the project is still missing required source assets.
+- `ready_to_align`: required source assets exist and the next user step is to start alignment.
+- `aligning`: the latest alignment job is queued or running.
+- `ready_to_read`: the latest alignment job completed and reader-oriented flows can be promoted.
+- `attention_needed`: the latest alignment job failed or was cancelled and the next user step is retry or inspection.
+
+`lifecycle.next_action` values:
+
+- `attach_epub`
+- `attach_audio`
+- `start_alignment`
+- `monitor_alignment`
+- `open_reader`
+- `retry_alignment`
+
 ## REST Endpoints
 
 ### `GET /v1/health`
@@ -140,7 +166,51 @@ Response:
 {
   "project_id": "uuid",
   "status": "created",
-  "created_at": "2026-03-09T00:00:00Z"
+  "created_at": "2026-03-09T00:00:00Z",
+  "lifecycle": {
+    "phase": "draft",
+    "next_action": "attach_epub",
+    "missing_requirements": ["epub", "audio"],
+    "is_readable": false
+  }
+}
+```
+
+### `GET /v1/projects`
+
+Lists projects for the connected backend target in reverse chronological activity order.
+
+Response:
+
+```json
+{
+  "projects": [
+    {
+      "project_id": "uuid",
+      "title": "Moby-Dick",
+      "language": "en",
+      "status": "created",
+      "updated_at": "2026-03-09T00:00:00Z",
+      "asset_count": 2,
+      "audio_asset_count": 1,
+      "lifecycle": {
+        "phase": "aligning",
+        "next_action": "monitor_alignment",
+        "missing_requirements": [],
+        "is_readable": false
+      },
+      "latest_job": {
+        "job_id": "uuid",
+        "job_type": "alignment",
+        "status": "queued",
+        "attempt_number": 1,
+        "retry_of_job_id": null,
+        "terminal_reason": null,
+        "created_at": "2026-03-09T00:00:00Z",
+        "updated_at": "2026-03-09T00:00:00Z"
+      }
+    }
+  ]
 }
 ```
 
@@ -235,6 +305,7 @@ Notes:
 - Alignment inputs must already be uploaded. Placeholder assets created through `POST /v1/projects/{project_id}/assets` return `asset_not_ready` until blob content exists.
 - Duplicate alignment requests for the same project, EPUB asset, and ordered audio asset list reuse an existing `queued`, `running`, or `completed` job instead of scheduling duplicate work.
 - If the latest matching job is `failed` or `cancelled`, the backend creates a new retry attempt and exposes the previous job id in `retry_of_job_id`.
+- If dispatch into inline or Celery execution fails, the route returns `503` with `error.code = "job_dispatch_failed"` and the job is marked `failed` with `terminal_reason = "enqueue_failed"` instead of remaining stuck in `queued`.
 - Dispatch mode depends on `JOB_EXECUTION_MODE`:
   - `celery`: enqueue through Redis/Celery and expect a worker process
   - `inline`: execute through a FastAPI background task in the API process
@@ -252,6 +323,14 @@ Response shape:
   "title": "Moby-Dick",
   "language": "en",
   "status": "created",
+  "created_at": "2026-03-09T00:00:00Z",
+  "updated_at": "2026-03-09T00:00:00Z",
+  "lifecycle": {
+    "phase": "draft",
+    "next_action": "attach_epub",
+    "missing_requirements": ["epub"],
+    "is_readable": false
+  },
   "assets": [
     {
       "asset_id": "uuid",
@@ -502,9 +581,17 @@ Purpose:
 ```json
 {
   "error": {
-    "code": "asset_missing",
-    "message": "An EPUB asset is required before creating an alignment job",
-    "details": {}
+    "code": "request_validation_failed",
+    "message": "The request payload is invalid",
+    "details": {
+      "errors": [
+        {
+          "location": ["body", "audio_asset_ids"],
+          "message": "List should have at least 1 item after validation, not 0",
+          "type": "too_short"
+        }
+      ]
+    }
   }
 }
 ```
@@ -514,6 +601,8 @@ Rules:
 - `code` is stable and machine-readable.
 - `message` is safe for UI display.
 - `details` is optional and structured.
+- Domain errors use specific codes such as `project_not_found`, `asset_not_ready`, or `job_dispatch_failed`.
+- Framework request validation errors are normalized into the same envelope with `code = "request_validation_failed"`.
 
 ## Compatibility Rules
 

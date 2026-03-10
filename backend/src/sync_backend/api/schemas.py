@@ -2,7 +2,21 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from sync_backend.models import (
+    ProjectLifecycleAction,
+    ProjectLifecyclePhase,
+    ProjectLifecycleRequirement,
+    derive_project_lifecycle,
+)
+
+
+class ProjectLifecycleResponse(BaseModel):
+    phase: ProjectLifecyclePhase
+    next_action: ProjectLifecycleAction
+    missing_requirements: list[ProjectLifecycleRequirement] = Field(default_factory=list)
+    is_readable: bool = False
 
 
 class ProjectCreateRequest(BaseModel):
@@ -14,6 +28,19 @@ class ProjectCreateResponse(BaseModel):
     project_id: UUID
     status: str
     created_at: datetime
+    lifecycle: ProjectLifecycleResponse | None = None
+
+    @model_validator(mode="after")
+    def populate_lifecycle(self) -> "ProjectCreateResponse":
+        if self.lifecycle is None:
+            derived = derive_project_lifecycle(project_status=self.status)
+            self.lifecycle = ProjectLifecycleResponse(
+                phase=derived.phase,
+                next_action=derived.next_action,
+                missing_requirements=list(derived.missing_requirements),
+                is_readable=derived.is_readable,
+            )
+        return self
 
 
 class AssetCreateRequest(BaseModel):
@@ -81,6 +108,43 @@ class JobSummary(BaseModel):
     updated_at: datetime
 
 
+class ProjectListItemResponse(BaseModel):
+    project_id: UUID
+    title: str
+    language: str | None
+    status: str
+    updated_at: datetime
+    asset_count: int = Field(ge=0)
+    audio_asset_count: int = Field(ge=0)
+    latest_job: JobSummary | None = None
+    lifecycle: ProjectLifecycleResponse | None = None
+
+    @model_validator(mode="after")
+    def populate_lifecycle(self) -> "ProjectListItemResponse":
+        if self.lifecycle is None:
+            inferred_asset_kinds: list[str] = []
+            if self.asset_count > self.audio_asset_count:
+                inferred_asset_kinds.append("epub")
+            if self.audio_asset_count > 0:
+                inferred_asset_kinds.append("audio")
+            derived = derive_project_lifecycle(
+                project_status=self.status,
+                asset_kinds=inferred_asset_kinds,
+                latest_job_status=self.latest_job.status if self.latest_job else None,
+            )
+            self.lifecycle = ProjectLifecycleResponse(
+                phase=derived.phase,
+                next_action=derived.next_action,
+                missing_requirements=list(derived.missing_requirements),
+                is_readable=derived.is_readable,
+            )
+        return self
+
+
+class ProjectListResponse(BaseModel):
+    projects: list[ProjectListItemResponse]
+
+
 class ProjectDetailResponse(BaseModel):
     project_id: UUID
     title: str
@@ -90,6 +154,23 @@ class ProjectDetailResponse(BaseModel):
     updated_at: datetime
     assets: list[AssetSummary]
     latest_job: JobSummary | None
+    lifecycle: ProjectLifecycleResponse | None = None
+
+    @model_validator(mode="after")
+    def populate_lifecycle(self) -> "ProjectDetailResponse":
+        if self.lifecycle is None:
+            derived = derive_project_lifecycle(
+                project_status=self.status,
+                asset_kinds=[asset.kind for asset in self.assets],
+                latest_job_status=self.latest_job.status if self.latest_job else None,
+            )
+            self.lifecycle = ProjectLifecycleResponse(
+                phase=derived.phase,
+                next_action=derived.next_action,
+                missing_requirements=list(derived.missing_requirements),
+                is_readable=derived.is_readable,
+            )
+        return self
 
 
 class JobHistoryEntryResponse(BaseModel):
