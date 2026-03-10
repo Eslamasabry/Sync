@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.6
+
+- Library now stays at the center of the app instead of preloading the reader on startup
+- Import now blocks `Start Sync` until the configured server is actually reachable and the token is valid
+- Continue-reading actions stay disabled until a real readable book exists instead of pushing users into pending reader states
+- Backend asset uploads now stream through temporary files instead of reading entire audiobook uploads into memory first
+
 ## v0.1.5
 
 - Fixed the first-load Railway client bug where the app opened a project WebSocket without a selected project ID

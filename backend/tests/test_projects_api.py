@@ -547,7 +547,7 @@ def test_upload_storage_failure_returns_typed_api_error(
         raise RuntimeError("synthetic object-store outage")
 
     monkeypatch.setattr(
-        "sync_backend.api.routes.projects.store_uploaded_asset",
+        "sync_backend.api.routes.projects.store_uploaded_asset_from_file",
         explode_store,
     )
 

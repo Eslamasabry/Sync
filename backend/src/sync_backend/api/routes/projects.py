@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import os
+import tempfile
 from http import HTTPStatus
+from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
@@ -62,7 +65,7 @@ from sync_backend.services import (
     mark_job_enqueue_failed,
     parse_uuid,
     register_asset,
-    store_uploaded_asset,
+    store_uploaded_asset_from_file,
 )
 from sync_backend.storage import get_object_store
 from sync_backend.workers.pipeline import run_alignment_job_inline, run_alignment_job_task
@@ -157,8 +160,8 @@ def _job_history_entry(job: AlignmentJob) -> JobHistoryEntryResponse:
     )
 
 
-def _validate_upload_metadata(*, filename: str, content_type: str, payload: bytes) -> None:
-    if not payload:
+def _validate_upload_metadata(*, filename: str, content_type: str, size_bytes: int) -> None:
+    if size_bytes <= 0:
         raise ApiError(
             code="asset_empty_upload",
             message="Uploaded asset content must not be empty",
@@ -545,26 +548,40 @@ async def upload_asset_route(
                         request_content_length_bytes=request_content_length,
                     )
 
-    payload = await file.read()
-    if size_limit_bytes is not None and len(payload) > size_limit_bytes:
-        _raise_upload_too_large(
-            filename=filename,
-            max_size_bytes=size_limit_bytes,
-            size_bytes=len(payload),
-        )
-    _validate_upload_metadata(
-        filename=filename,
-        content_type=content_type,
-        payload=payload,
-    )
+    temp_upload_path: Path | None = None
     try:
-        asset = store_uploaded_asset(
+        hasher = hashlib.sha256()
+        size_bytes = 0
+        with tempfile.NamedTemporaryFile(delete=False) as temp_upload:
+            temp_upload_path = Path(temp_upload.name)
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                size_bytes += len(chunk)
+                if size_limit_bytes is not None and size_bytes > size_limit_bytes:
+                    _raise_upload_too_large(
+                        filename=filename,
+                        max_size_bytes=size_limit_bytes,
+                        size_bytes=size_bytes,
+                    )
+                hasher.update(chunk)
+                temp_upload.write(chunk)
+
+        _validate_upload_metadata(
+            filename=filename,
+            content_type=content_type,
+            size_bytes=size_bytes,
+        )
+        asset = store_uploaded_asset_from_file(
             session=session,
             project_id=project_id,
             kind=kind,
             filename=filename,
             content_type=content_type,
-            payload=payload,
+            source_path=temp_upload_path,
+            size_bytes=size_bytes,
+            checksum_sha256=hasher.hexdigest(),
             object_store=object_store,
         )
     except ApiError:
@@ -579,6 +596,10 @@ async def upload_asset_route(
                 "error_type": type(exc).__name__,
             },
         ) from exc
+    finally:
+        await file.close()
+        if temp_upload_path is not None:
+            temp_upload_path.unlink(missing_ok=True)
     if kind == "epub":
         try:
             generate_reader_model_artifact(

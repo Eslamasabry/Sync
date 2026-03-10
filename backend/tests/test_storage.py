@@ -43,6 +43,10 @@ class _FakeS3Client:
         self.buckets.add(bucket)
         self.objects[(bucket, key)] = body
 
+    def upload_file(self, filename: str, bucket: str, key: str) -> None:
+        self.buckets.add(bucket)
+        self.objects[(bucket, key)] = Path(filename).read_bytes()
+
     def get_object(self, **kwargs: str) -> dict[str, _FakeStreamingBody]:
         bucket = kwargs["Bucket"]
         key = kwargs["Key"]
@@ -68,8 +72,16 @@ def test_file_object_store_round_trips_bytes_json_and_materialized_file(
         assert path.exists()
         assert path.read_bytes() == b"abcdef"
 
+    source_file = tmp_path / "upload.bin"
+    source_file.write_bytes(b"ghijkl")
+    copied_path, copied_size = store.write_file("projects/demo/upload.bin", source_file)
+    assert copied_size == 6
+    assert store.read_bytes(copied_path) == b"ghijkl"
 
-def test_s3_object_store_round_trips_bytes_json_chunks_and_materialized_file() -> None:
+
+def test_s3_object_store_round_trips_bytes_json_chunks_and_materialized_file(
+    tmp_path: Path,
+) -> None:
     fake_client = _FakeS3Client()
     store = S3ObjectStore(
         bucket="sync-dev",
@@ -88,6 +100,12 @@ def test_s3_object_store_round_trips_bytes_json_chunks_and_materialized_file() -
     assert store.read_bytes(storage_path) == b"abcdef"
     assert store.read_json(json_path) == {"book_id": "demo"}
     assert list(store.iter_bytes(storage_path, chunk_size=4)) == [b"abcd", b"ef"]
+
+    source_file = tmp_path / "upload.bin"
+    source_file.write_bytes(b"ghijkl")
+    copied_path, copied_size = store.write_file("projects/demo/upload.bin", source_file)
+    assert copied_size == 6
+    assert store.read_bytes(copied_path) == b"ghijkl"
 
     materialized_path: Path | None = None
     with store.materialize_file(storage_path) as path:

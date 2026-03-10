@@ -5,6 +5,7 @@ import io
 import wave
 from dataclasses import dataclass
 from http import HTTPStatus
+from pathlib import Path
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
@@ -127,6 +128,45 @@ def store_uploaded_asset(
     return asset
 
 
+def store_uploaded_asset_from_file(
+    *,
+    session: Session,
+    project_id: str,
+    kind: str,
+    filename: str,
+    content_type: str,
+    source_path: Path,
+    size_bytes: int,
+    checksum_sha256: str,
+    object_store: ObjectStore,
+) -> Asset:
+    get_project_or_404(session=session, project_id=project_id)
+    asset_id = str(uuid4())
+    duration_ms = _probe_asset_duration_ms_from_path(kind=kind, source_path=source_path)
+    storage_path, stored_size_bytes = object_store.write_file(
+        f"projects/{project_id}/assets/{asset_id}/{filename}",
+        source_path,
+    )
+
+    asset = Asset(
+        id=asset_id,
+        project_id=project_id,
+        kind=kind,
+        filename=filename,
+        content_type=content_type,
+        upload_mode="multipart",
+        status="uploaded",
+        storage_path=storage_path,
+        size_bytes=stored_size_bytes or size_bytes,
+        checksum_sha256=checksum_sha256,
+        duration_ms=duration_ms,
+    )
+    session.add(asset)
+    session.commit()
+    session.refresh(asset)
+    return asset
+
+
 def _probe_asset_duration_ms(*, kind: str, payload: bytes) -> int | None:
     if kind != "audio":
         return None
@@ -146,6 +186,33 @@ def _probe_asset_duration_ms(*, kind: str, payload: bytes) -> int | None:
         return None
 
     audio_file = MutagenFile(io.BytesIO(payload))
+    if audio_file is None or audio_file.info is None:
+        return None
+    duration_seconds = getattr(audio_file.info, "length", None)
+    if duration_seconds is None:
+        return None
+    return int(float(duration_seconds) * 1000)
+
+
+def _probe_asset_duration_ms_from_path(*, kind: str, source_path: Path) -> int | None:
+    if kind != "audio":
+        return None
+
+    try:
+        with wave.open(str(source_path), "rb") as wav_file:
+            frame_rate = wav_file.getframerate()
+            frame_count = wav_file.getnframes()
+            if frame_rate > 0:
+                return int((frame_count / frame_rate) * 1000)
+    except (wave.Error, EOFError):
+        pass
+
+    try:
+        from mutagen import File as MutagenFile
+    except ImportError:
+        return None
+
+    audio_file = MutagenFile(str(source_path))
     if audio_file is None or audio_file.info is None:
         return None
     duration_seconds = getattr(audio_file.info, "length", None)

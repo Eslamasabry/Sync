@@ -5,10 +5,8 @@ import 'package:sync_flutter/core/config/runtime_connection_settings_controller.
 import 'package:sync_flutter/core/navigation/home_shell_controller.dart';
 import 'package:sync_flutter/core/theme/sync_theme.dart';
 import 'package:sync_flutter/features/library/presentation/library_screen.dart';
-import 'package:sync_flutter/features/reader/data/reader_repository.dart';
 import 'package:sync_flutter/features/reader/presentation/reader_screen.dart';
 import 'package:sync_flutter/features/reader/state/reader_playback_controller.dart';
-import 'package:sync_flutter/features/reader/state/reader_project_provider.dart';
 
 class SyncApp extends ConsumerStatefulWidget {
   const SyncApp({super.key});
@@ -18,20 +16,13 @@ class SyncApp extends ConsumerStatefulWidget {
 }
 
 class _SyncAppState extends ConsumerState<SyncApp> {
-  bool? _lastEntryHasBook;
-
   @override
   Widget build(BuildContext context) {
     final playback = ref.watch(readerPlaybackProvider);
     final homeTab = ref.watch(homeTabProvider);
     final connection = ref.watch(runtimeConnectionSettingsProvider);
-    final project = ref.watch(readerProjectProvider);
-    final bundle = project.asData?.value;
-    final hasReaderTarget = _hasReaderTarget(
-      bundle: bundle,
-    );
-
-    _syncEntryPreference(hasReaderTarget);
+    final hasReaderTarget =
+        (connection.asData?.value.normalizedProjectId ?? '').isNotEmpty;
 
     return MaterialApp(
       title: 'Sync',
@@ -94,7 +85,7 @@ class _SyncAppState extends ConsumerState<SyncApp> {
               child: _ReadingShellBar(
                 selectedIndex: homeTab,
                 connection: connection,
-                project: project,
+                hasReaderTarget: hasReaderTarget,
                 onDestinationSelected: (index) {
                   final controller = ref.read(homeTabProvider.notifier);
                   if (index == HomeTabDestination.library.index) {
@@ -111,27 +102,6 @@ class _SyncAppState extends ConsumerState<SyncApp> {
     );
   }
 
-  bool _hasReaderTarget({required ReaderProjectBundle? bundle}) {
-    if (bundle != null) {
-      return bundle.source != ReaderContentSource.selectionRequired;
-    }
-    return false;
-  }
-
-  void _syncEntryPreference(bool hasReaderTarget) {
-    if (_lastEntryHasBook == hasReaderTarget) {
-      return;
-    }
-    _lastEntryHasBook = hasReaderTarget;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
-      }
-      ref
-          .read(homeTabProvider.notifier)
-          .syncEntryPreference(hasReaderTarget: hasReaderTarget);
-    });
-  }
 }
 
 class _HomeTabViewport extends ConsumerWidget {
@@ -200,13 +170,13 @@ class _ReadingShellBar extends StatelessWidget {
   const _ReadingShellBar({
     required this.selectedIndex,
     required this.connection,
-    required this.project,
+    required this.hasReaderTarget,
     required this.onDestinationSelected,
   });
 
   final int selectedIndex;
   final AsyncValue<RuntimeConnectionSettings> connection;
-  final AsyncValue<ReaderProjectBundle> project;
+  final bool hasReaderTarget;
   final ValueChanged<int> onDestinationSelected;
 
   @override
@@ -214,11 +184,7 @@ class _ReadingShellBar extends StatelessWidget {
     final palette = ReaderPalette.of(context);
     final theme = Theme.of(context);
     final settings = connection.asData?.value;
-    final bundle = project.asData?.value;
-    final hasReaderTarget = bundle != null
-        ? bundle.source != ReaderContentSource.selectionRequired
-        : (settings?.normalizedProjectId ?? '').isNotEmpty;
-    final readerTitle = _readerTitle(bundle, settings);
+    final readerTitle = _readerTitle(settings);
     final libraryTitle = hasReaderTarget ? 'Library' : 'Import';
     final librarySubtitle = hasReaderTarget ? 'Shelf and queue' : 'Start here';
     final readerSubtitle = hasReaderTarget ? 'Continue reading' : 'Open a book';
@@ -311,14 +277,7 @@ class _ReadingShellBar extends StatelessWidget {
     );
   }
 
-  static String? _readerTitle(
-    ReaderProjectBundle? bundle,
-    RuntimeConnectionSettings? settings,
-  ) {
-    final projectTitle = bundle?.readerModel.title.trim();
-    if (projectTitle != null && projectTitle.isNotEmpty) {
-      return projectTitle;
-    }
+  static String? _readerTitle(RuntimeConnectionSettings? settings) {
     final projectId = settings?.normalizedProjectId ?? '';
     if (projectId.isEmpty) {
       return null;

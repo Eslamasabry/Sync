@@ -215,6 +215,78 @@ final libraryServerProjectsProvider =
       return api.fetchProjects();
     });
 
+class LibraryServerConnectionState {
+  const LibraryServerConnectionState({
+    required this.isReady,
+    required this.headline,
+    required this.detail,
+  });
+
+  final bool isReady;
+  final String headline;
+  final String detail;
+}
+
+final libraryServerConnectionProvider =
+    FutureProvider.autoDispose<LibraryServerConnectionState>((ref) async {
+      final settings = await ref.watch(runtimeConnectionSettingsProvider.future);
+      final api = SyncApiClient(
+        baseUrl: settings.apiBaseUrl,
+        authToken: settings.authToken,
+      );
+
+      try {
+        await api.fetchProjects();
+        return const LibraryServerConnectionState(
+          isReady: true,
+          headline: 'Server ready',
+          detail: 'You can upload the book and start sync.',
+        );
+      } on ApiClientException catch (error) {
+        final baseUrl = settings.apiBaseUrl.trim();
+        if (error.code == 'auth_invalid') {
+          return const LibraryServerConnectionState(
+            isReady: false,
+            headline: 'Update the server token',
+            detail:
+                'This server rejected the saved token. Open Connection and paste the correct token before starting sync.',
+          );
+        }
+        if (baseUrl.contains('localhost') || baseUrl.contains('127.0.0.1')) {
+          return const LibraryServerConnectionState(
+            isReady: false,
+            headline: 'Connect your server first',
+            detail:
+                'This app is still pointing at a local development server. Open Connection and enter your real server URL before starting sync.',
+          );
+        }
+        return LibraryServerConnectionState(
+          isReady: false,
+          headline: 'Server unavailable',
+          detail:
+              'Sync cannot reach the current server yet. ${error.message}',
+        );
+      }
+    });
+
+bool _canOpenReaderProject(AsyncValue<ReaderProjectBundle> project) {
+  final bundle = project.asData?.value;
+  if (bundle == null) {
+    return false;
+  }
+
+  switch (bundle.source) {
+    case ReaderContentSource.api:
+    case ReaderContentSource.offlineCache:
+    case ReaderContentSource.demoFallback:
+      return true;
+    case ReaderContentSource.selectionRequired:
+    case ReaderContentSource.artifactPending:
+    case ReaderContentSource.projectError:
+      return false;
+  }
+}
+
 class LibraryScreen extends ConsumerWidget {
   const LibraryScreen({super.key});
 
@@ -230,6 +302,8 @@ class LibraryScreen extends ConsumerWidget {
     final currentProject = ref.watch(readerProjectProvider);
     final audioDownload = ref.watch(readerAudioDownloadProvider);
     final audioActions = ref.read(readerAudioDownloadProvider.notifier);
+    final serverConnection = ref.watch(libraryServerConnectionProvider);
+    final canOpenCurrentReader = _canOpenReaderProject(currentProject);
 
     final recentConnectionCount = recentConnections.asData?.value.length ?? 0;
     final recentBookCount = recentLocations.asData?.value.length ?? 0;
@@ -247,7 +321,18 @@ class LibraryScreen extends ConsumerWidget {
               description:
                   'Choose the book, add the audiobook, and start building a synced reading experience from this device.',
               icon: Icons.upload_file_rounded,
-              child: _ImportComposer(state: importState),
+              child: _ImportComposer(
+                state: importState,
+                serverConnection: serverConnection,
+                onOpenConnection: () async {
+                  final settings = await ref.read(
+                    runtimeConnectionSettingsProvider.future,
+                  );
+                  if (context.mounted) {
+                    await _openConnection(context, ref, settings);
+                  }
+                },
+              ),
             );
             final scannedFolderSection = importState.scannedDeviceBooks.isEmpty
                 ? null
@@ -270,10 +355,15 @@ class LibraryScreen extends ConsumerWidget {
                 runSpacing: 10,
                 children: [
                   FilledButton.tonalIcon(
-                    onPressed: () =>
-                        ref.read(homeTabProvider.notifier).showReader(),
+                    onPressed: canOpenCurrentReader
+                        ? () => ref.read(homeTabProvider.notifier).showReader()
+                        : null,
                     icon: const Icon(Icons.book_online_rounded),
-                    label: const Text('Continue Book'),
+                    label: Text(
+                      canOpenCurrentReader
+                          ? 'Continue Book'
+                          : 'Book not ready yet',
+                    ),
                   ),
                   currentSettings.maybeWhen(
                     data: (settings) => settings.projectId.trim().isEmpty
@@ -415,6 +505,7 @@ class LibraryScreen extends ConsumerWidget {
                 importState: importState,
                 currentSettings: currentSettings,
                 currentProject: currentProject,
+                serverConnection: serverConnection,
                 recentConnections: recentConnections,
                 recentLocations: recentLocations,
                 audioDownload: audioDownload,
@@ -854,6 +945,7 @@ class _LibraryMobileHome extends ConsumerWidget {
     required this.importState,
     required this.currentSettings,
     required this.currentProject,
+    required this.serverConnection,
     required this.recentConnections,
     required this.recentLocations,
     required this.audioDownload,
@@ -870,6 +962,7 @@ class _LibraryMobileHome extends ConsumerWidget {
   final LibraryImportState importState;
   final AsyncValue<RuntimeConnectionSettings> currentSettings;
   final AsyncValue<ReaderProjectBundle> currentProject;
+  final AsyncValue<LibraryServerConnectionState> serverConnection;
   final AsyncValue<List<RuntimeConnectionSettings>> recentConnections;
   final AsyncValue<List<ReaderLocationSnapshot>> recentLocations;
   final ReaderAudioDownloadState audioDownload;
@@ -890,6 +983,7 @@ class _LibraryMobileHome extends ConsumerWidget {
     final palette = ReaderPalette.of(context);
     final theme = Theme.of(context);
     final serverProjects = ref.watch(libraryServerProjectsProvider);
+    final canOpenCurrentReader = _canOpenReaderProject(currentProject);
 
     return CustomScrollView(
       slivers: [
@@ -931,12 +1025,16 @@ class _LibraryMobileHome extends ConsumerWidget {
                         ),
                         const SizedBox(height: 12),
                         FilledButton.icon(
-                          onPressed: hasProject ? onOpenReader : null,
+                          onPressed: hasProject && canOpenCurrentReader
+                              ? onOpenReader
+                              : null,
                           icon: const Icon(Icons.play_circle_rounded),
                           label: Text(
-                            hasProject
+                            !hasProject
+                                ? 'Choose a book first'
+                                : canOpenCurrentReader
                                 ? 'Continue book'
-                                : 'Choose a book first',
+                                : 'Book not ready yet',
                           ),
                         ),
                       ],
@@ -956,7 +1054,18 @@ class _LibraryMobileHome extends ConsumerWidget {
                   children: [
                     _ImportProgressRail(state: importState),
                     const SizedBox(height: 12),
-                    _ImportComposer(state: importState),
+                    _ImportComposer(
+                      state: importState,
+                      serverConnection: serverConnection,
+                      onOpenConnection: () async {
+                        final settings = await ref.read(
+                          runtimeConnectionSettingsProvider.future,
+                        );
+                        if (context.mounted) {
+                          await onOpenConnection(settings);
+                        }
+                      },
+                    ),
                   ],
                 ),
               ),
@@ -1238,9 +1347,15 @@ class _LibrarySection extends StatelessWidget {
 }
 
 class _ImportComposer extends ConsumerStatefulWidget {
-  const _ImportComposer({required this.state});
+  const _ImportComposer({
+    required this.state,
+    required this.serverConnection,
+    required this.onOpenConnection,
+  });
 
   final LibraryImportState state;
+  final AsyncValue<LibraryServerConnectionState> serverConnection;
+  final Future<void> Function() onOpenConnection;
 
   @override
   ConsumerState<_ImportComposer> createState() => _ImportComposerState();
@@ -1290,6 +1405,8 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
     final hasDraft =
         widget.state.epubFile != null || widget.state.audioFiles.isNotEmpty;
     final hasRecognizedTitle = widget.state.title.trim().isNotEmpty;
+    final connectionState = widget.serverConnection;
+    final isServerReady = connectionState.asData?.value.isReady == true;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1567,6 +1684,26 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
           ),
         ],
         const SizedBox(height: 16),
+        connectionState.when(
+          data: (state) => state.isReady
+              ? const SizedBox.shrink()
+              : _ImportServerCallout(
+                  headline: state.headline,
+                  detail: state.detail,
+                  onOpenConnection: widget.onOpenConnection,
+                ),
+          loading: () => const _ImportServerCallout(
+            headline: 'Checking server',
+            detail:
+                'Verifying that the current server is reachable before starting sync.',
+          ),
+          error: (error, _) => _ImportServerCallout(
+            headline: 'Connect your server first',
+            detail: formatSyncApiError(error),
+            onOpenConnection: widget.onOpenConnection,
+          ),
+        ),
+        const SizedBox(height: 16),
         Text('Start Sync', style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: 10),
         Wrap(
@@ -1574,11 +1711,15 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
           runSpacing: 8,
           children: [
             FilledButton.icon(
-              onPressed: widget.state.isBusy ? null : actions.startImport,
+              onPressed: widget.state.isBusy || !isServerReady
+                  ? null
+                  : actions.startImport,
               icon: const Icon(Icons.cloud_upload_rounded),
               label: Text(
                 widget.state.isBusy
                     ? 'Starting...'
+                    : !isServerReady
+                    ? 'Connect Server'
                     : widget.state.canStartImport
                     ? 'Start Sync'
                     : 'Add Missing Files',
@@ -1915,6 +2056,55 @@ class _ImportCompletionBanner extends ConsumerWidget {
                 icon: const Icon(Icons.sync_rounded),
                 label: const Text('Checking Progress'),
               ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ImportServerCallout extends StatelessWidget {
+  const _ImportServerCallout({
+    required this.headline,
+    required this.detail,
+    this.onOpenConnection,
+  });
+
+  final String headline;
+  final String detail;
+  final Future<void> Function()? onOpenConnection;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: palette.backgroundBase,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(headline, style: Theme.of(context).textTheme.labelLarge),
+          const SizedBox(height: 6),
+          Text(
+            detail,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+          ),
+          if (onOpenConnection != null) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () {
+                onOpenConnection!();
+              },
+              icon: const Icon(Icons.settings_ethernet_rounded),
+              label: const Text('Open Connection'),
+            ),
+          ],
         ],
       ),
     );

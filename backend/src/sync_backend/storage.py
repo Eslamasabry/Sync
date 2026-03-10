@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import shutil
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
@@ -16,6 +17,8 @@ class ObjectStore(Protocol):
     def exists(self, relative_path: str) -> bool: ...
 
     def write_bytes(self, relative_path: str, payload: bytes) -> tuple[str, int]: ...
+
+    def write_file(self, relative_path: str, source_path: Path) -> tuple[str, int]: ...
 
     def write_json(self, relative_path: str, payload: dict[str, Any]) -> tuple[str, int]: ...
 
@@ -50,6 +53,12 @@ class FileObjectStore:
         target_path.parent.mkdir(parents=True, exist_ok=True)
         target_path.write_bytes(payload)
         return relative_path, len(payload)
+
+    def write_file(self, relative_path: str, source_path: Path) -> tuple[str, int]:
+        target_path = self.base_path / relative_path
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_path, target_path)
+        return relative_path, target_path.stat().st_size
 
     def write_json(self, relative_path: str, payload: dict[str, Any]) -> tuple[str, int]:
         encoded = json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
@@ -145,6 +154,10 @@ class S3ObjectStore:
     def write_bytes(self, relative_path: str, payload: bytes) -> tuple[str, int]:
         self.client.put_object(Bucket=self.bucket, Key=relative_path, Body=payload)
         return relative_path, len(payload)
+
+    def write_file(self, relative_path: str, source_path: Path) -> tuple[str, int]:
+        self.client.upload_file(str(source_path), self.bucket, relative_path)
+        return relative_path, source_path.stat().st_size
 
     def exists(self, relative_path: str) -> bool:
         try:

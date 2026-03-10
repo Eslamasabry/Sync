@@ -414,6 +414,7 @@ Future<ProviderContainer> _pumpReaderApp(
   _MemoryRuntimeConnectionSettingsStorage? settingsStorage,
   ReaderLocationStore? locationStore,
   ReaderStudyStore? studyStore,
+  bool showReader = true,
 }) async {
   tester.view.devicePixelRatio = 1.0;
   tester.view.physicalSize = const Size(1440, 1600);
@@ -440,6 +441,10 @@ Future<ProviderContainer> _pumpReaderApp(
     UncontrolledProviderScope(container: container, child: const SyncApp()),
   );
   await tester.pumpAndSettle();
+  if (showReader) {
+    container.read(homeTabProvider.notifier).showReader();
+    await tester.pumpAndSettle();
+  }
   return container;
 }
 
@@ -638,12 +643,7 @@ void main() {
   });
 
   testWidgets('renders reader shell and playback controls', (tester) async {
-    final container = await _pumpReaderApp(
-      tester,
-      repository: _FakeReaderRepository(),
-    );
-    container.read(homeTabProvider.notifier).showReader();
-    await tester.pumpAndSettle();
+    await _pumpReaderApp(tester, repository: _FakeReaderRepository());
 
     expect(find.text('Moby-Dick'), findsAtLeastNWidgets(1));
     expect(find.text('Connection'), findsAtLeastNWidgets(1));
@@ -1026,15 +1026,10 @@ void main() {
   testWidgets('shows the reader error state when a real project load fails', (
     tester,
   ) async {
-    final container = await _pumpReaderApp(
-      tester,
-      repository: _FailingReaderRepository(),
-    );
-    container.read(homeTabProvider.notifier).showReader();
-    await tester.pumpAndSettle();
+    await _pumpReaderApp(tester, repository: _FailingReaderRepository());
 
     expect(find.text('Reader failed to load'), findsOneWidget);
-    expect(find.text('Open Connection'), findsOneWidget);
+    expect(find.text('Open Connection'), findsAtLeastNWidgets(1));
     expect(find.textContaining('Reader model response'), findsOneWidget);
     expect(find.text('Retry'), findsOneWidget);
   });
