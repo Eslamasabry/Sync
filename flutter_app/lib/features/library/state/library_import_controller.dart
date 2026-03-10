@@ -641,6 +641,8 @@ String _importFailureMessage(
     switch (error.code) {
       case 'asset_too_large':
         return 'One of the files is larger than this server currently allows. Try a smaller file, or raise the upload limit on your server and try again.';
+      case 'audio_processing_failed':
+        return 'Sync could not read one of the audiobook files. Try an MP3, M4B, M4A, OGG, WAV, or FLAC file for this book.';
       case 'asset_upload_failed':
         return 'The server could not save one of the files right now. Try again in a moment.';
       case 'epub_processing_failed':
@@ -649,6 +651,8 @@ String _importFailureMessage(
         return 'The files uploaded, but the server could not start syncing yet. Try again in a moment.';
       case 'auth_invalid':
         return 'The server rejected the current token. Update the server connection details and try again.';
+      case 'project_not_found':
+        return 'This server could not find the book project anymore. Start the import again to rebuild it cleanly.';
     }
   }
   final detail = formatSyncApiError(error);
@@ -663,7 +667,9 @@ String _importFailureMessage(
       'The files uploaded, but the alignment job could not start.',
     _ => 'Import failed.',
   };
-  if (projectId != null && projectId.isNotEmpty) {
+  if (projectId != null &&
+      projectId.isNotEmpty &&
+      stage != LibraryImportStatus.creatingProject) {
     return '$prefix $detail Your draft is still here, so you can retry without reselecting everything.';
   }
   return '$prefix $detail';

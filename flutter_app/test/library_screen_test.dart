@@ -418,6 +418,50 @@ void main() {
     expect(find.text('Open Connection'), findsWidgets);
   });
 
+  testWidgets('library explains unreachable hosted servers in plain language', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          runtimeConnectionSettingsStorageProvider.overrideWithValue(
+            _MemoryRuntimeConnectionSettingsStorage(),
+          ),
+          libraryProjectSummaryLoaderProvider.overrideWithValue(
+            const _FakeLibraryProjectSummaryLoader(),
+          ),
+          readerArtifactCacheProvider.overrideWithValue(
+            _MemoryReaderArtifactCache(),
+          ),
+          readerAudioCacheProvider.overrideWithValue(_MemoryReaderAudioCache()),
+          readerLocationStoreProvider.overrideWithValue(
+            _MemoryReaderLocationStore(),
+          ),
+          libraryServerConnectionProvider.overrideWith(
+            (ref) async => const LibraryServerConnectionState(
+              isReady: false,
+              headline: 'Check the server address',
+              detail:
+                  'Sync could not reach this server from the app. Check the server URL, token, or Tailscale path in Connection and try again.',
+            ),
+          ),
+          libraryServerProjectsProvider.overrideWith((ref) async => const []),
+        ],
+        child: MaterialApp(
+          theme: SyncTheme.paper(),
+          home: const LibraryScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Check the server address'), findsWidgets);
+    expect(
+      find.textContaining('Check the server URL, token, or Tailscale path'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets(
     'recent book resume restores the saved auth token for its original server',
     (tester) async {

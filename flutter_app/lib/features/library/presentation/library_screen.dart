@@ -260,10 +260,19 @@ final libraryServerConnectionProvider =
                 'This app is still pointing at a local development server. Open Connection and enter your real server URL before starting sync.',
           );
         }
+        if (error.code == null && error.message.contains('could not reach')) {
+          return const LibraryServerConnectionState(
+            isReady: false,
+            headline: 'Check the server address',
+            detail:
+                'Sync could not reach this server from the app. Check the server URL, token, or Tailscale path in Connection and try again.',
+          );
+        }
         return LibraryServerConnectionState(
           isReady: false,
           headline: 'Server unavailable',
-          detail: 'Sync cannot reach the current server yet. ${error.message}',
+          detail:
+              'Sync cannot use this server yet. ${error.message} Open Connection to fix the address or token.',
         );
       }
     });

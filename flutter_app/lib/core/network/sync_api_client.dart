@@ -583,6 +583,8 @@ String _friendlyBackendMessage({
   return switch (code) {
     'auth_invalid' =>
       'Add the backend auth token in Connection before retrying.',
+    'asset_too_large' =>
+      'One of the selected files is larger than this server currently allows. Pick a smaller file or raise the upload limit on your server.',
     'project_not_found' =>
       'The selected project could not be found on this backend. Pick another target or create a new import.',
     'reader_model_not_found' || 'sync_not_found' =>
@@ -591,10 +593,14 @@ String _friendlyBackendMessage({
       'The book or audio upload is not finished yet. Retry after the upload completes.',
     'asset_empty_upload' =>
       'One of the selected files was empty. Pick a valid EPUB or audio file.',
+    'audio_processing_failed' =>
+      'Sync could not read this audiobook file. Try a standard audiobook file such as MP3, M4B, M4A, OGG, WAV, or FLAC.',
     'epub_processing_failed' =>
       'The EPUB uploaded, but Sync could not turn it into a readable model. Try a cleaner EPUB file.',
     'asset_content_missing' =>
       'The backend knows about this file, but the stored content is missing. Re-upload the project assets.',
+    'job_dispatch_failed' =>
+      'The files uploaded, but the server could not start syncing yet. Try again in a moment.',
     _ => backendMessage,
   };
 }

@@ -590,6 +590,38 @@ void main() {
     );
   });
 
+  test('unreadable audio uploads explain which file types to try next', () async {
+    final container = ProviderContainer(
+      overrides: [
+        runtimeConnectionSettingsStorageProvider.overrideWithValue(
+          _MemoryRuntimeConnectionSettingsStorage(),
+        ),
+        importFilePickerProvider.overrideWithValue(_FakeImportFilePicker()),
+        syncApiClientProvider.overrideWith(
+          (ref) async => _FakeSyncApiClient(
+            uploadError: const ApiClientException(
+              'Sync could not read this audiobook file.',
+              code: 'audio_processing_failed',
+            ),
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final controller = container.read(libraryImportProvider.notifier);
+    controller.setTitle('Imported Book');
+    await controller.pickEpub();
+    await controller.startImport();
+
+    final state = container.read(libraryImportProvider);
+    expect(state.status, LibraryImportStatus.failed);
+    expect(
+      state.message,
+      'Sync could not read one of the audiobook files. Try an MP3, M4B, M4A, OGG, WAV, or FLAC file for this book.',
+    );
+  });
+
   test(
     'auth failures ask the user to update server connection details',
     () async {
