@@ -153,6 +153,14 @@ final libraryProjectJobsProvider = FutureProvider.autoDispose
       return api.fetchProjectJobs(settings.projectId);
     });
 
+final libraryProjectRefreshTickProvider = StreamProvider.autoDispose
+    .family<int, RuntimeConnectionSettings>(
+      (ref, settings) => Stream<int>.periodic(
+        const Duration(seconds: 3),
+        (count) => count,
+      ),
+    );
+
 class LibraryOfflineSnapshot {
   const LibraryOfflineSnapshot({
     required this.hasTextCache,
@@ -1774,6 +1782,26 @@ class _ImportCompletionBanner extends ConsumerWidget {
             projectId: state.projectId!,
             authToken: connection.asData!.value.authToken,
           );
+    if (importedSettings != null) {
+      ref.listen<AsyncValue<int>>(
+        libraryProjectRefreshTickProvider(importedSettings),
+        (_, _) {
+          final snapshot = ref.read(
+            libraryProjectSnapshotProvider(importedSettings),
+          );
+          final value = snapshot.asData?.value;
+          final status = value?.latestJobStatus;
+          final isTerminal =
+              value?.lifecycleIsReadable == true ||
+              status == 'completed' ||
+              status == 'failed' ||
+              status == 'cancelled';
+          if (!isTerminal) {
+            ref.invalidate(libraryProjectSnapshotProvider(importedSettings));
+          }
+        },
+      );
+    }
     final importedSnapshot = importedSettings == null
         ? null
         : ref.watch(libraryProjectSnapshotProvider(importedSettings));
