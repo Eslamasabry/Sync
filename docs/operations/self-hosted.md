@@ -170,6 +170,7 @@ For a small self-hosted cloud deployment, Railway can run the API in inline mode
 - `JOB_EXECUTION_MODE=inline`
 
 This is the fastest hosted path for personal use, demos, and low-concurrency deployments. It avoids the separate worker service, but it is not the final scaling shape for heavier public traffic.
+The committed Dockerfile installs CPU-only `torch` and `torchaudio` before `whisperx`, which keeps Railway from downloading the full CUDA wheel stack on CPU-only builds.
 
 Recommended Railway service settings:
 

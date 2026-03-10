@@ -51,6 +51,7 @@ Notes:
 - `mutagen` is used as a duration-probe fallback when `ffprobe` is unavailable.
 - `torchcodec` is pinned to the `0.7.x` line because `whisperx` currently installs with `torch 2.8.x`, and newer `torchcodec` releases emit runtime loader warnings with that stack.
 - `whisperx` stays in the optional `alignment` extra because it pulls a large PyTorch stack.
+- The production Docker image installs CPU-only `torch` and `torchaudio` from the PyTorch CPU wheel index before installing `.[alignment]`. That keeps Railway and other CPU hosts from downloading the much larger CUDA wheel set.
 - `OBJECT_STORE_MODE=filesystem` remains the local default. `OBJECT_STORE_MODE=s3` now works for durable S3-compatible storage, including streamed artifact downloads and temporary local materialization for EPUB/audio processing.
 - `make local-full-smoke-s3` uses that mode and verifies the artifact `download_url` content routes during the smoke run.
 - Runtime middleware is deployment-configurable through env vars:
