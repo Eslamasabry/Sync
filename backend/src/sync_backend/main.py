@@ -29,7 +29,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         debug=settings.debug,
         job_execution_mode=settings.job_execution_mode,
         gzip_enabled=settings.enable_gzip,
-        cors_enabled=bool(settings.cors_origins or settings.cors_origin_regex),
+        cors_enabled=bool(
+            settings.cors_origins or settings.effective_cors_origin_regex
+        ),
         trusted_hosts_enabled=bool(settings.trusted_host_values),
     )
     yield
@@ -42,7 +44,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title=settings.app_name,
-        version="0.1.0",
+        version="0.1.3",
         lifespan=lifespan,
     )
     if settings.enable_gzip:
@@ -50,11 +52,11 @@ def create_app() -> FastAPI:
             GZipMiddleware,
             minimum_size=settings.gzip_minimum_size,
         )
-    if settings.cors_origins or settings.cors_origin_regex:
+    if settings.cors_origins or settings.effective_cors_origin_regex:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=settings.cors_origins,
-            allow_origin_regex=settings.cors_origin_regex,
+            allow_origin_regex=settings.effective_cors_origin_regex,
             allow_credentials=settings.cors_allow_credentials,
             allow_methods=settings.cors_methods,
             allow_headers=settings.cors_headers,

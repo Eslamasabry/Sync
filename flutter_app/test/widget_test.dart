@@ -421,6 +421,39 @@ Future<ProviderContainer> _pumpReaderApp(
   return container;
 }
 
+RichText _readerParagraphRichText(WidgetTester tester) {
+  final finder = find.byWidgetPredicate(
+    (widget) =>
+        widget is RichText &&
+        widget.text.toPlainText().trim().startsWith('Call me Ishmael'),
+  );
+  return tester.widget<RichText>(finder.last);
+}
+
+TextStyle _tokenStyleFromRichText(RichText richText, String tokenText) {
+  TextStyle? visit(InlineSpan span) {
+    if (span is TextSpan) {
+      final text = (span.text ?? '').replaceAll(' ', '');
+      if (text.contains(tokenText)) {
+        return span.style ?? const TextStyle();
+      }
+      for (final child in span.children ?? const <InlineSpan>[]) {
+        final style = visit(child);
+        if (style != null) {
+          return style;
+        }
+      }
+    }
+    return null;
+  }
+
+  final style = visit(richText.text);
+  if (style != null) {
+    return style;
+  }
+  throw StateError('Token style not found for $tokenText');
+}
+
 ProviderContainer _playbackContainer({
   _FakePlaybackDriver? driver,
   ReaderLocationStore? locationStore,
@@ -574,7 +607,7 @@ void main() {
   testWidgets('renders reader shell and playback controls', (tester) async {
     await _pumpReaderApp(tester, repository: _FakeReaderRepository());
 
-    expect(find.text('Live API'), findsOneWidget);
+    expect(find.textContaining('Live API'), findsOneWidget);
     expect(find.text('Moby-Dick'), findsAtLeastNWidgets(1));
     expect(find.text('Speed'), findsOneWidget);
     expect(find.text('Download Audio'), findsOneWidget);
@@ -613,15 +646,10 @@ void main() {
   ) async {
     await _pumpReaderApp(tester, repository: _FakeReaderRepository());
 
-    final beforeContainer = tester.widget<AnimatedContainer>(
-      find
-          .ancestor(
-            of: find.text('Call').first,
-            matching: find.byType(AnimatedContainer),
-          )
-          .first,
+    final beforeStyle = _tokenStyleFromRichText(
+      _readerParagraphRichText(tester),
+      'Call',
     );
-    final beforeDecoration = beforeContainer.decoration! as BoxDecoration;
 
     await tester.ensureVisible(find.text('Reading surface'));
     await tester.pumpAndSettle();
@@ -632,17 +660,12 @@ void main() {
     await tester.tap(find.text('Enhanced contrast'));
     await tester.pumpAndSettle();
 
-    final afterContainer = tester.widget<AnimatedContainer>(
-      find
-          .ancestor(
-            of: find.text('Call').first,
-            matching: find.byType(AnimatedContainer),
-          )
-          .first,
+    final afterStyle = _tokenStyleFromRichText(
+      _readerParagraphRichText(tester),
+      'Call',
     );
-    final afterDecoration = afterContainer.decoration! as BoxDecoration;
 
-    expect(afterDecoration.color, isNot(equals(beforeDecoration.color)));
+    expect(afterStyle.backgroundColor, isNot(equals(beforeStyle.backgroundColor)));
   });
 
   testWidgets('left-handed HUD moves the focus overlay to the lower left', (
@@ -680,8 +703,10 @@ void main() {
   testWidgets('text size controls change rendered token size', (tester) async {
     await _pumpReaderApp(tester, repository: _FakeReaderRepository());
 
-    final before = tester.widget<Text>(find.text('Call').first);
-    final beforeSize = before.style?.fontSize ?? 0;
+    final beforeSize =
+        _tokenStyleFromRichText(_readerParagraphRichText(tester), 'Call')
+            .fontSize ??
+        0;
 
     await tester.ensureVisible(find.text('Reading surface'));
     await tester.pumpAndSettle();
@@ -692,8 +717,10 @@ void main() {
     await tester.tap(find.text('Large').first);
     await tester.pumpAndSettle();
 
-    final after = tester.widget<Text>(find.text('Call').first);
-    final afterSize = after.style?.fontSize ?? 0;
+    final afterSize =
+        _tokenStyleFromRichText(_readerParagraphRichText(tester), 'Call')
+            .fontSize ??
+        0;
 
     expect(afterSize, greaterThan(beforeSize));
   });
@@ -713,7 +740,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Search Results'), findsOneWidget);
-    expect(find.textContaining('Call me Ishmael'), findsOneWidget);
+    expect(find.textContaining('Call me Ishmael'), findsWidgets);
   });
 
   testWidgets('saves runtime connection settings locally through the UI', (

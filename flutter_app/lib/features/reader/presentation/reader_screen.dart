@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sync_flutter/core/config/app_config.dart';
@@ -56,157 +57,113 @@ class ReaderScreen extends ConsumerWidget {
         children: [
           Positioned.fill(
             child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    palette.backgroundBase,
-                    palette.backgroundElevated,
-                    palette.backgroundBase,
-                  ],
-                  stops: const [0, 0.58, 1],
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            top: -140,
-            left: -60,
-            child: IgnorePointer(
-              child: Container(
-                width: 320,
-                height: 320,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      palette.accentSoft.withValues(alpha: 0.70),
-                      palette.accentSoft.withValues(alpha: 0),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            right: -100,
-            top: 110,
-            child: IgnorePointer(
-              child: Container(
-                width: 280,
-                height: 280,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      palette.accentPrimary.withValues(alpha: 0.18),
-                      palette.accentPrimary.withValues(alpha: 0),
-                    ],
-                  ),
-                ),
-              ),
+              decoration: BoxDecoration(color: palette.backgroundBase),
             ),
           ),
           Positioned.fill(
             child: SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
-                child: Column(
-                  children: [
-                    if (!playback.distractionFreeMode) ...[
-                      _ReaderHeroBar(
-                        project: project,
-                        settings: activeSettings,
-                        playback: playback,
-                        bundle: bundle,
-                        onToggleTheme: controller.toggleTheme,
-                        onToggleDistractionFree:
-                            controller.toggleDistractionFreeMode,
-                        onOpenNavigation: bundle == null
-                            ? null
-                            : () => _showNavigationSheet(
-                                context,
-                                bundle,
-                                controller.seekTo,
-                              ),
-                        onOpenGapInspector: bundle == null
-                            ? null
-                            : () => _showGapInspectorSheet(
-                                context,
-                                bundle,
-                                playback.displayedPositionMs,
-                                controller.seekTo,
-                              ),
-                        onOpenConnectionSettings: () =>
-                            _showConnectionSettingsSheet(
-                              context,
-                              activeSettings,
-                              recentConnections.asData?.value ?? const [],
-                            ),
-                      ),
-                      const SizedBox(height: 10),
-                      _ReaderStateStrip(
-                        project: project,
-                        settings: activeSettings,
-                        onRefresh: () => ref.invalidate(readerProjectProvider),
-                        onOpenConnectionSettings: () =>
-                            _showConnectionSettingsSheet(
-                              context,
-                              activeSettings,
-                              recentConnections.asData?.value ?? const [],
-                            ),
-                      ),
-                      const SizedBox(height: 18),
-                    ],
-                    Expanded(
-                      child: playback.distractionFreeMode
-                          ? Stack(
-                              children: [
-                                Positioned.fill(
-                                  child: _ReaderStage(
-                                    project: project,
-                                    playback: playback,
-                                    onRetry: () =>
-                                        ref.invalidate(readerProjectProvider),
-                                    settings: activeSettings,
-                                    onOpenConnectionSettings: () =>
-                                        _showConnectionSettingsSheet(
-                                          context,
-                                          activeSettings,
-                                          recentConnections.asData?.value ??
-                                              const [],
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1480),
+                    child: Column(
+                      children: [
+                        if (!playback.distractionFreeMode) ...[
+                          _ReaderHeroBar(
+                            project: project,
+                            settings: activeSettings,
+                            playback: playback,
+                            bundle: bundle,
+                            onToggleTheme: controller.toggleTheme,
+                            onToggleDistractionFree:
+                                controller.toggleDistractionFreeMode,
+                            onOpenNavigation: bundle == null
+                                ? null
+                                : () => _showNavigationSheet(
+                                    context,
+                                    bundle,
+                                    controller.seekTo,
+                                  ),
+                            onOpenGapInspector: bundle == null
+                                ? null
+                                : () => _showGapInspectorSheet(
+                                    context,
+                                    bundle,
+                                    playback.displayedPositionMs,
+                                    controller.seekTo,
+                                  ),
+                            onOpenConnectionSettings: () =>
+                                _showConnectionSettingsSheet(
+                                  context,
+                                  activeSettings,
+                                  recentConnections.asData?.value ?? const [],
+                                ),
+                          ),
+                          const SizedBox(height: 12),
+                          _ReaderStateStrip(
+                            project: project,
+                            settings: activeSettings,
+                            onRefresh: () => ref.invalidate(readerProjectProvider),
+                            onOpenConnectionSettings: () =>
+                                _showConnectionSettingsSheet(
+                                  context,
+                                  activeSettings,
+                                  recentConnections.asData?.value ?? const [],
+                                ),
+                          ),
+                          const SizedBox(height: 18),
+                        ],
+                        Expanded(
+                          child: playback.distractionFreeMode
+                              ? Stack(
+                                  children: [
+                                    Positioned.fill(
+                                      child: _ReaderStage(
+                                        project: project,
+                                        playback: playback,
+                                        onRetry: () => ref.invalidate(
+                                          readerProjectProvider,
                                         ),
-                                    onTokenTap: (token) =>
-                                        controller.seekTo(token.startMs),
-                                  ),
-                                ),
-                                Positioned(
-                                  bottom: 16,
-                                  left: playback.leftHandedMode ? 16 : null,
-                                  right: playback.leftHandedMode ? null : 16,
-                                  child: _ReaderFocusOverlay(
-                                    playback: playback,
-                                    hasPlayableContent:
-                                        bundle != null &&
-                                        bundle.syncArtifact.totalDurationMs > 0,
-                                    onTogglePlayback: bundle == null
-                                        ? null
-                                        : () => controller.togglePlayback(
-                                            bundle.syncArtifact.totalDurationMs,
-                                          ),
-                                    onToggleDistractionFree:
-                                        controller.toggleDistractionFreeMode,
-                                    onRewind: controller.rewind15Seconds,
-                                    onForward: controller.forward15Seconds,
-                                  ),
-                                ),
-                              ],
-                            )
-                          : LayoutBuilder(
-                              builder: (context, constraints) {
-                                final isWide = constraints.maxWidth >= 1160;
-                                final controlPanel = _ControlDock(
+                                        settings: activeSettings,
+                                        onOpenConnectionSettings: () =>
+                                            _showConnectionSettingsSheet(
+                                              context,
+                                              activeSettings,
+                                              recentConnections.asData?.value ??
+                                                  const [],
+                                            ),
+                                        onTokenTap: (token) =>
+                                            controller.seekTo(token.startMs),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      bottom: 16,
+                                      left: playback.leftHandedMode ? 16 : null,
+                                      right: playback.leftHandedMode ? null : 16,
+                                      child: _ReaderFocusOverlay(
+                                        playback: playback,
+                                        hasPlayableContent:
+                                            bundle != null &&
+                                            bundle.syncArtifact.totalDurationMs >
+                                                0,
+                                        onTogglePlayback: bundle == null
+                                            ? null
+                                            : () => controller.togglePlayback(
+                                                bundle.syncArtifact.totalDurationMs,
+                                              ),
+                                        onToggleDistractionFree:
+                                            controller.toggleDistractionFreeMode,
+                                        onRewind: controller.rewind15Seconds,
+                                        onForward: controller.forward15Seconds,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final isWide = constraints.maxWidth >= 1180;
+                                    final controlPanel = _ControlDock(
                                   bundle: bundle,
                                   playback: playback,
                                   latestEvent: latestEvent,
@@ -315,76 +272,82 @@ class ReaderScreen extends ConsumerWidget {
                                   onMarkLoopStart: controller.markLoopStart,
                                   onMarkLoopEnd: controller.markLoopEnd,
                                   onClearLoop: controller.clearLoop,
-                                );
+                                    );
 
-                                if (isWide) {
-                                  return Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      Expanded(
-                                        flex: 13,
-                                        child: _ReaderStage(
-                                          project: project,
-                                          playback: playback,
-                                          onRetry: () => ref.invalidate(
-                                            readerProjectProvider,
-                                          ),
-                                          settings: activeSettings,
-                                          onOpenConnectionSettings: () =>
-                                              _showConnectionSettingsSheet(
-                                                context,
-                                                activeSettings,
-                                                recentConnections
-                                                        .asData
-                                                        ?.value ??
-                                                    const [],
+                                    if (isWide) {
+                                      return Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          Expanded(
+                                            flex: 15,
+                                            child: _ReaderStage(
+                                              project: project,
+                                              playback: playback,
+                                              onRetry: () => ref.invalidate(
+                                                readerProjectProvider,
                                               ),
-                                          onTokenTap: (token) =>
-                                              controller.seekTo(token.startMs),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 18),
-                                      SizedBox(width: 392, child: controlPanel),
-                                    ],
-                                  );
-                                }
-
-                                final readerHeight =
-                                    (constraints.maxHeight * 0.64)
-                                        .clamp(340.0, 620.0)
-                                        .toDouble();
-
-                                return ListView(
-                                  children: [
-                                    SizedBox(
-                                      height: readerHeight,
-                                      child: _ReaderStage(
-                                        project: project,
-                                        playback: playback,
-                                        onRetry: () => ref.invalidate(
-                                          readerProjectProvider,
-                                        ),
-                                        settings: activeSettings,
-                                        onOpenConnectionSettings: () =>
-                                            _showConnectionSettingsSheet(
-                                              context,
-                                              activeSettings,
-                                              recentConnections.asData?.value ??
-                                                  const [],
+                                              settings: activeSettings,
+                                              onOpenConnectionSettings: () =>
+                                                  _showConnectionSettingsSheet(
+                                                    context,
+                                                    activeSettings,
+                                                    recentConnections
+                                                            .asData
+                                                            ?.value ??
+                                                        const [],
+                                                  ),
+                                              onTokenTap: (token) =>
+                                                  controller.seekTo(
+                                                    token.startMs,
+                                                  ),
                                             ),
-                                        onTokenTap: (token) =>
-                                            controller.seekTo(token.startMs),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 18),
-                                    controlPanel,
-                                  ],
-                                );
-                              },
-                            ),
+                                          ),
+                                          const SizedBox(width: 16),
+                                          SizedBox(width: 320, child: controlPanel),
+                                        ],
+                                      );
+                                    }
+
+                                    final readerHeight =
+                                        (constraints.maxHeight * 0.68)
+                                            .clamp(360.0, 680.0)
+                                            .toDouble();
+
+                                    return ListView(
+                                      children: [
+                                        SizedBox(
+                                          height: readerHeight,
+                                          child: _ReaderStage(
+                                            project: project,
+                                            playback: playback,
+                                            onRetry: () => ref.invalidate(
+                                              readerProjectProvider,
+                                            ),
+                                            settings: activeSettings,
+                                            onOpenConnectionSettings: () =>
+                                                _showConnectionSettingsSheet(
+                                                  context,
+                                                  activeSettings,
+                                                  recentConnections
+                                                          .asData
+                                                          ?.value ??
+                                                      const [],
+                                                ),
+                                            onTokenTap: (token) =>
+                                                controller.seekTo(token.startMs),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        controlPanel,
+                                      ],
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -502,10 +465,10 @@ class _ReaderStateStrip extends StatelessWidget {
             : palette.backgroundElevated;
         return Container(
           width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
           decoration: BoxDecoration(
             color: tone,
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(color: palette.borderSubtle),
           ),
           child: Wrap(
@@ -622,10 +585,10 @@ class _ReaderTransitionCard extends StatelessWidget {
     final palette = ReaderPalette.of(context);
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: BoxDecoration(
         color: palette.backgroundElevated,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: palette.borderSubtle),
       ),
       child: Column(
@@ -707,34 +670,27 @@ class _ReaderHeroBar extends StatelessWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(26),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: palette.borderSubtle),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            palette.backgroundElevated.withValues(alpha: 0.94),
-            palette.backgroundBase.withValues(alpha: 0.98),
-          ],
-        ),
+        color: palette.backgroundElevated,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 30,
-            offset: const Offset(0, 18),
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 16,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
         child: Wrap(
           spacing: 16,
-          runSpacing: 16,
+          runSpacing: 12,
           crossAxisAlignment: WrapCrossAlignment.center,
           alignment: WrapAlignment.spaceBetween,
           children: [
             ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 720),
+              constraints: const BoxConstraints(maxWidth: 760),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -749,23 +705,23 @@ class _ReaderHeroBar extends StatelessWidget {
                   const SizedBox(height: 12),
                   Text(
                     title,
-                    style: theme.textTheme.headlineMedium?.copyWith(
+                    style: theme.textTheme.headlineSmall?.copyWith(
                       color: palette.textPrimary,
                       height: 1.0,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Text(
                     subtitle,
-                    style: theme.textTheme.bodyLarge?.copyWith(
+                    style: theme.textTheme.bodyMedium?.copyWith(
                       color: palette.textMuted,
-                      height: 1.42,
+                      height: 1.45,
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   Text(
                     'Coverage $coverage  •  Confidence $confidence',
-                    style: theme.textTheme.labelMedium?.copyWith(
+                    style: theme.textTheme.bodySmall?.copyWith(
                       color: palette.textMuted,
                     ),
                   ),
@@ -848,26 +804,19 @@ class _ReaderStage extends StatelessWidget {
       label: 'Reader stage',
       child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(34),
+          borderRadius: BorderRadius.circular(28),
           border: Border.all(color: palette.borderSubtle),
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              palette.backgroundElevated.withValues(alpha: 0.98),
-              palette.backgroundBase.withValues(alpha: 0.98),
-            ],
-          ),
+          color: palette.backgroundElevated,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.07),
-              blurRadius: 34,
-              offset: const Offset(0, 20),
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 18,
+              offset: const Offset(0, 10),
             ),
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(34),
+          borderRadius: BorderRadius.circular(28),
           child: project.when(
             data: (bundle) => _ReaderLoadedView(
               bundle: bundle,
@@ -1212,18 +1161,19 @@ class _ControlDock extends StatelessWidget {
 
                         return Column(
                           children: [
-                            Row(
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 12,
+                              crossAxisAlignment: WrapCrossAlignment.center,
                               children: [
                                 IconButton.filledTonal(
                                   onPressed: onRewind,
                                   icon: const Icon(Icons.replay_10_rounded),
                                 ),
-                                const SizedBox(width: 12),
                                 IconButton.filledTonal(
                                   onPressed: onForward,
                                   icon: const Icon(Icons.forward_10_rounded),
                                 ),
-                                const Spacer(),
                                 PopupMenuButton<double>(
                                   initialValue: playback.speed,
                                   onSelected: onSetSpeed,
@@ -1366,11 +1316,13 @@ class _DockSection extends StatelessWidget {
             children: [
               Icon(icon, size: 18, color: palette.accentPrimary),
               const SizedBox(width: 8),
-              Text(
-                title,
-                style: Theme.of(
-                  context,
-                ).textTheme.labelLarge?.copyWith(color: palette.textPrimary),
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelLarge?.copyWith(color: palette.textPrimary),
+                ),
               ),
             ],
           ),
@@ -1452,7 +1404,7 @@ class _ReaderPageHeader extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: palette.borderSubtle)),
       ),
@@ -1467,7 +1419,7 @@ class _ReaderPageHeader extends StatelessWidget {
             children: [
               Text(
                 'Now reading',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
                   color: palette.accentPrimary,
                   letterSpacing: 0.7,
                 ),
@@ -1858,7 +1810,7 @@ class _ReaderLoadedViewState extends State<_ReaderLoadedView> {
       bundle.syncArtifact,
       playback.displayedPositionMs,
     )?.location.locationKey;
-    final maxWidth = playback.distractionFreeMode ? 760.0 : 860.0;
+    final maxWidth = playback.distractionFreeMode ? 720.0 : 760.0;
     final accessibilityAnnouncement = _readerAccessibilityAnnouncement(
       bundle,
       playback.displayedPositionMs,
@@ -1866,32 +1818,14 @@ class _ReaderLoadedViewState extends State<_ReaderLoadedView> {
 
     return Stack(
       children: [
-        Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    palette.accentSoft.withValues(alpha: 0.18),
-                    Colors.transparent,
-                    palette.accentPrimary.withValues(alpha: 0.05),
-                  ],
-                  stops: const [0, 0.32, 1],
-                ),
-              ),
-            ),
-          ),
-        ),
         SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(22, 14, 22, 22),
+          padding: const EdgeInsets.fromLTRB(22, 18, 22, 22),
           child: Align(
             alignment: Alignment.topCenter,
             child: ConstrainedBox(
               constraints: BoxConstraints(maxWidth: maxWidth),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(26, 26, 26, 28),
+                padding: const EdgeInsets.fromLTRB(18, 20, 18, 28),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1988,9 +1922,10 @@ class _ReaderLoadingView extends StatelessWidget {
           borderRadius: BorderRadius.circular(28),
           border: Border.all(color: palette.borderSubtle),
         ),
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             const CircularProgressIndicator(),
             const SizedBox(height: 18),
@@ -2019,7 +1954,8 @@ class _ReaderLoadingView extends StatelessWidget {
               const SizedBox(height: 16),
               _ConnectionHintBanner(message: hint),
             ],
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2760,9 +2696,13 @@ class _ContentWindowBanner extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: palette.borderSubtle),
       ),
-      child: Row(
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Expanded(
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
             child: Text(
               'Intro detected before the book starts at '
               '${ReaderScreen._formatMs(syncArtifact.contentStartMs)}'
@@ -3493,7 +3433,6 @@ class _ParagraphBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = ReaderPalette.of(context);
     final paragraphLabel = paragraph.tokens
         .map((token) => token.text)
         .join(' ');
@@ -3506,56 +3445,41 @@ class _ParagraphBlock extends StatelessWidget {
       hint: isActiveParagraph
           ? 'Contains the current reading phrase.'
           : 'Double tap a word to jump playback.',
-      child: Wrap(
-        spacing: 6 * fontScale,
-        runSpacing: 10 * paragraphSpacing,
-        children: [
-          for (final token in paragraph.tokens)
-            _TokenPill(
-              token: token,
-              syncToken:
-                  syncIndex['${section.id}:${paragraph.index}:${token.index}'],
-              isActive:
-                  activeLocationKey ==
-                  '${section.id}:${paragraph.index}:${token.index}',
-              onTap: onTokenTap,
-              palette: palette,
-              fontScale: fontScale,
-              lineHeight: lineHeight,
-              highContrastMode: highContrastMode,
-            ),
-        ],
+      child: Text.rich(
+        TextSpan(
+          children: [
+            for (var index = 0; index < paragraph.tokens.length; index++)
+              _buildTokenSpan(
+                context,
+                token: paragraph.tokens[index],
+                syncToken:
+                    syncIndex[
+                        '${section.id}:${paragraph.index}:${paragraph.tokens[index].index}'],
+                isActive:
+                    activeLocationKey ==
+                    '${section.id}:${paragraph.index}:${paragraph.tokens[index].index}',
+                isLast: index == paragraph.tokens.length - 1,
+              ),
+          ],
+        ),
+        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+          fontSize:
+              (Theme.of(context).textTheme.bodyLarge?.fontSize ?? 22) *
+              fontScale,
+          height: lineHeight * 1.03,
+        ),
       ),
     );
   }
-}
 
-class _TokenPill extends StatelessWidget {
-  const _TokenPill({
-    required this.token,
-    required this.syncToken,
-    required this.isActive,
-    required this.onTap,
-    required this.palette,
-    required this.fontScale,
-    required this.lineHeight,
-    required this.highContrastMode,
-  });
-
-  final ReaderToken token;
-  final SyncToken? syncToken;
-  final bool isActive;
-  final ValueChanged<SyncToken?> onTap;
-  final ReaderPalette palette;
-  final double fontScale;
-  final double lineHeight;
-  final bool highContrastMode;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final disableAnimations =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+  InlineSpan _buildTokenSpan(
+    BuildContext context, {
+    required ReaderToken token,
+    required SyncToken? syncToken,
+    required bool isActive,
+    required bool isLast,
+  }) {
+    final palette = ReaderPalette.of(context);
     final confidence = syncToken?.confidence ?? 1.0;
     final isSoftConfidence = confidence < 0.86;
     final isWeakConfidence = confidence < 0.72;
@@ -3581,65 +3505,27 @@ class _TokenPill extends StatelessWidget {
         : isWeakConfidence
         ? palette.accentSoft.withValues(alpha: 0.28)
         : Colors.transparent;
-    final borderColor = highContrastMode
-        ? isActive
-              ? palette.textPrimary
-              : isSoftConfidence
-              ? palette.accentPrimary
-              : palette.borderSubtle
-        : isActive
-        ? palette.accentPrimary
-        : isSoftConfidence
-        ? palette.borderSubtle
-        : Colors.transparent;
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: () => onTap(syncToken),
-      child: Semantics(
-        button: true,
-        label: syncToken == null
-            ? 'Unsynced token ${token.text}'
-            : 'Token ${token.text}, confidence ${(confidence * 100).round()} percent',
-        child: AnimatedContainer(
-          duration: disableAnimations
-              ? Duration.zero
-              : const Duration(milliseconds: 140),
-          curve: Curves.easeOut,
-          padding: EdgeInsets.symmetric(
-            horizontal: 8 * fontScale,
-            vertical: 6 * fontScale,
-          ),
-          decoration: BoxDecoration(
-            color: backgroundColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: borderColor,
-              width: highContrastMode ? 1.4 : 1,
-            ),
-          ),
-          child: Text(
-            token.text,
-            style: textTheme.bodyLarge?.copyWith(
-              fontSize: (textTheme.bodyLarge?.fontSize ?? 20) * fontScale,
-              height: lineHeight,
-              color: foregroundColor,
-              fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-              fontStyle: isWeakConfidence ? FontStyle.italic : FontStyle.normal,
-              decoration: isActive || isSoftConfidence || highContrastMode
-                  ? TextDecoration.underline
-                  : null,
-              decorationColor: isActive
-                  ? (highContrastMode
-                        ? palette.backgroundBase
-                        : palette.accentPrimary)
-                  : palette.textMuted,
-              decorationStyle: isActive
-                  ? TextDecorationStyle.solid
-                  : TextDecorationStyle.dotted,
-            ),
-          ),
-        ),
+    return TextSpan(
+      text: '${token.text}${isLast ? '' : ' '}',
+      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+        fontSize:
+            (Theme.of(context).textTheme.bodyLarge?.fontSize ?? 22) * fontScale,
+        height: lineHeight * 1.03,
+        color: foregroundColor,
+        fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
+        fontStyle: isWeakConfidence ? FontStyle.italic : FontStyle.normal,
+        backgroundColor: backgroundColor,
+        decoration: isActive || isSoftConfidence
+            ? TextDecoration.underline
+            : TextDecoration.none,
+        decorationColor: isActive ? palette.accentPrimary : palette.textMuted,
+        decorationStyle: isActive
+            ? TextDecorationStyle.solid
+            : TextDecorationStyle.dotted,
       ),
+      recognizer: syncToken == null
+          ? null
+          : (TapGestureRecognizer()..onTap = () => onTokenTap(syncToken)),
     );
   }
 }

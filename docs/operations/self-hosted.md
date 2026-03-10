@@ -158,3 +158,55 @@ After deployment, run a real regression gate from the host:
 cd /opt/sync
 ./scripts/local/run_regression_corpus.sh --api-base-url http://127.0.0.1:8000/v1 --gate
 ```
+
+## 10. Railway Deployment
+
+For a small self-hosted cloud deployment, Railway can run the API in inline mode with:
+
+- SQLite on a mounted volume
+- filesystem object storage on that same mounted volume
+- `JOB_EXECUTION_MODE=inline`
+
+This is the fastest hosted path for personal use, demos, and low-concurrency deployments. It avoids the separate worker service, but it is not the final scaling shape for heavier public traffic.
+
+Recommended Railway service settings:
+
+- service root: `backend`
+- builder: `Dockerfile`
+- volume mount: `/data`
+- public domain enabled
+
+Recommended environment:
+
+```env
+APP_ENV=production
+LOG_LEVEL=INFO
+JOB_EXECUTION_MODE=inline
+DATABASE_URL=sqlite+pysqlite:////data/sync.db
+OBJECT_STORE_MODE=filesystem
+ALIGNMENT_WORKDIR=/data
+TRANSCRIBER_PROVIDER=whisperx
+WHISPER_MODEL_NAME=base
+FFMPEG_BIN=ffmpeg
+FFPROBE_BIN=ffprobe
+ENABLE_GZIP=true
+API_AUTH_TOKEN=<long-random-token>
+```
+
+If the Flutter app or web client will talk to Railway directly, also set either:
+
+- `CORS_ALLOW_ORIGINS=https://your-app-origin.example`
+- or `CORS_ALLOW_ORIGIN_REGEX=...`
+
+After the first successful Railway deployment, verify:
+
+```bash
+curl -f https://<your-railway-domain>/v1/health
+curl -f https://<your-railway-domain>/v1/ready
+```
+
+Use the generated Railway domain as the Flutter runtime `API base URL`, for example:
+
+```text
+https://<your-railway-domain>/v1
+```

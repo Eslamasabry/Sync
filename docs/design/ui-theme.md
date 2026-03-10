@@ -10,6 +10,11 @@ The reader should feel like a crafted reading tool, not a generic mobile dashboa
 - restrained motion
 
 This keeps the product readable for long sessions while still feeling distinct.
+The current shell is intentionally split into:
+
+- a restrained floating navigation dock
+- a denser library workspace for project operations
+- a calmer text-first reader surface
 
 ## Theme Modes
 
@@ -26,15 +31,16 @@ Sepia-style reading is the primary visual identity. Dark mode is functional, not
 
 | Token | Value | Usage |
 | --- | --- | --- |
-| `bg.base` | `#F6F0E2` | main background |
-| `bg.elevated` | `#FFF9ED` | cards and sheets |
-| `bg.chrome` | `#F1E5D1` | app shell and dock surfaces |
-| `text.primary` | `#241A12` | body text |
-| `text.muted` | `#6A5849` | secondary text |
-| `accent.primary` | `#B8742A` | active word, progress, CTAs |
-| `accent.soft` | `#E6C79B` | soft highlight fill |
-| `border.subtle` | `#D8C8AE` | dividers |
-| `shell.glow` | `#F0D4AF` | shell ambient glow |
+| `bg.base` | `#F3EDE1` | main background |
+| `bg.elevated` | `#FFFBF3` | cards and sheets |
+| `bg.chrome` | `#E8DED0` | app shell and dock surfaces |
+| `text.primary` | `#1C140E` | body text |
+| `text.muted` | `#54463A` | secondary text |
+| `accent.primary` | `#B56B1F` | active word, progress, CTAs |
+| `accent.soft` | `#E7C28F` | soft highlight fill |
+| `border.subtle` | `#D3C2A6` | dividers |
+| `shell.glow` | `#E6C08F` | shell ambient glow |
+| `shell.shadow` | `#22160F08` | shell card shadow |
 | `status.error` | `#A33A2B` | failures |
 | `status.success` | `#3F6B45` | completed jobs |
 
@@ -42,15 +48,16 @@ Sepia-style reading is the primary visual identity. Dark mode is functional, not
 
 | Token | Value | Usage |
 | --- | --- | --- |
-| `bg.base` | `#171411` | main background |
-| `bg.elevated` | `#211C17` | panels |
-| `bg.chrome` | `#130F0B` | app shell and dock surfaces |
-| `text.primary` | `#F4E7CF` | body text |
-| `text.muted` | `#C6B79E` | secondary text |
-| `accent.primary` | `#E29A47` | active word and progress |
-| `accent.soft` | `#5B4327` | soft highlight fill |
-| `border.subtle` | `#3D332A` | dividers |
-| `shell.glow` | `#5B4327` at 60% | shell ambient glow |
+| `bg.base` | `#11100E` | main background |
+| `bg.elevated` | `#1A1714` | panels |
+| `bg.chrome` | `#0D0C0A` | app shell and dock surfaces |
+| `text.primary` | `#F3E6CE` | body text |
+| `text.muted` | `#D2BF9E` | secondary text |
+| `accent.primary` | `#E5A158` | active word and progress |
+| `accent.soft` | `#4A341F` | soft highlight fill |
+| `border.subtle` | `#332A22` | dividers |
+| `shell.glow` | `#4A341F` at 40% | shell ambient glow |
+| `shell.shadow` | `#66000000` | shell card shadow |
 
 ## Typography
 
@@ -92,6 +99,7 @@ Avoid:
 - The reader must tolerate large text and accessibility scaling.
 - The app shell uses a floating dock rather than a flat system navigation slab.
 - Shell chrome should feel denser and darker than the reading surface so content remains the focal plane.
+- Library should feel like an operational workspace, not a single long settings sheet.
 
 ## Accessibility
 

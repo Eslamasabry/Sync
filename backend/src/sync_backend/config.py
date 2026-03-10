@@ -74,6 +74,16 @@ class Settings(BaseSettings):
         return value or None
 
     @property
+    def effective_cors_origin_regex(self) -> str | None:
+        if self.cors_origin_regex:
+            return self.cors_origin_regex
+        if self.cors_origins:
+            return None
+        if self.app_env.strip().lower() == "development":
+            return r"https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+        return None
+
+    @property
     def trusted_host_values(self) -> list[str]:
         return _parse_csv_env(self.trusted_hosts)
 

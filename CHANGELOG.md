@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.3
+
+- Railway deployment baseline for the backend with a committed `Dockerfile`, `Procfile`, and operator docs for inline-mode hosting
+- Stronger development-mode CORS defaults so Flutter web can reach the API from localhost without manual env setup
+- Reader and library UI overhaul with calmer shell chrome, cleaner typography, and a more workspace-like library
+- Slimmer reader hierarchy with reduced status clutter and a text-first reading surface
+
 ## v0.1.2
 
 - Stronger library project catalog with current-target state, clearer project cards, and direct workspace vs reader actions

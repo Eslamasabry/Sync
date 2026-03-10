@@ -5,8 +5,33 @@ from sync_backend.config import get_settings
 from sync_backend.main import create_app
 
 
-def test_cors_middleware_disabled_by_default(monkeypatch: MonkeyPatch) -> None:
+def test_cors_middleware_allows_local_web_origin_in_development(
+    monkeypatch: MonkeyPatch,
+) -> None:
     monkeypatch.delenv("CORS_ALLOW_ORIGINS", raising=False)
+    monkeypatch.delenv("CORS_ALLOW_ORIGIN_REGEX", raising=False)
+    monkeypatch.setenv("APP_ENV", "development")
+    get_settings.cache_clear()
+
+    with TestClient(create_app()) as client:
+        response = client.options(
+            "/v1/health",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
+def test_cors_middleware_disabled_by_default_in_production(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CORS_ALLOW_ORIGINS", raising=False)
+    monkeypatch.delenv("CORS_ALLOW_ORIGIN_REGEX", raising=False)
+    monkeypatch.setenv("APP_ENV", "production")
     get_settings.cache_clear()
 
     with TestClient(create_app()) as client:

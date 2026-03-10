@@ -196,216 +196,226 @@ class LibraryScreen extends ConsumerWidget {
     final recentConnectionCount = recentConnections.asData?.value.length ?? 0;
     final recentBookCount = recentLocations.asData?.value.length ?? 0;
 
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  palette.backgroundBase,
-                  palette.backgroundElevated,
-                  palette.backgroundBase,
+    final hasDraft =
+        importState.epubFile != null || importState.audioFiles.isNotEmpty;
+    return DecoratedBox(
+      decoration: BoxDecoration(color: palette.backgroundBase),
+      child: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isWide = constraints.maxWidth >= 1120;
+            final importSection = _LibrarySection(
+              title: 'Import Book',
+              description:
+                  'Start with the book and audio files, then let Sync create the project and queue alignment from this device.',
+              icon: Icons.upload_file_rounded,
+              child: _ImportComposer(state: importState),
+            );
+            final currentTargetSection = _LibrarySection(
+              title: 'Current Reader Target',
+              description:
+                  'Keep the active backend target, offline cache state, and the quickest return path into reading in one place.',
+              icon: Icons.radio_button_checked_rounded,
+              footer: Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  FilledButton.tonalIcon(
+                    onPressed: () =>
+                        ref.read(homeTabProvider.notifier).showReader(),
+                    icon: const Icon(Icons.book_online_rounded),
+                    label: const Text('Continue Reader'),
+                  ),
+                  currentSettings.maybeWhen(
+                    data: (settings) => OutlinedButton.icon(
+                      onPressed: () => _forgetConnection(context, ref, settings),
+                      icon: const Icon(Icons.delete_outline_rounded),
+                      label: const Text('Forget Target'),
+                    ),
+                    orElse: () => const SizedBox.shrink(),
+                  ),
                 ],
               ),
-            ),
-          ),
-        ),
-        Positioned(
-          top: -120,
-          right: -70,
-          child: IgnorePointer(
-            child: Container(
-              width: 260,
-              height: 260,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    palette.accentSoft.withValues(alpha: 0.50),
-                    palette.accentSoft.withValues(alpha: 0),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-        SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-            children: [
-              _LibraryHero(
-                recentConnectionCount: recentConnectionCount,
-                recentBookCount: recentBookCount,
-                hasDraft:
-                    importState.epubFile != null ||
-                    importState.audioFiles.isNotEmpty,
-              ),
-              const SizedBox(height: 18),
-              _LibrarySection(
-                title: 'Import Book',
-                description:
-                    'Create a project, attach EPUB plus audiobook files, and start alignment from this device without leaving the library.',
-                icon: Icons.upload_file_rounded,
-                child: _ImportComposer(state: importState),
-              ),
-              const SizedBox(height: 16),
-              _LibrarySection(
-                title: 'Current Reader Target',
-                description:
-                    'Your active project connection, local cache state, and the fastest path back into the reader.',
-                icon: Icons.radio_button_checked_rounded,
-                footer: Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
+              child: currentSettings.when(
+                data: (settings) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    FilledButton.tonalIcon(
-                      onPressed: () =>
-                          ref.read(homeTabProvider.notifier).showReader(),
-                      icon: const Icon(Icons.book_online_rounded),
-                      label: const Text('Continue Reader'),
+                    _ProjectTargetSummary(
+                      settings: settings,
+                      onOpen: () => _openConnection(context, ref, settings),
                     ),
-                    currentSettings.maybeWhen(
-                      data: (settings) => OutlinedButton.icon(
-                        onPressed: () =>
-                            _forgetConnection(context, ref, settings),
-                        icon: const Icon(Icons.delete_outline_rounded),
-                        label: const Text('Forget Target'),
-                      ),
-                      orElse: () => const SizedBox.shrink(),
+                    const SizedBox(height: 14),
+                    _CurrentTargetOfflineManager(
+                      settings: settings,
+                      project: currentProject,
+                      downloadState: audioDownload,
+                      onDownload: audioActions.downloadCurrentProject,
+                      onRemove: audioActions.removeCurrentProjectAudio,
                     ),
                   ],
                 ),
-                child: currentSettings.when(
-                  data: (settings) => Column(
+                loading: () => const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: LinearProgressIndicator(),
+                ),
+                error: (error, _) =>
+                    Text('Could not load the current target. $error'),
+              ),
+            );
+            final queueSection = _LibrarySection(
+              title: 'Processing Queue',
+              description:
+                  'Watch projects that are still ingesting, transcribing, or aligning without leaving the library.',
+              icon: Icons.sync_rounded,
+              child: recentConnections.when(
+                data: (items) => _ProcessingQueueList(
+                  connections: items.take(6).toList(growable: false),
+                  currentIdentityKey: currentSettings.asData?.value.identityKey,
+                  onSetTarget: (settings) =>
+                      _setConnectionTarget(context, ref, settings),
+                  onOpen: (settings) => _openConnection(context, ref, settings),
+                ),
+                loading: () => const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: CircularProgressIndicator(),
+                ),
+                error: (error, _) =>
+                    Text('Could not inspect recent projects. $error'),
+              ),
+            );
+            final recentBooksSection = _LibrarySection(
+              title: 'Recent Books',
+              description:
+                  'Device-side reading history so you can resume from the last meaningful spot, not just the last project.',
+              icon: Icons.history_edu_rounded,
+              child: recentLocations.when(
+                data: (items) {
+                  if (items.isEmpty) {
+                    return const Text(
+                      'No local reading history yet. Open a book in Reader to start building a device-side library trail.',
+                    );
+                  }
+                  return Column(
+                    children: [
+                      for (final item in items.take(6))
+                        _LibraryBookTile(
+                          snapshot: item,
+                          onResume: () => _resumeRecentBook(context, ref, item),
+                        ),
+                    ],
+                  );
+                },
+                loading: () => const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: CircularProgressIndicator(),
+                ),
+                error: (error, _) =>
+                    Text('Could not read library history. $error'),
+              ),
+            );
+            final recentProjectsSection = _LibrarySection(
+              title: 'Recent Server Projects',
+              description:
+                  'Saved backend targets with alignment state, cached status, and a direct path back into each project.',
+              icon: Icons.dns_rounded,
+              child: recentConnections.when(
+                data: (items) {
+                  if (items.isEmpty) {
+                    return const Text(
+                      'Save a backend target from the Reader connection sheet to reuse it here.',
+                    );
+                  }
+                  return Column(
+                    children: [
+                      for (final item in items.take(6))
+                        _ProjectSnapshotTile(
+                          settings: item,
+                          currentIdentityKey:
+                              currentSettings.asData?.value.identityKey,
+                          audioDownloadState: audioDownload,
+                          onDownloadAudio: () =>
+                              _downloadProjectAudio(context, ref, item),
+                          onRemoveAudio: () =>
+                              _removeProjectAudio(context, ref, item),
+                          onSetTarget: () =>
+                              _setConnectionTarget(context, ref, item),
+                          onOpen: () => _openConnection(context, ref, item),
+                          onForget: () => _forgetConnection(context, ref, item),
+                        ),
+                    ],
+                  );
+                },
+                loading: () => const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: CircularProgressIndicator(),
+                ),
+                error: (error, _) =>
+                    Text('Could not read recent connections. $error'),
+              ),
+            );
+
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1440),
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _ProjectTargetSummary(
-                        settings: settings,
-                        onOpen: () => _openConnection(context, ref, settings),
+                      _LibraryHero(
+                        recentConnectionCount: recentConnectionCount,
+                        recentBookCount: recentBookCount,
+                        hasDraft: hasDraft,
                       ),
-                      const SizedBox(height: 14),
-                      _CurrentTargetOfflineManager(
-                        settings: settings,
-                        project: currentProject,
-                        downloadState: audioDownload,
-                        onDownload: audioActions.downloadCurrentProject,
-                        onRemove: audioActions.removeCurrentProjectAudio,
-                      ),
+                      const SizedBox(height: 18),
+                      if (isWide)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              flex: 11,
+                              child: Column(
+                                children: [
+                                  importSection,
+                                  const SizedBox(height: 16),
+                                  currentTargetSection,
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              flex: 9,
+                              child: Column(
+                                children: [
+                                  queueSection,
+                                  const SizedBox(height: 16),
+                                  recentProjectsSection,
+                                  const SizedBox(height: 16),
+                                  recentBooksSection,
+                                ],
+                              ),
+                            ),
+                          ],
+                        )
+                      else ...[
+                        importSection,
+                        const SizedBox(height: 16),
+                        currentTargetSection,
+                        const SizedBox(height: 16),
+                        queueSection,
+                        const SizedBox(height: 16),
+                        recentBooksSection,
+                        const SizedBox(height: 16),
+                        recentProjectsSection,
+                      ],
                     ],
                   ),
-                  loading: () => const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: LinearProgressIndicator(),
-                  ),
-                  error: (error, _) =>
-                      Text('Could not load the current target. $error'),
                 ),
               ),
-              const SizedBox(height: 16),
-              _LibrarySection(
-                title: 'Processing Queue',
-                description:
-                    'Watch recent projects that are still aligning without leaving the library.',
-                icon: Icons.sync_rounded,
-                child: recentConnections.when(
-                  data: (items) => _ProcessingQueueList(
-                    connections: items.take(6).toList(growable: false),
-                    currentIdentityKey:
-                        currentSettings.asData?.value.identityKey,
-                    onSetTarget: (settings) =>
-                        _setConnectionTarget(context, ref, settings),
-                    onOpen: (settings) =>
-                        _openConnection(context, ref, settings),
-                  ),
-                  loading: () => const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: CircularProgressIndicator(),
-                  ),
-                  error: (error, _) =>
-                      Text('Could not inspect recent projects. $error'),
-                ),
-              ),
-              const SizedBox(height: 16),
-              _LibrarySection(
-                title: 'Recent Books',
-                description:
-                    'Device-side reading history so you can jump back into the last meaningful spot, not just the last project.',
-                icon: Icons.history_edu_rounded,
-                child: recentLocations.when(
-                  data: (items) {
-                    if (items.isEmpty) {
-                      return const Text(
-                        'No local reading history yet. Open a book in Reader to start building a device-side library trail.',
-                      );
-                    }
-                    return Column(
-                      children: [
-                        for (final item in items.take(6))
-                          _LibraryBookTile(
-                            snapshot: item,
-                            onResume: () =>
-                                _resumeRecentBook(context, ref, item),
-                          ),
-                      ],
-                    );
-                  },
-                  loading: () => const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    child: CircularProgressIndicator(),
-                  ),
-                  error: (error, _) =>
-                      Text('Could not read library history. $error'),
-                ),
-              ),
-              const SizedBox(height: 16),
-              _LibrarySection(
-                title: 'Recent Server Projects',
-                description:
-                    'Saved backend targets with alignment state, cached status, and a direct path back into each project.',
-                icon: Icons.dns_rounded,
-                child: recentConnections.when(
-                  data: (items) {
-                    if (items.isEmpty) {
-                      return const Text(
-                        'Save a backend target from the Reader connection sheet to reuse it here.',
-                      );
-                    }
-                    return Column(
-                      children: [
-                        for (final item in items.take(6))
-                          _ProjectSnapshotTile(
-                            settings: item,
-                            currentIdentityKey:
-                                currentSettings.asData?.value.identityKey,
-                            audioDownloadState: audioDownload,
-                            onDownloadAudio: () =>
-                                _downloadProjectAudio(context, ref, item),
-                            onRemoveAudio: () =>
-                                _removeProjectAudio(context, ref, item),
-                            onSetTarget: () =>
-                                _setConnectionTarget(context, ref, item),
-                            onOpen: () => _openConnection(context, ref, item),
-                            onForget: () =>
-                                _forgetConnection(context, ref, item),
-                          ),
-                      ],
-                    );
-                  },
-                  loading: () => const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    child: CircularProgressIndicator(),
-                  ),
-                  error: (error, _) =>
-                      Text('Could not read recent connections. $error'),
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         ),
-      ],
+      ),
     );
   }
 
@@ -556,23 +566,16 @@ class _LibraryHero extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 22),
+      padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(32),
         border: Border.all(color: palette.borderSubtle),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            palette.backgroundElevated.withValues(alpha: 0.96),
-            palette.backgroundBase.withValues(alpha: 0.98),
-          ],
-        ),
+        color: palette.backgroundElevated,
         boxShadow: [
           BoxShadow(
-            color: palette.shellShadow.withValues(alpha: 0.18),
-            blurRadius: 26,
-            offset: const Offset(0, 18),
+            color: palette.shellShadow.withValues(alpha: 0.12),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -606,15 +609,15 @@ class _LibraryHero extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  'Keep import, cache, and reading state in one serious workspace.',
-                  style: theme.textTheme.displaySmall?.copyWith(height: 1.0),
+                  'Import, align, and reopen books from one calm workspace.',
+                  style: theme.textTheme.headlineLarge?.copyWith(height: 0.98),
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'This is the operational side of Sync: attach books, watch jobs, reopen projects, and keep your local reading trail without turning the screen into a generic file manager.',
-                  style: theme.textTheme.bodyLarge?.copyWith(
+                  'Attach EPUB and audio, monitor jobs, and keep your reader target and offline cache close without turning the app into a generic file manager.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
                     color: palette.textMuted,
-                    height: 1.45,
+                    height: 1.5,
                   ),
                 ),
               ],
@@ -628,7 +631,7 @@ class _LibraryHero extends StatelessWidget {
                   children: [
                     Expanded(
                       child: _LibraryMetric(
-                        label: 'Recent projects',
+                        label: 'Saved targets',
                         value: '$recentConnectionCount',
                         icon: Icons.cloud_queue_rounded,
                       ),
@@ -636,7 +639,7 @@ class _LibraryHero extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: _LibraryMetric(
-                        label: 'Recent books',
+                        label: 'Resume points',
                         value: '$recentBookCount',
                         icon: Icons.menu_book_rounded,
                       ),
@@ -648,7 +651,7 @@ class _LibraryHero extends StatelessWidget {
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
                   decoration: BoxDecoration(
-                    color: palette.backgroundBase,
+                    color: palette.backgroundBase.withValues(alpha: 0.72),
                     borderRadius: BorderRadius.circular(22),
                     border: Border.all(color: palette.borderSubtle),
                   ),
@@ -664,8 +667,8 @@ class _LibraryHero extends StatelessWidget {
                       Expanded(
                         child: Text(
                           hasDraft
-                              ? 'Import draft in progress'
-                              : 'Import workspace ready',
+                              ? 'Draft in progress'
+                              : 'Workspace ready',
                           style: theme.textTheme.labelLarge,
                         ),
                       ),
@@ -751,7 +754,7 @@ class _LibrarySection extends StatelessWidget {
     final palette = ReaderPalette.of(context);
 
     return Material(
-      color: palette.backgroundElevated.withValues(alpha: 0.94),
+      color: palette.backgroundElevated,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(28),
         side: BorderSide(color: palette.borderSubtle),
@@ -776,9 +779,9 @@ class _LibrarySection extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               description,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: palette.textMuted,
+              ),
             ),
             const SizedBox(height: 16),
             child,
@@ -837,109 +840,141 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _ImportStepRail(state: widget.state),
-        const SizedBox(height: 16),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-          decoration: BoxDecoration(
-            color: palette.backgroundBase,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: palette.borderSubtle),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Draft status',
-                style: Theme.of(context).textTheme.labelLarge,
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final split = constraints.maxWidth >= 860;
+            final metadata = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _titleController,
+                  decoration: const InputDecoration(labelText: 'Book Title'),
+                  onChanged: actions.setTitle,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _languageController,
+                  decoration: const InputDecoration(labelText: 'Language'),
+                  onChanged: actions.setLanguage,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Source files',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.tonalIcon(
+                      onPressed: widget.state.isBusy ? null : actions.pickEpub,
+                      icon: const Icon(Icons.auto_stories_rounded),
+                      label: Text(
+                        widget.state.epubFile == null
+                            ? 'Choose EPUB'
+                            : 'Replace EPUB',
+                      ),
+                    ),
+                    FilledButton.tonalIcon(
+                      onPressed: widget.state.isBusy
+                          ? null
+                          : actions.pickAudioFiles,
+                      icon: const Icon(Icons.audiotrack_rounded),
+                      label: Text(
+                        widget.state.audioFiles.isEmpty
+                            ? 'Choose Audio'
+                            : 'Replace Audio',
+                      ),
+                    ),
+                  ],
+                ),
+                if (!hasDraft) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'Attach the book first, then the audiobook files. Multi-file audio is fine.',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+                  ),
+                ],
+              ],
+            );
+            final workflow = Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+              decoration: BoxDecoration(
+                color: palette.backgroundBase.withValues(alpha: 0.72),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: palette.borderSubtle),
               ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _LibraryStatusChip(
-                    label: widget.state.epubFile == null
-                        ? 'EPUB missing'
-                        : 'EPUB ready',
+                  Text(
+                    'Import workflow',
+                    style: Theme.of(context).textTheme.labelLarge,
                   ),
-                  _LibraryStatusChip(
-                    label: widget.state.audioFiles.isEmpty
-                        ? 'Audio missing'
-                        : '${widget.state.audioFiles.length} audio ready',
+                  const SizedBox(height: 12),
+                  _ImportWorkflowRail(state: widget.state),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _LibraryStatusChip(
+                        label: widget.state.epubFile == null
+                            ? 'EPUB missing'
+                            : 'EPUB ready',
+                      ),
+                      _LibraryStatusChip(
+                        label: widget.state.audioFiles.isEmpty
+                            ? 'Audio missing'
+                            : '${widget.state.audioFiles.length} audio ready',
+                      ),
+                      _LibraryStatusChip(
+                        label: widget.state.canStartImport
+                            ? 'Ready to align'
+                            : 'Draft incomplete',
+                      ),
+                      if (widget.state.statusLabel != null)
+                        _LibraryStatusChip(label: widget.state.statusLabel!),
+                    ],
                   ),
-                  _LibraryStatusChip(
-                    label: widget.state.canStartImport
-                        ? 'Ready to align'
-                        : 'Draft incomplete',
-                  ),
-                  if (widget.state.statusLabel != null)
-                    _LibraryStatusChip(label: widget.state.statusLabel!),
+                  if (widget.state.statusNarrative != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      widget.state.statusNarrative!,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+                    ),
+                  ],
                 ],
               ),
-              if (widget.state.statusNarrative != null) ...[
-                const SizedBox(height: 10),
-                Text(
-                  widget.state.statusNarrative!,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
-                ),
+            );
+            if (!split) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  metadata,
+                  const SizedBox(height: 16),
+                  workflow,
+                ],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(flex: 12, child: metadata),
+                const SizedBox(width: 16),
+                Expanded(flex: 10, child: workflow),
               ],
-            ],
-          ),
+            );
+          },
         ),
         const SizedBox(height: 16),
-        _ImportWorkflowRail(state: widget.state),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _titleController,
-          decoration: const InputDecoration(labelText: 'Book Title'),
-          onChanged: actions.setTitle,
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _languageController,
-          decoration: const InputDecoration(labelText: 'Language'),
-          onChanged: actions.setLanguage,
-        ),
-        const SizedBox(height: 16),
-        Text('Source files', style: Theme.of(context).textTheme.labelLarge),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 12,
-          runSpacing: 8,
-          children: [
-            FilledButton.tonalIcon(
-              onPressed: widget.state.isBusy ? null : actions.pickEpub,
-              icon: const Icon(Icons.auto_stories_rounded),
-              label: Text(
-                widget.state.epubFile == null ? 'Choose EPUB' : 'Replace EPUB',
-              ),
-            ),
-            FilledButton.tonalIcon(
-              onPressed: widget.state.isBusy ? null : actions.pickAudioFiles,
-              icon: const Icon(Icons.audiotrack_rounded),
-              label: Text(
-                widget.state.audioFiles.isEmpty
-                    ? 'Choose Audio'
-                    : 'Replace Audio',
-              ),
-            ),
-          ],
-        ),
-        if (!hasDraft) ...[
-          const SizedBox(height: 12),
-          Text(
-            'Attach the book first, then the audiobook files. Multi-file audio is fine.',
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
-          ),
-        ],
         if (widget.state.epubFile != null) ...[
-          const SizedBox(height: 12),
           _ImportFileTile(
             icon: Icons.menu_book_rounded,
             label: 'EPUB',
@@ -948,7 +983,7 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
           ),
         ],
         if (widget.state.audioFiles.isNotEmpty) ...[
-          const SizedBox(height: 12),
+          if (widget.state.epubFile == null) const SizedBox(height: 4),
           for (final audio in widget.state.audioFiles)
             _ImportFileTile(
               icon: Icons.graphic_eq_rounded,
@@ -1067,7 +1102,7 @@ class _ImportWorkflowRail extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       decoration: BoxDecoration(
-        color: palette.backgroundBase,
+        color: palette.backgroundBase.withValues(alpha: 0.65),
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: palette.borderSubtle),
       ),
@@ -1081,14 +1116,11 @@ class _ImportWorkflowRail extends StatelessWidget {
             runSpacing: 10,
             children: [
               for (final step in steps)
-                SizedBox(
-                  width: 180,
-                  child: _ImportWorkflowStep(
-                    label: step.label,
-                    description: step.description,
-                    isComplete: step.complete,
-                    isActive: step.active,
-                  ),
+                _ImportWorkflowStep(
+                  label: step.label,
+                  description: step.description,
+                  isComplete: step.complete,
+                  isActive: step.active,
                 ),
             ],
           ),
@@ -1287,116 +1319,6 @@ class _ImportCompletionBanner extends ConsumerWidget {
             onPressed: onOpenReader,
             icon: const Icon(Icons.chrome_reader_mode_rounded),
             label: const Text('Open Reader'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ImportStepRail extends StatelessWidget {
-  const _ImportStepRail({required this.state});
-
-  final LibraryImportState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final steps = [
-      (title: 'Book', caption: 'Name the project and set language.', index: 0),
-      (title: 'Files', caption: 'Attach EPUB and audiobook sources.', index: 1),
-      (
-        title: 'Align',
-        caption: 'Create the project and start syncing.',
-        index: 2,
-      ),
-    ];
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: [
-        for (final step in steps)
-          SizedBox(
-            width: 220,
-            child: _ImportStepCard(
-              title: step.title,
-              caption: step.caption,
-              index: step.index,
-              currentIndex: state.currentStepIndex,
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _ImportStepCard extends StatelessWidget {
-  const _ImportStepCard({
-    required this.title,
-    required this.caption,
-    required this.index,
-    required this.currentIndex,
-  });
-
-  final String title;
-  final String caption;
-  final int index;
-  final int currentIndex;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = ReaderPalette.of(context);
-    final isComplete = index < currentIndex;
-    final isCurrent = index == currentIndex;
-    final accent = isComplete
-        ? palette.success
-        : isCurrent
-        ? palette.accentPrimary
-        : palette.textMuted;
-    final background = isComplete
-        ? palette.success.withValues(alpha: 0.10)
-        : isCurrent
-        ? palette.accentPrimary.withValues(alpha: 0.10)
-        : palette.backgroundBase;
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: palette.borderSubtle),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Icon(
-              isComplete ? Icons.check_rounded : Icons.arrow_forward_rounded,
-              size: 18,
-              color: accent,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: Theme.of(context).textTheme.labelLarge),
-                const SizedBox(height: 4),
-                Text(
-                  caption,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: palette.textMuted),
-                ),
-              ],
-            ),
           ),
         ],
       ),
@@ -3128,20 +3050,6 @@ extension on LibraryOfflineSnapshot {
 }
 
 extension on LibraryImportState {
-  int get currentStepIndex {
-    if (status == LibraryImportStatus.creatingProject ||
-        status == LibraryImportStatus.uploadingEpub ||
-        status == LibraryImportStatus.uploadingAudio ||
-        status == LibraryImportStatus.startingJob ||
-        status == LibraryImportStatus.completed) {
-      return 2;
-    }
-    if (epubFile != null || audioFiles.isNotEmpty) {
-      return 1;
-    }
-    return 0;
-  }
-
   String? get statusLabel {
     switch (status) {
       case LibraryImportStatus.picking:

@@ -33,41 +33,12 @@ class SyncApp extends ConsumerWidget {
             backgroundColor: Colors.transparent,
             extendBody: true,
             body: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    palette.backgroundChrome,
-                    palette.backgroundBase,
-                    palette.backgroundChrome,
-                  ],
-                ),
-              ),
+              decoration: BoxDecoration(color: palette.backgroundBase),
               child: Stack(
                 children: [
-                  Positioned(
-                    top: -120,
-                    left: -40,
-                    child: IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: palette.shellGlow.withValues(alpha: 0.34),
-                              blurRadius: 140,
-                              spreadRadius: 28,
-                            ),
-                          ],
-                        ),
-                        child: const SizedBox(width: 220, height: 220),
-                      ),
-                    ),
-                  ),
                   Positioned.fill(
                     child: Padding(
-                      padding: const EdgeInsets.only(bottom: 104),
+                      padding: const EdgeInsets.only(bottom: 78),
                       child: IndexedStack(
                         index: homeTab,
                         children: const [LibraryScreen(), ReaderScreen()],
@@ -77,7 +48,7 @@ class SyncApp extends ConsumerWidget {
                   Align(
                     alignment: Alignment.bottomCenter,
                     child: SafeArea(
-                      minimum: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      minimum: const EdgeInsets.fromLTRB(18, 0, 18, 18),
                       child: _ShellDock(
                         selectedIndex: homeTab,
                         connection: connection,
@@ -134,126 +105,82 @@ class _ShellDock extends StatelessWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(26),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            palette.backgroundElevated.withValues(alpha: 0.95),
-            palette.backgroundBase.withValues(alpha: 0.95),
-          ],
-        ),
-        border: Border.all(color: palette.borderSubtle.withValues(alpha: 0.9)),
+        borderRadius: BorderRadius.circular(24),
+        color: palette.backgroundElevated.withValues(alpha: 0.96),
+        border: Border.all(color: palette.borderSubtle.withValues(alpha: 0.85)),
         boxShadow: [
           BoxShadow(
             color: palette.shellShadow,
-            blurRadius: 32,
-            offset: const Offset(0, 18),
+            blurRadius: 22,
+            offset: const Offset(0, 12),
           ),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Row(
           children: [
             Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
-                color: palette.backgroundBase.withValues(alpha: 0.9),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: palette.borderSubtle),
+                color: palette.textPrimary,
+                borderRadius: BorderRadius.circular(14),
               ),
-              child: Wrap(
-                spacing: 10,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
+              alignment: Alignment.center,
+              child: Text(
+                'S',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: palette.backgroundElevated,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    modeLabel,
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: palette.accentPrimary,
-                    ),
-                  ),
-                  Text(
                     title,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.labelLarge,
                   ),
-                  _ShellRailChip(label: sourceLabel),
-                  _ShellRailChip(label: settings.shortHost),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$modeLabel • $sourceLabel • ${settings.shortHost}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: palette.textMuted,
+                    ),
+                  ),
                 ],
               ),
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: _ShellDestination(
-                    icon: Icons.dashboard_customize_outlined,
-                    selectedIcon: Icons.dashboard_customize_rounded,
-                    label: 'Library',
-                    selected: selectedIndex == 0,
-                    onTap: () => onDestinationSelected(0),
-                  ),
-                ),
-                Container(
-                  width: 1,
-                  height: 30,
-                  color: palette.borderSubtle.withValues(alpha: 0.7),
-                ),
-                Expanded(
-                  child: _ShellDestination(
-                    icon: Icons.menu_book_outlined,
-                    selectedIcon: Icons.menu_book_rounded,
-                    label: 'Reader',
-                    selected: selectedIndex == 1,
-                    onTap: () => onDestinationSelected(1),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: palette.textPrimary,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    'S',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: palette.backgroundElevated,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
+            const SizedBox(width: 10),
+            _ShellDestination(
+              icon: Icons.dashboard_customize_outlined,
+              selectedIcon: Icons.dashboard_customize_rounded,
+              label: 'Library',
+              selected: selectedIndex == 0,
+              compact: true,
+              onTap: () => onDestinationSelected(0),
+            ),
+            const SizedBox(width: 8),
+            _ShellDestination(
+              icon: Icons.menu_book_outlined,
+              selectedIcon: Icons.menu_book_rounded,
+              label: 'Reader',
+              selected: selectedIndex == 1,
+              compact: true,
+              onTap: () => onDestinationSelected(1),
             ),
           ],
         ),
       ),
-    );
-  }
-}
-
-class _ShellRailChip extends StatelessWidget {
-  const _ShellRailChip({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = ReaderPalette.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: palette.backgroundElevated,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: palette.borderSubtle),
-      ),
-      child: Text(label, style: Theme.of(context).textTheme.labelMedium),
     );
   }
 }
@@ -264,6 +191,7 @@ class _ShellDestination extends StatelessWidget {
     required this.selectedIcon,
     required this.label,
     required this.selected,
+    required this.compact,
     required this.onTap,
   });
 
@@ -271,6 +199,7 @@ class _ShellDestination extends StatelessWidget {
   final IconData selectedIcon;
   final String label;
   final bool selected;
+  final bool compact;
   final VoidCallback onTap;
 
   @override
@@ -285,33 +214,41 @@ class _ShellDestination extends StatelessWidget {
         color: selected
             ? palette.accentSoft.withValues(alpha: 0.9)
             : Colors.transparent,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(compact ? 16 : 22),
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(compact ? 16 : 22),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 12 : 14,
+              vertical: compact ? 10 : 12,
+            ),
             child: Row(
+              mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
                   selected ? selectedIcon : icon,
                   color: selected ? palette.textPrimary : palette.textMuted,
-                  size: 22,
+                  size: compact ? 18 : 22,
                 ),
                 const SizedBox(width: 10),
-                Flexible(
-                  child: Text(
-                    label,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: selected ? palette.textPrimary : palette.textMuted,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-                    ),
-                  ),
+                Text(
+                  label,
+                  style: (compact
+                          ? theme.textTheme.labelMedium
+                          : theme.textTheme.labelLarge)
+                      ?.copyWith(
+                        color: selected
+                            ? palette.textPrimary
+                            : palette.textMuted,
+                        fontWeight: selected
+                            ? FontWeight.w700
+                            : FontWeight.w600,
+                      ),
                 ),
               ],
             ),
