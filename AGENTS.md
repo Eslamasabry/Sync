@@ -78,6 +78,11 @@ If code changes one of these, update docs in the same change:
 
 - Do not stop after a single slice unless there is a real external blocker, a destructive or high-risk decision that must be confirmed, or an explicit user stop command.
 - Work in autonomous batches:
+  - reprioritize continuously
+  - implement the next highest-value slice
+  - run validation
+  - fix regressions
+  - continue to the next slice without waiting for a checkpoint prompt
   - reprioritize
   - implement
   - test
