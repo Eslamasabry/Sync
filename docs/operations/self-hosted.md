@@ -68,11 +68,13 @@ Edit:
 - `S3_BUCKET`
 - `CORS_ALLOW_ORIGINS`
 - `TRUSTED_HOSTS`
+- `PROXY_HEADER_TRUSTED_HOSTS`
 - `API_AUTH_TOKEN`
 - `ALIGNMENT_WORKDIR`
 
 Use `OBJECT_STORE_MODE=filesystem` for the simplest host-only deployment. Use `OBJECT_STORE_MODE=s3` when you want durable blob storage in MinIO, AWS S3, or another S3-compatible service.
 Set `API_AUTH_TOKEN` to a long random value when you want to protect uploads, downloads, jobs, and project-event WebSockets on a self-hosted instance. Leave it empty only for trusted local development or a deliberately open deployment.
+Set `PROXY_HEADER_TRUSTED_HOSTS` when the app sits behind a reverse proxy that terminates HTTPS and forwards `X-Forwarded-*` headers. Use `*` only when the platform manages proxy IPs for you and you cannot pin them safely.
 
 ## 5. PostgreSQL Bootstrap
 
@@ -191,6 +193,7 @@ FFMPEG_BIN=ffmpeg
 FFPROBE_BIN=ffprobe
 ENABLE_GZIP=true
 API_AUTH_TOKEN=<long-random-token>
+PROXY_HEADER_TRUSTED_HOSTS=*
 ```
 
 If the Flutter app or web client will talk to Railway directly, also set either:
