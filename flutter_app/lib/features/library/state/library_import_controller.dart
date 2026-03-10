@@ -30,6 +30,7 @@ class LibraryImportState {
     required this.title,
     required this.language,
     required this.audioFiles,
+    this.scannedDeviceBooks = const <ImportBookCandidate>[],
     this.epubFile,
     this.suggestedEpubFile,
     this.suggestedAudioFiles = const <ImportPickedFile>[],
@@ -42,6 +43,7 @@ class LibraryImportState {
   final LibraryImportStatus status;
   final String title;
   final String language;
+  final List<ImportBookCandidate> scannedDeviceBooks;
   final ImportPickedFile? epubFile;
   final ImportPickedFile? suggestedEpubFile;
   final List<ImportPickedFile> audioFiles;
@@ -53,7 +55,9 @@ class LibraryImportState {
 
   bool get hasDraftSelection => epubFile != null || audioFiles.isNotEmpty;
   bool get hasSuggestions =>
-      suggestedEpubFile != null || suggestedAudioFiles.isNotEmpty;
+      suggestedEpubFile != null ||
+      suggestedAudioFiles.isNotEmpty ||
+      scannedDeviceBooks.isNotEmpty;
 
   bool get canStartImport =>
       title.trim().isNotEmpty &&
@@ -114,6 +118,7 @@ class LibraryImportState {
     ImportPickedFile? epubFile,
     ImportPickedFile? suggestedEpubFile,
     List<ImportPickedFile>? audioFiles,
+    List<ImportBookCandidate>? scannedDeviceBooks,
     List<ImportPickedFile>? suggestedAudioFiles,
     String? message,
     String? projectId,
@@ -126,11 +131,15 @@ class LibraryImportState {
     bool clearEpub = false,
     bool clearSuggestedEpub = false,
     bool clearSuggestedAudio = false,
+    bool clearScannedDeviceBooks = false,
   }) {
     return LibraryImportState(
       status: status ?? this.status,
       title: title ?? this.title,
       language: language ?? this.language,
+      scannedDeviceBooks: clearScannedDeviceBooks
+          ? const <ImportBookCandidate>[]
+          : scannedDeviceBooks ?? this.scannedDeviceBooks,
       epubFile: clearEpub ? null : epubFile ?? this.epubFile,
       suggestedEpubFile: clearSuggestedEpub
           ? null
@@ -160,6 +169,7 @@ class LibraryImportController extends Notifier<LibraryImportState> {
       title: '',
       language: 'en',
       audioFiles: <ImportPickedFile>[],
+      scannedDeviceBooks: <ImportBookCandidate>[],
     );
   }
 
@@ -323,12 +333,42 @@ class LibraryImportController extends Notifier<LibraryImportState> {
           ? const <ImportPickedFile>[]
           : suggestedAudio,
       suggestedEpubFile: shouldAutofillEpub ? null : suggestedEpub,
+      clearScannedDeviceBooks: true,
       message: _nearbyScanMessage(
         suggestedAudioCount: suggestedAudio.length,
         foundEpub: suggestedEpub != null,
         autoAppliedAudio: shouldAutofillAudio,
         autoAppliedEpub: shouldAutofillEpub,
       ),
+    );
+  }
+
+  Future<void> scanDeviceBooks() async {
+    final previousDraft = _draftUpdate();
+    state = previousDraft.copyWith(
+      status: LibraryImportStatus.picking,
+      clearMessage: true,
+    );
+    final candidates = await ref.read(importFilePickerProvider).scanDeviceBooks();
+    state = previousDraft.copyWith(
+      status: previousDraft.status,
+      scannedDeviceBooks: candidates,
+      clearSuggestedAudio: true,
+      clearSuggestedEpub: true,
+      message: candidates.isEmpty
+          ? 'No likely book and audiobook pairs were found in that folder.'
+          : 'Found ${candidates.length} books in that folder. Choose one to fill the draft.',
+    );
+  }
+
+  void useScannedDeviceBook(ImportBookCandidate candidate) {
+    state = _draftUpdate(
+      title: candidate.title,
+      epubFile: candidate.epubFile,
+      audioFiles: candidate.audioFiles,
+      clearScannedDeviceBooks: true,
+      message:
+          'Loaded ${candidate.title} from ${candidate.directoryLabel}. Review it, then start sync.',
     );
   }
 
@@ -468,11 +508,13 @@ class LibraryImportController extends Notifier<LibraryImportState> {
     ImportPickedFile? epubFile,
     List<ImportPickedFile>? audioFiles,
     ImportPickedFile? suggestedEpubFile,
+    List<ImportBookCandidate>? scannedDeviceBooks,
     List<ImportPickedFile>? suggestedAudioFiles,
     String? message,
     bool clearMessage = false,
     bool clearSuggestedEpub = false,
     bool clearSuggestedAudio = false,
+    bool clearScannedDeviceBooks = false,
   }) {
     final nextTitle = title ?? state.title;
     final nextLanguage = language ?? state.language;
@@ -488,6 +530,7 @@ class LibraryImportController extends Notifier<LibraryImportState> {
       language: nextLanguage,
       epubFile: epubFile,
       audioFiles: nextAudioFiles,
+      scannedDeviceBooks: scannedDeviceBooks,
       suggestedEpubFile: suggestedEpubFile,
       suggestedAudioFiles: suggestedAudioFiles,
       message: message,
@@ -497,6 +540,7 @@ class LibraryImportController extends Notifier<LibraryImportState> {
       clearCompletedAt: true,
       clearSuggestedEpub: clearSuggestedEpub,
       clearSuggestedAudio: clearSuggestedAudio,
+      clearScannedDeviceBooks: clearScannedDeviceBooks,
     );
   }
 }

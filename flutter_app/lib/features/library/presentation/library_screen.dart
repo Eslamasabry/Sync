@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sync_flutter/core/config/runtime_connection_settings.dart';
 import 'package:sync_flutter/core/config/runtime_connection_settings_controller.dart';
+import 'package:sync_flutter/core/import/import_file_picker_types.dart';
 import 'package:sync_flutter/core/network/sync_api_client.dart';
 import 'package:sync_flutter/core/navigation/home_shell_controller.dart';
 import 'package:sync_flutter/core/theme/sync_theme.dart';
@@ -1294,6 +1295,13 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
                             : 'Replace Audiobook',
                       ),
                     ),
+                    OutlinedButton.icon(
+                      onPressed: widget.state.isBusy
+                          ? null
+                          : actions.scanDeviceBooks,
+                      icon: const Icon(Icons.folder_open_rounded),
+                      label: const Text('Scan a Folder'),
+                    ),
                     if (widget.state.epubFile != null ||
                         widget.state.audioFiles.isNotEmpty)
                       OutlinedButton.icon(
@@ -1435,6 +1443,19 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
             actionLabel: 'Use These Files',
             onUse: actions.useSuggestedAudioFiles,
           ),
+        ],
+        if (widget.state.scannedDeviceBooks.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Books found in that folder',
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
+          const SizedBox(height: 10),
+          for (final candidate in widget.state.scannedDeviceBooks)
+            _ScannedDeviceBookTile(
+              candidate: candidate,
+              onUse: () => actions.useScannedDeviceBook(candidate),
+            ),
         ],
         if (widget.state.message != null) ...[
           const SizedBox(height: 14),
@@ -1893,6 +1914,84 @@ class _SuggestedImportTile extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           FilledButton.tonal(onPressed: onUse, child: Text(actionLabel)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScannedDeviceBookTile extends StatelessWidget {
+  const _ScannedDeviceBookTile({
+    required this.candidate,
+    required this.onUse,
+  });
+
+  final ImportBookCandidate candidate;
+  final VoidCallback onUse;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ReaderPalette.of(context);
+    final audioLabel = candidate.audioFiles.isEmpty
+        ? 'No audiobook found yet'
+        : candidate.audioFiles.length == 1
+        ? '1 audiobook file'
+        : '${candidate.audioFiles.length} audiobook files';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: palette.backgroundBase,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: palette.accentSoft,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(Icons.folder_special_rounded),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(candidate.title),
+                const SizedBox(height: 6),
+                Text(
+                  '${candidate.directoryLabel} • $audioLabel',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: palette.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (candidate.epubFile != null)
+                      const _LibraryStatusChip(label: 'EPUB found'),
+                    _LibraryStatusChip(
+                      label: candidate.audioFiles.isEmpty
+                          ? 'Audio missing'
+                          : 'Audio found',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          FilledButton.tonal(
+            onPressed: onUse,
+            child: const Text('Use This'),
+          ),
         ],
       ),
     );

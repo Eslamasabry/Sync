@@ -74,18 +74,40 @@ class _FakeImportFilePicker implements ImportFilePicker {
       sizeBytes: 1024,
       bytes: [9, 9, 9],
     ),
+    this.deviceBooks = const [
+      ImportBookCandidate(
+        title: 'The Time Machine',
+        directoryLabel: 'Audiobooks',
+        epubFile: ImportPickedFile(
+          name: 'The Time Machine.epub',
+          sizeBytes: 1024,
+          bytes: [9, 9, 9],
+        ),
+        audioFiles: [
+          ImportPickedFile(
+            name: 'The Time Machine - Chapter 01.m4b',
+            sizeBytes: 4096,
+            bytes: [1, 1, 1],
+          ),
+        ],
+      ),
+    ],
   });
 
   final ImportPickedFile? epubResult;
   final List<ImportPickedFile> audioResults;
   final List<ImportPickedFile> nearbyAudioResults;
   final ImportPickedFile? nearbyEpubResult;
+  final List<ImportBookCandidate> deviceBooks;
 
   @override
   Future<List<ImportPickedFile>> pickAudioFiles() async => audioResults;
 
   @override
   Future<ImportPickedFile?> pickEpub() async => epubResult;
+
+  @override
+  Future<List<ImportBookCandidate>> scanDeviceBooks() async => deviceBooks;
 
   @override
   Future<List<ImportPickedFile>> findNearbyAudioFiles(
@@ -166,7 +188,7 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         importFilePickerProvider.overrideWithValue(
-          _FakeImportFilePicker(),
+          _FakeImportFilePicker(deviceBooks: const <ImportBookCandidate>[]),
         ),
       ],
     );
@@ -190,7 +212,7 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         importFilePickerProvider.overrideWithValue(
-          _FakeImportFilePicker(),
+          _FakeImportFilePicker(deviceBooks: const <ImportBookCandidate>[]),
         ),
       ],
     );
@@ -251,6 +273,29 @@ void main() {
     expect(afterCancel.projectId, isNull);
     expect(afterCancel.jobId, isNull);
     expect(afterCancel.message, isNull);
+  });
+
+  test('device scan can fill the draft from one local book candidate', () async {
+    final container = ProviderContainer(
+      overrides: [
+        importFilePickerProvider.overrideWithValue(_FakeImportFilePicker()),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final controller = container.read(libraryImportProvider.notifier);
+    await controller.scanDeviceBooks();
+
+    final scanned = container.read(libraryImportProvider);
+    expect(scanned.scannedDeviceBooks, hasLength(1));
+    expect(scanned.message, contains('Found 1 books'));
+
+    controller.useScannedDeviceBook(scanned.scannedDeviceBooks.first);
+    final selected = container.read(libraryImportProvider);
+    expect(selected.title, 'The Time Machine');
+    expect(selected.epubFile?.name, 'The Time Machine.epub');
+    expect(selected.audioFiles, hasLength(1));
+    expect(selected.scannedDeviceBooks, isEmpty);
   });
 
   test('editing after completion returns to editable draft state', () async {

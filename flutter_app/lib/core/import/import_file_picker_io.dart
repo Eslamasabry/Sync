@@ -93,6 +93,23 @@ class PlatformImportFilePicker implements ImportFilePicker {
   }
 
   @override
+  Future<List<ImportBookCandidate>> scanDeviceBooks() async {
+    final directoryPath = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Choose a folder with books and audiobooks',
+    );
+    if (directoryPath == null || directoryPath.isEmpty) {
+      return const <ImportBookCandidate>[];
+    }
+
+    final root = Directory(directoryPath);
+    if (!await root.exists()) {
+      return const <ImportBookCandidate>[];
+    }
+
+    return scanImportBookCandidates(root);
+  }
+
+  @override
   Future<List<ImportPickedFile>> findNearbyAudioFiles(
     ImportPickedFile seedFile, {
     String? preferredTitle,
@@ -175,6 +192,98 @@ class PlatformImportFilePicker implements ImportFilePicker {
     }
     return bestMatch?.file;
   }
+}
+
+Future<List<ImportBookCandidate>> scanImportBookCandidates(Directory root) async {
+  final epubFiles = <ImportPickedFile>[];
+  final audioFiles = <ImportPickedFile>[];
+  await for (final entity in root.list(recursive: true, followLinks: false)) {
+    if (entity is! File || _isHiddenPath(entity.path)) {
+      continue;
+    }
+    final extension = _extension(entity.path);
+    final stat = await entity.stat();
+    final file = ImportPickedFile(
+      name: entity.uri.pathSegments.isEmpty
+          ? entity.path.split(Platform.pathSeparator).last
+          : entity.uri.pathSegments.last,
+      sizeBytes: stat.size,
+      path: entity.path,
+    );
+    if (_epubExtensions.contains(extension)) {
+      epubFiles.add(file);
+      continue;
+    }
+    if (_audioExtensions.contains(extension) &&
+        stat.size >= _minimumSuggestedAudioBytes) {
+      audioFiles.add(file);
+    }
+  }
+
+  final candidates = <ImportBookCandidate>[];
+  final usedAudioPaths = <String>{};
+  for (final epub in epubFiles) {
+    final preferredTokens = _normalizedTokens(epub.name);
+    final matches = audioFiles.where((audio) {
+      final score = _matchingScore(audio.name, preferredTokens);
+      return score > 0;
+    }).toList(growable: false)
+      ..sort((left, right) {
+        final leftScore = _matchingScore(left.name, preferredTokens);
+        final rightScore = _matchingScore(right.name, preferredTokens);
+        return _compareSuggestedAudio(
+          (file: left, score: leftScore),
+          (file: right, score: rightScore),
+        );
+      });
+
+    for (final match in matches) {
+      if (match.path != null) {
+        usedAudioPaths.add(match.path!);
+      }
+    }
+
+    candidates.add(
+      ImportBookCandidate(
+        title: _titleFromImportName(epub.name),
+        directoryLabel: _directoryLabel(epub.path),
+        epubFile: epub,
+        audioFiles: matches,
+      ),
+    );
+  }
+
+  final audioOnlyGroups = <String, List<ImportPickedFile>>{};
+  for (final audio in audioFiles) {
+    final path = audio.path;
+    if (path != null && usedAudioPaths.contains(path)) {
+      continue;
+    }
+    final key = _groupingKey(audio.name);
+    if (key.isEmpty) {
+      continue;
+    }
+    audioOnlyGroups.putIfAbsent(key, () => <ImportPickedFile>[]).add(audio);
+  }
+
+  for (final entry in audioOnlyGroups.entries) {
+    final files = entry.value..sort(_naturalAudioOrderCompare);
+    candidates.add(
+      ImportBookCandidate(
+        title: _titleCase(entry.key),
+        directoryLabel: _directoryLabel(files.first.path),
+        audioFiles: files,
+      ),
+    );
+  }
+
+  candidates.sort((left, right) {
+    final leftScore = (left.epubFile != null ? 1000 : 0) + left.audioFiles.length;
+    final rightScore =
+        (right.epubFile != null ? 1000 : 0) + right.audioFiles.length;
+    return rightScore.compareTo(leftScore);
+  });
+  return candidates.take(12).toList(growable: false);
 }
 
 ImportPickedFile _fromPlatformFile(PlatformFile file) {
@@ -307,4 +416,42 @@ int _naturalNameCompare(String left, String right) {
     }
   }
   return leftParts.length.compareTo(rightParts.length);
+}
+
+int _naturalAudioOrderCompare(ImportPickedFile left, ImportPickedFile right) =>
+    _naturalNameCompare(left.name, right.name);
+
+String _directoryLabel(String? path) {
+  final directory = _parentDirectory(path);
+  if (directory == null) {
+    return 'Selected folder';
+  }
+  final segments = directory.path.split(Platform.pathSeparator);
+  return segments.isEmpty ? directory.path : segments.last;
+}
+
+String _titleFromImportName(String name) {
+  final tokens = _normalizedTokens(name).toList(growable: false);
+  if (tokens.isEmpty) {
+    return name.replaceFirst(RegExp(r'\.[^.]+$'), '');
+  }
+  return _titleCase(tokens.join(' '));
+}
+
+String _groupingKey(String name) {
+  final tokens = _normalizedTokens(
+    name,
+  ).where((token) => int.tryParse(token) == null).take(4).toList(growable: false);
+  return tokens.join(' ').trim();
+}
+
+String _titleCase(String value) {
+  if (value.isEmpty) {
+    return value;
+  }
+  return value
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+      .join(' ');
 }

@@ -12,10 +12,26 @@ class ImportPickedFile {
   final List<int>? bytes;
 }
 
+class ImportBookCandidate {
+  const ImportBookCandidate({
+    required this.title,
+    required this.directoryLabel,
+    this.epubFile,
+    this.audioFiles = const <ImportPickedFile>[],
+  });
+
+  final String title;
+  final String directoryLabel;
+  final ImportPickedFile? epubFile;
+  final List<ImportPickedFile> audioFiles;
+}
+
 abstract class ImportFilePicker {
   Future<ImportPickedFile?> pickEpub();
 
   Future<List<ImportPickedFile>> pickAudioFiles();
+
+  Future<List<ImportBookCandidate>> scanDeviceBooks();
 
   Future<List<ImportPickedFile>> findNearbyAudioFiles(
     ImportPickedFile seedFile, {
@@ -37,6 +53,10 @@ class NoopImportFilePicker implements ImportFilePicker {
 
   @override
   Future<ImportPickedFile?> pickEpub() async => null;
+
+  @override
+  Future<List<ImportBookCandidate>> scanDeviceBooks() async =>
+      const <ImportBookCandidate>[];
 
   @override
   Future<List<ImportPickedFile>> findNearbyAudioFiles(

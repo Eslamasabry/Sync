@@ -8,6 +8,38 @@ void main() {
   const picker = PlatformImportFilePicker();
 
   group('PlatformImportFilePicker nearby discovery', () {
+    test('scanDeviceBooks builds local book candidates from a selected folder', () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'sync-import-device-books-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+
+      await _writeFile(directory, 'The Time Machine.epub', 1200);
+      await _writeFile(
+        directory,
+        'The Time Machine - Chapter 01.m4b',
+        3 * 1024 * 1024,
+      );
+      await _writeFile(
+        directory,
+        'The Time Machine - Chapter 02.m4b',
+        3 * 1024 * 1024,
+      );
+      await _writeFile(
+        directory,
+        'Standalone Story - Part 01.mp3',
+        3 * 1024 * 1024,
+      );
+
+      final results = await scanImportBookCandidatesInDirectory(directory);
+
+      expect(results, isNotEmpty);
+      expect(results.first.title, 'The Time Machine');
+      expect(results.first.epubFile?.name, 'The Time Machine.epub');
+      expect(results.first.audioFiles, hasLength(2));
+      expect(results.any((candidate) => candidate.title == 'Standalone Story'), isTrue);
+    });
+
     test(
       'findNearbyAudioFiles filters hidden and tiny files, and keeps chapter order',
       () async {
@@ -153,6 +185,12 @@ void main() {
       },
     );
   });
+}
+
+Future<List<ImportBookCandidate>> scanImportBookCandidatesInDirectory(
+  Directory directory,
+) {
+  return scanImportBookCandidates(directory);
 }
 
 Future<void> _writeFile(Directory directory, String name, int sizeBytes) async {
