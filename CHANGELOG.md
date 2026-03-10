@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.4
+
+- Library now starts in the right place for first-time users instead of dropping into a project-less reader state
+- Device folder scanning reads real EPUB metadata and cover art locally, then surfaces discovered books as a first-class shelf
+- Import flow now emphasizes recognized book details, clearer missing-file guidance, and smarter scanned-folder actions for full vs audio-only matches
+- Post-import sync progress now refreshes live in the library while the alignment job is still running
+
 ## v0.1.3
 
 - Railway deployment baseline for the backend with a committed `Dockerfile`, `Procfile`, and operator docs for inline-mode hosting
