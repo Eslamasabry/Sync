@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.5
+
+- Fixed the first-load Railway client bug where the app opened a project WebSocket without a selected project ID
+- Reader realtime subscriptions now stay idle until a real project target exists, preventing repeated WebSocket failures on empty-state startup
+
 ## v0.1.4
 
 - Library now starts in the right place for first-time users instead of dropping into a project-less reader state

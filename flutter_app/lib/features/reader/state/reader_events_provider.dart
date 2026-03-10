@@ -29,6 +29,9 @@ final projectEventsProvider = StreamProvider.autoDispose<Map<String, dynamic>>((
   ref,
 ) async* {
   final projectId = await ref.watch(projectIdProvider.future);
+  if (projectId.trim().isEmpty) {
+    return;
+  }
   final client = await ref.watch(projectEventsClientProvider.future);
   yield* _sanitizeProjectEvents(client.connect(projectId));
 });

@@ -17,6 +17,10 @@ class ProjectEventsClient {
   final Duration maxReconnectDelay;
 
   Stream<Map<String, dynamic>> connect(String projectId) {
+    if (projectId.trim().isEmpty) {
+      return const Stream<Map<String, dynamic>>.empty();
+    }
+
     late final StreamController<Map<String, dynamic>> controller;
     WebSocketChannel? channel;
     StreamSubscription<Object?>? subscription;

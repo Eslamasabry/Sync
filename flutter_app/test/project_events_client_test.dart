@@ -2,6 +2,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sync_flutter/core/realtime/project_events_client.dart';
 
 void main() {
+  test('project events client stays idle without a project id', () async {
+    final client = ProjectEventsClient(baseWsUrl: 'wss://sync.example/v1');
+
+    await expectLater(client.connect('   '), emitsDone);
+  });
+
   test('project events client appends access token to websocket uri', () {
     final client = ProjectEventsClient(
       baseWsUrl: 'wss://sync.example/v1',
