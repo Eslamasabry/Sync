@@ -2037,10 +2037,12 @@ class _SuggestedImportTile extends StatelessWidget {
 class _ScannedDeviceBookTile extends StatelessWidget {
   const _ScannedDeviceBookTile({
     required this.candidate,
+    required this.actionLabel,
     required this.onUse,
   });
 
   final ImportBookCandidate candidate;
+  final String actionLabel;
   final VoidCallback onUse;
 
   @override
@@ -2124,7 +2126,7 @@ class _ScannedDeviceBookTile extends StatelessWidget {
                   alignment: Alignment.centerLeft,
                   child: FilledButton.tonal(
                     onPressed: onUse,
-                    child: const Text('Use This'),
+                    child: Text(actionLabel),
                   ),
                 ),
               ],
@@ -2144,14 +2146,49 @@ class _ScannedDeviceBookShelf extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final actions = ref.read(libraryImportProvider.notifier);
+    final readyCandidates = candidates
+        .where((candidate) => candidate.epubFile != null)
+        .toList(growable: false);
+    final incompleteCandidates = candidates
+        .where((candidate) => candidate.epubFile == null)
+        .toList(growable: false);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final candidate in candidates)
-          _ScannedDeviceBookTile(
-            candidate: candidate,
-            onUse: () => actions.useScannedDeviceBook(candidate),
+        if (readyCandidates.isNotEmpty) ...[
+          Text(
+            'Ready to import',
+            style: Theme.of(context).textTheme.labelLarge,
           ),
+          const SizedBox(height: 10),
+          for (final candidate in readyCandidates)
+            _ScannedDeviceBookTile(
+              candidate: candidate,
+              actionLabel: 'Use This',
+              onUse: () => actions.useScannedDeviceBook(candidate),
+            ),
+        ],
+        if (incompleteCandidates.isNotEmpty) ...[
+          if (readyCandidates.isNotEmpty) const SizedBox(height: 12),
+          Text(
+            'Need the book file',
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'These audiobook files look promising, but Sync still needs the matching EPUB.',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: ReaderPalette.of(context).textMuted),
+          ),
+          const SizedBox(height: 10),
+          for (final candidate in incompleteCandidates)
+            _ScannedDeviceBookTile(
+              candidate: candidate,
+              actionLabel: 'Use Audiobook Files',
+              onUse: () => actions.useScannedDeviceBook(candidate),
+            ),
+        ],
       ],
     );
   }

@@ -367,8 +367,9 @@ class LibraryImportController extends Notifier<LibraryImportState> {
       epubFile: candidate.epubFile,
       audioFiles: candidate.audioFiles,
       clearScannedDeviceBooks: true,
-      message:
-          'Loaded ${candidate.title} from ${candidate.directoryLabel}. Review it, then start sync.',
+      message: candidate.epubFile != null
+          ? 'Loaded ${candidate.title} from ${candidate.directoryLabel}. Review it, then start sync.'
+          : 'Loaded audiobook files for ${candidate.title} from ${candidate.directoryLabel}. Add the EPUB to finish the setup.',
     );
   }
 

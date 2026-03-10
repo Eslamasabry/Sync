@@ -26,10 +26,8 @@ class _SyncAppState extends ConsumerState<SyncApp> {
     final homeTab = ref.watch(homeTabProvider);
     final connection = ref.watch(runtimeConnectionSettingsProvider);
     final project = ref.watch(readerProjectProvider);
-    final settings = connection.asData?.value;
     final bundle = project.asData?.value;
     final hasReaderTarget = _hasReaderTarget(
-      settings: settings,
       bundle: bundle,
     );
 
@@ -113,14 +111,11 @@ class _SyncAppState extends ConsumerState<SyncApp> {
     );
   }
 
-  bool _hasReaderTarget({
-    required RuntimeConnectionSettings? settings,
-    required ReaderProjectBundle? bundle,
-  }) {
+  bool _hasReaderTarget({required ReaderProjectBundle? bundle}) {
     if (bundle != null) {
       return bundle.source != ReaderContentSource.selectionRequired;
     }
-    return (settings?.normalizedProjectId ?? '').isNotEmpty;
+    return false;
   }
 
   void _syncEntryPreference(bool hasReaderTarget) {

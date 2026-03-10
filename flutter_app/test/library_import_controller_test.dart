@@ -298,6 +298,42 @@ void main() {
     expect(selected.scannedDeviceBooks, isEmpty);
   });
 
+  test('audio-only scanned candidate tells the user to add the epub', () async {
+    final container = ProviderContainer(
+      overrides: [
+        importFilePickerProvider.overrideWithValue(
+          _FakeImportFilePicker(
+            deviceBooks: const [
+              ImportBookCandidate(
+                title: 'Standalone Story',
+                directoryLabel: 'Downloads',
+                audioFiles: [
+                  ImportPickedFile(
+                    name: 'Standalone Story - Part 01.mp3',
+                    sizeBytes: 4096,
+                    bytes: [1, 1, 1],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final controller = container.read(libraryImportProvider.notifier);
+    await controller.scanDeviceBooks();
+    controller.useScannedDeviceBook(
+      container.read(libraryImportProvider).scannedDeviceBooks.first,
+    );
+
+    final state = container.read(libraryImportProvider);
+    expect(state.epubFile, isNull);
+    expect(state.audioFiles, hasLength(1));
+    expect(state.message, contains('Add the EPUB to finish the setup.'));
+  });
+
   test('editing after completion returns to editable draft state', () async {
     final storage = _MemoryRuntimeConnectionSettingsStorage();
     final api = _FakeSyncApiClient();
