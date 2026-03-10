@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sync_flutter/core/config/runtime_connection_settings.dart';
@@ -239,6 +241,17 @@ class LibraryScreen extends ConsumerWidget {
               icon: Icons.upload_file_rounded,
               child: _ImportComposer(state: importState),
             );
+            final scannedFolderSection = importState.scannedDeviceBooks.isEmpty
+                ? null
+                : _LibrarySection(
+                    title: 'Found in This Folder',
+                    description:
+                        'Choose a book pair from the folder you scanned and let Sync fill the draft for you.',
+                    icon: Icons.folder_special_rounded,
+                    child: _ScannedDeviceBookShelf(
+                      candidates: importState.scannedDeviceBooks,
+                    ),
+                  );
             final currentTargetSection = _LibrarySection(
               title: 'Continue Reading',
               description:
@@ -439,6 +452,10 @@ class LibraryScreen extends ConsumerWidget {
                               child: Column(
                                 children: [
                                   importSection,
+                                  if (scannedFolderSection != null) ...[
+                                    const SizedBox(height: 16),
+                                    scannedFolderSection,
+                                  ],
                                   const SizedBox(height: 16),
                                   currentTargetSection,
                                 ],
@@ -935,6 +952,17 @@ class _LibraryMobileHome extends ConsumerWidget {
                   ],
                 ),
               ),
+              if (importState.scannedDeviceBooks.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                _MobileSectionCard(
+                  title: 'Found in This Folder',
+                  subtitle:
+                      'Pick one of the matched books from the folder you scanned and Sync will fill the draft.',
+                  child: _ScannedDeviceBookShelf(
+                    candidates: importState.scannedDeviceBooks,
+                  ),
+                ),
+              ],
               const SizedBox(height: 14),
               _MobileSectionCard(
                 title: 'Your Books',
@@ -1213,12 +1241,14 @@ class _ImportComposer extends ConsumerStatefulWidget {
 class _ImportComposerState extends ConsumerState<_ImportComposer> {
   late final TextEditingController _titleController;
   late final TextEditingController _languageController;
+  late bool _showManualDetails;
 
   @override
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.state.title);
     _languageController = TextEditingController(text: widget.state.language);
+    _showManualDetails = widget.state.title.trim().isEmpty;
   }
 
   @override
@@ -1229,6 +1259,12 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
     }
     if (widget.state.language != _languageController.text) {
       _languageController.text = widget.state.language;
+    }
+    if (oldWidget.state.title.trim().isEmpty &&
+        widget.state.title.trim().isNotEmpty) {
+      _showManualDetails = false;
+    } else if (widget.state.title.trim().isEmpty) {
+      _showManualDetails = true;
     }
   }
 
@@ -1245,6 +1281,7 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
     final actions = ref.read(libraryImportProvider.notifier);
     final hasDraft =
         widget.state.epubFile != null || widget.state.audioFiles.isNotEmpty;
+    final hasRecognizedTitle = widget.state.title.trim().isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1254,18 +1291,80 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
             final metadata = Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextField(
-                  controller: _titleController,
-                  decoration: const InputDecoration(labelText: 'Book Title'),
-                  onChanged: actions.setTitle,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _languageController,
-                  decoration: const InputDecoration(labelText: 'Language'),
-                  onChanged: actions.setLanguage,
-                ),
-                const SizedBox(height: 16),
+                if (hasRecognizedTitle) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                    decoration: BoxDecoration(
+                      color: palette.backgroundBase,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: palette.borderSubtle),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Book details',
+                          style: Theme.of(context).textTheme.labelLarge,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          widget.state.title,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            _LibraryStatusChip(
+                              label: widget.state.language.trim().isEmpty
+                                  ? 'Language not set'
+                                  : widget.state.language.trim().toUpperCase(),
+                            ),
+                            TextButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  _showManualDetails = !_showManualDetails;
+                                });
+                              },
+                              icon: Icon(
+                                _showManualDetails
+                                    ? Icons.expand_less_rounded
+                                    : Icons.edit_rounded,
+                              ),
+                              label: Text(
+                                _showManualDetails
+                                    ? 'Hide manual details'
+                                    : 'Edit details',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (!hasRecognizedTitle || _showManualDetails) ...[
+                  TextField(
+                    controller: _titleController,
+                    decoration: const InputDecoration(labelText: 'Book Title'),
+                    onChanged: actions.setTitle,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _languageController,
+                    decoration: const InputDecoration(
+                      labelText: 'Language',
+                      helperText:
+                          'Optional. Leave the default unless you need to change it.',
+                    ),
+                    onChanged: actions.setLanguage,
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 Text(
                   'Source files',
                   style: Theme.of(context).textTheme.labelLarge,
@@ -1443,19 +1542,6 @@ class _ImportComposerState extends ConsumerState<_ImportComposer> {
             actionLabel: 'Use These Files',
             onUse: actions.useSuggestedAudioFiles,
           ),
-        ],
-        if (widget.state.scannedDeviceBooks.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(
-            'Books found in that folder',
-            style: Theme.of(context).textTheme.labelLarge,
-          ),
-          const SizedBox(height: 10),
-          for (final candidate in widget.state.scannedDeviceBooks)
-            _ScannedDeviceBookTile(
-              candidate: candidate,
-              onUse: () => actions.useScannedDeviceBook(candidate),
-            ),
         ],
         if (widget.state.message != null) ...[
           const SizedBox(height: 14),
@@ -1937,6 +2023,7 @@ class _ScannedDeviceBookTile extends StatelessWidget {
         : candidate.audioFiles.length == 1
         ? '1 audiobook file'
         : '${candidate.audioFiles.length} audiobook files';
+    final coverBytes = candidate.coverBytes;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
@@ -1948,21 +2035,41 @@ class _ScannedDeviceBookTile extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: palette.accentSoft,
+          if (coverBytes != null && coverBytes.isNotEmpty)
+            ClipRRect(
               borderRadius: BorderRadius.circular(14),
+              child: Image.memory(
+                Uint8List.fromList(coverBytes),
+                width: 42,
+                height: 42,
+                fit: BoxFit.cover,
+              ),
+            )
+          else
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: palette.accentSoft,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(Icons.folder_special_rounded),
             ),
-            child: const Icon(Icons.folder_special_rounded),
-          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(candidate.title),
+                if (candidate.author?.trim().isNotEmpty == true) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    candidate.author!,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: palette.textMuted,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 6),
                 Text(
                   '${candidate.directoryLabel} • $audioLabel',
@@ -1984,16 +2091,40 @@ class _ScannedDeviceBookTile extends StatelessWidget {
                     ),
                   ],
                 ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FilledButton.tonal(
+                    onPressed: onUse,
+                    child: const Text('Use This'),
+                  ),
+                ),
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          FilledButton.tonal(
-            onPressed: onUse,
-            child: const Text('Use This'),
-          ),
         ],
       ),
+    );
+  }
+}
+
+class _ScannedDeviceBookShelf extends ConsumerWidget {
+  const _ScannedDeviceBookShelf({required this.candidates});
+
+  final List<ImportBookCandidate> candidates;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final actions = ref.read(libraryImportProvider.notifier);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final candidate in candidates)
+          _ScannedDeviceBookTile(
+            candidate: candidate,
+            onUse: () => actions.useScannedDeviceBook(candidate),
+          ),
+      ],
     );
   }
 }

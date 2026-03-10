@@ -16,12 +16,16 @@ class ImportBookCandidate {
   const ImportBookCandidate({
     required this.title,
     required this.directoryLabel,
+    this.author,
+    this.coverBytes,
     this.epubFile,
     this.audioFiles = const <ImportPickedFile>[],
   });
 
   final String title;
   final String directoryLabel;
+  final String? author;
+  final List<int>? coverBytes;
   final ImportPickedFile? epubFile;
   final List<ImportPickedFile> audioFiles;
 }

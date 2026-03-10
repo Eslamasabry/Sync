@@ -1,7 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:sync_flutter/core/import/import_file_picker_types.dart';
+import 'package:xml/xml.dart';
 
 const _audioExtensions = <String>{
   'mp3',
@@ -223,7 +226,8 @@ Future<List<ImportBookCandidate>> scanImportBookCandidates(Directory root) async
   final candidates = <ImportBookCandidate>[];
   final usedAudioPaths = <String>{};
   for (final epub in epubFiles) {
-    final preferredTokens = _normalizedTokens(epub.name);
+    final metadata = await _readEpubMetadata(epub);
+    final preferredTokens = _normalizedTokens(metadata?.title ?? epub.name);
     final matches = audioFiles.where((audio) {
       final score = _matchingScore(audio.name, preferredTokens);
       return score > 0;
@@ -245,8 +249,10 @@ Future<List<ImportBookCandidate>> scanImportBookCandidates(Directory root) async
 
     candidates.add(
       ImportBookCandidate(
-        title: _titleFromImportName(epub.name),
+        title: metadata?.title ?? _titleFromImportName(epub.name),
         directoryLabel: _directoryLabel(epub.path),
+        author: metadata?.author,
+        coverBytes: metadata?.coverBytes,
         epubFile: epub,
         audioFiles: matches,
       ),
@@ -286,6 +292,61 @@ Future<List<ImportBookCandidate>> scanImportBookCandidates(Directory root) async
   return candidates.take(12).toList(growable: false);
 }
 
+Future<_EpubMetadata?> _readEpubMetadata(ImportPickedFile epub) async {
+  final path = epub.path;
+  if (path == null || path.isEmpty) {
+    return null;
+  }
+
+  try {
+    final archive = ZipDecoder().decodeBytes(await File(path).readAsBytes());
+    final containerFile = _findArchiveFile(archive, 'META-INF/container.xml');
+    if (containerFile == null) {
+      return null;
+    }
+
+    final containerDocument = XmlDocument.parse(
+      utf8.decode(containerFile.content, allowMalformed: true),
+    );
+    final rootFile = _firstElementByLocalName(containerDocument, 'rootfile');
+    final packagePath = rootFile?.getAttribute('full-path');
+    if (packagePath == null || packagePath.isEmpty) {
+      return null;
+    }
+
+    final normalizedPackagePath = _normalizeArchivePath(packagePath);
+    final packageFile = _findArchiveFile(archive, normalizedPackagePath);
+    if (packageFile == null) {
+      return null;
+    }
+
+    final packageDocument = XmlDocument.parse(
+      utf8.decode(packageFile.content, allowMalformed: true),
+    );
+    final metadataElement = _firstElementByLocalName(packageDocument, 'metadata');
+    final manifestElement = _firstElementByLocalName(packageDocument, 'manifest');
+    final title = _firstElementTextByLocalName(metadataElement, 'title');
+    final author = _firstElementTextByLocalName(metadataElement, 'creator');
+    final coverPath = _resolveCoverPath(
+      packageDocument: packageDocument,
+      metadataElement: metadataElement,
+      manifestElement: manifestElement,
+      packagePath: normalizedPackagePath,
+    );
+    final coverBytes = coverPath == null
+        ? null
+        : _findArchiveFile(archive, coverPath)?.content.toList(growable: false);
+
+    if (title == null && author == null && coverBytes == null) {
+      return null;
+    }
+
+    return _EpubMetadata(title: title, author: author, coverBytes: coverBytes);
+  } catch (_) {
+    return null;
+  }
+}
+
 ImportPickedFile _fromPlatformFile(PlatformFile file) {
   return ImportPickedFile(
     name: file.name,
@@ -308,6 +369,147 @@ String _extension(String path) {
     return '';
   }
   return path.substring(lastDot + 1).toLowerCase();
+}
+
+ArchiveFile? _findArchiveFile(Archive archive, String path) {
+  final normalizedPath = _normalizeArchivePath(path);
+  for (final file in archive) {
+    if (_normalizeArchivePath(file.name) == normalizedPath) {
+      return file;
+    }
+  }
+  return null;
+}
+
+XmlElement? _firstElementByLocalName(XmlNode? node, String localName) {
+  if (node == null) {
+    return null;
+  }
+  for (final descendant in node.descendants) {
+    if (descendant is XmlElement && descendant.name.local == localName) {
+      return descendant;
+    }
+  }
+  return null;
+}
+
+String? _firstElementTextByLocalName(XmlNode? node, String localName) {
+  final element = _firstElementByLocalName(node, localName);
+  final value = element?.innerText.trim();
+  if (value == null || value.isEmpty) {
+    return null;
+  }
+  return value;
+}
+
+String? _resolveCoverPath({
+  required XmlDocument packageDocument,
+  required XmlElement? metadataElement,
+  required XmlElement? manifestElement,
+  required String packagePath,
+}) {
+  if (manifestElement == null) {
+    return null;
+  }
+
+  String? href;
+  for (final item in manifestElement.childElements) {
+    if (item.name.local != 'item') {
+      continue;
+    }
+    final properties = item.getAttribute('properties') ?? '';
+    if (properties.split(RegExp(r'\s+')).contains('cover-image')) {
+      href = item.getAttribute('href');
+      break;
+    }
+  }
+
+  if (href == null || href.isEmpty) {
+    final coverId = _findLegacyCoverId(metadataElement);
+    if (coverId != null) {
+      for (final item in manifestElement.childElements) {
+        if (item.name.local == 'item' && item.getAttribute('id') == coverId) {
+          href = item.getAttribute('href');
+          break;
+        }
+      }
+    }
+  }
+
+  if (href == null || href.isEmpty) {
+    for (final item in packageDocument.descendants.whereType<XmlElement>()) {
+      if (item.name.local != 'item') {
+        continue;
+      }
+      final mediaType = item.getAttribute('media-type') ?? '';
+      if (!mediaType.startsWith('image/')) {
+        continue;
+      }
+      final id = item.getAttribute('id') ?? '';
+      if (id.toLowerCase().contains('cover')) {
+        href = item.getAttribute('href');
+        break;
+      }
+    }
+  }
+
+  if (href == null || href.isEmpty) {
+    return null;
+  }
+
+  return _resolveArchivePath(packagePath, href);
+}
+
+String? _findLegacyCoverId(XmlElement? metadataElement) {
+  if (metadataElement == null) {
+    return null;
+  }
+
+  for (final child in metadataElement.childElements) {
+    if (child.name.local != 'meta') {
+      continue;
+    }
+    final name = child.getAttribute('name')?.toLowerCase();
+    if (name != 'cover') {
+      continue;
+    }
+    final content = child.getAttribute('content')?.trim();
+    if (content != null && content.isNotEmpty) {
+      return content;
+    }
+  }
+  return null;
+}
+
+String _resolveArchivePath(String packagePath, String relativePath) {
+  if (relativePath.startsWith('/')) {
+    return _normalizeArchivePath(relativePath);
+  }
+
+  final packageSegments = packagePath.split('/')..removeLast();
+  final relativeSegments = Uri.decodeFull(relativePath).split('/');
+  return _normalizeArchiveSegments([...packageSegments, ...relativeSegments]);
+}
+
+String _normalizeArchivePath(String path) {
+  return _normalizeArchiveSegments(Uri.decodeFull(path).split('/'));
+}
+
+String _normalizeArchiveSegments(List<String> segments) {
+  final normalized = <String>[];
+  for (final segment in segments) {
+    if (segment.isEmpty || segment == '.') {
+      continue;
+    }
+    if (segment == '..') {
+      if (normalized.isNotEmpty) {
+        normalized.removeLast();
+      }
+      continue;
+    }
+    normalized.add(segment);
+  }
+  return normalized.join('/');
 }
 
 Set<String> _normalizedTokens(String raw) {
@@ -428,6 +630,18 @@ String _directoryLabel(String? path) {
   }
   final segments = directory.path.split(Platform.pathSeparator);
   return segments.isEmpty ? directory.path : segments.last;
+}
+
+class _EpubMetadata {
+  const _EpubMetadata({
+    required this.title,
+    required this.author,
+    required this.coverBytes,
+  });
+
+  final String? title;
+  final String? author;
+  final List<int>? coverBytes;
 }
 
 String _titleFromImportName(String name) {

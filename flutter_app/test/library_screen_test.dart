@@ -1,12 +1,16 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/material.dart';
 import 'package:sync_flutter/core/config/runtime_connection_settings.dart';
 import 'package:sync_flutter/core/config/runtime_connection_settings_controller.dart';
+import 'package:sync_flutter/core/import/import_file_picker_types.dart';
 import 'package:sync_flutter/core/network/sync_api_client.dart';
 import 'package:sync_flutter/core/config/runtime_connection_settings_storage_types.dart';
 import 'package:sync_flutter/core/theme/sync_theme.dart';
 import 'package:sync_flutter/features/library/presentation/library_screen.dart';
+import 'package:sync_flutter/features/library/state/library_import_controller.dart';
 import 'package:sync_flutter/features/reader/data/reader_artifact_cache.dart';
 import 'package:sync_flutter/features/reader/data/reader_audio_cache.dart';
 import 'package:sync_flutter/features/reader/data/reader_location_store.dart';
@@ -172,6 +176,40 @@ class _MemoryReaderAudioCache implements ReaderAudioCache {
   Future<void> removeProject(String projectId) async {}
 }
 
+class _ScannedLibraryImportController extends LibraryImportController {
+  @override
+  LibraryImportState build() {
+    return LibraryImportState(
+      status: LibraryImportStatus.ready,
+      title: '',
+      language: 'en',
+      audioFiles: const <ImportPickedFile>[],
+      scannedDeviceBooks: [
+        ImportBookCandidate(
+          title: 'The Time Machine',
+          author: 'H. G. Wells',
+          directoryLabel: 'Audiobooks',
+          coverBytes: base64Decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jXioAAAAASUVORK5CYII=',
+          ),
+          epubFile: const ImportPickedFile(
+            name: 'The Time Machine.epub',
+            sizeBytes: 1200,
+            path: '/books/The Time Machine.epub',
+          ),
+          audioFiles: const [
+            ImportPickedFile(
+              name: 'The Time Machine - Chapter 01.m4b',
+              sizeBytes: 3 * 1024 * 1024,
+              path: '/books/The Time Machine - Chapter 01.m4b',
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 void main() {
   testWidgets(
     'library screen shows import workspace and recent local history',
@@ -274,6 +312,53 @@ void main() {
       expect(find.textContaining('Loomings'), findsOneWidget);
       expect(find.text('Continue'), findsOneWidget);
       expect(find.textContaining('Running'), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'library surfaces scanned folder books as a top-level section',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            libraryImportProvider.overrideWith(_ScannedLibraryImportController.new),
+            runtimeConnectionSettingsStorageProvider.overrideWithValue(
+              _MemoryRuntimeConnectionSettingsStorage(),
+            ),
+            libraryProjectSummaryLoaderProvider.overrideWithValue(
+              const _FakeLibraryProjectSummaryLoader(),
+            ),
+            readerArtifactCacheProvider.overrideWithValue(
+              _MemoryReaderArtifactCache(),
+            ),
+            readerAudioCacheProvider.overrideWithValue(
+              _MemoryReaderAudioCache(),
+            ),
+            readerLocationStoreProvider.overrideWithValue(
+              _MemoryReaderLocationStore(),
+            ),
+            libraryServerProjectsProvider.overrideWith((ref) async => const []),
+          ],
+          child: MaterialApp(
+            theme: SyncTheme.paper(),
+            home: const LibraryScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final scrollable = find.byType(Scrollable).first;
+      final scannedShelf = find.text(
+        'Found in This Folder',
+        skipOffstage: false,
+      );
+      await tester.scrollUntilVisible(scannedShelf, 220, scrollable: scrollable);
+      await tester.pumpAndSettle();
+
+      expect(scannedShelf, findsOneWidget);
+      expect(find.text('The Time Machine'), findsWidgets);
+      expect(find.text('H. G. Wells'), findsOneWidget);
+      expect(find.text('Use This'), findsOneWidget);
     },
   );
 }

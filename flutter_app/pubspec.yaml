@@ -18,6 +18,8 @@ dependencies:
   just_audio: ^0.10.5
   path_provider: ^2.1.5
   web_socket_channel: ^3.0.3
+  archive: ^4.0.9
+  xml: ^6.6.1
 
 dev_dependencies:
   flutter_test:
