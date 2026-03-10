@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.7
+
+- Recent-book resume now restores the correct backend auth context instead of silently reopening against the wrong saved server state
+- Import flow now clears stale EPUB drafts for audio-only scanned matches, keeps chapter files in natural order, and no longer blocks sync when the optional language field is blank
+- Library home now promotes `Connect Your Server` before import, and post-import progress keeps users anchored in Library until the book is actually ready to open
+- Backend asset storage paths now sanitize uploaded filenames, and hosted download URLs respect trusted forwarded HTTPS headers behind reverse proxies
+
 ## v0.1.6
 
 - Library now stays at the center of the app instead of preloading the reader on startup
