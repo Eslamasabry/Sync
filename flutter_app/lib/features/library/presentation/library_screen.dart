@@ -1669,6 +1669,9 @@ class _ImportCompletionBanner extends ConsumerWidget {
     final importedSnapshot = importedSettings == null
         ? null
         : ref.watch(libraryProjectSnapshotProvider(importedSettings));
+    final importedProjectTitle = state.title.trim().isEmpty
+        ? 'Your book'
+        : state.title.trim();
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -1686,7 +1689,7 @@ class _ImportCompletionBanner extends ConsumerWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Alignment queued',
+                  'Your book is syncing',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ),
@@ -1694,7 +1697,7 @@ class _ImportCompletionBanner extends ConsumerWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'Project ${state.projectId} is ready and job ${state.jobId} has been handed off. Stay here to monitor progress or jump into the reader workspace when you want to inspect it there.',
+            '$importedProjectTitle is uploaded and processing now. Stay here to watch progress, and open the book as soon as synced reading is ready.',
             style: Theme.of(
               context,
             ).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
@@ -1746,18 +1749,36 @@ class _ImportCompletionBanner extends ConsumerWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _LibraryStatusChip(label: 'Project ${state.projectId}'),
-              _LibraryStatusChip(label: 'Job ${state.jobId}'),
+              _LibraryStatusChip(label: 'Sync started'),
               if (state.completedAt != null)
                 _LibraryStatusChip(label: _formatTimestamp(state.completedAt!)),
             ],
           ),
           const SizedBox(height: 14),
-          FilledButton.icon(
-            onPressed: onOpenReader,
-            icon: const Icon(Icons.chrome_reader_mode_rounded),
-            label: const Text('Open Reader'),
-          ),
+          importedSnapshot?.maybeWhen(
+                data: (snapshot) => snapshot.lifecycleIsReadable ||
+                        snapshot.latestJobStatus == 'completed'
+                    ? FilledButton.icon(
+                        onPressed: onOpenReader,
+                        icon: const Icon(Icons.chrome_reader_mode_rounded),
+                        label: const Text('Open Book'),
+                      )
+                    : OutlinedButton.icon(
+                        onPressed: null,
+                        icon: const Icon(Icons.sync_rounded),
+                        label: const Text('Still Syncing'),
+                      ),
+                orElse: () => OutlinedButton.icon(
+                  onPressed: null,
+                  icon: const Icon(Icons.sync_rounded),
+                  label: const Text('Checking Progress'),
+                ),
+              ) ??
+              OutlinedButton.icon(
+                onPressed: null,
+                icon: const Icon(Icons.sync_rounded),
+                label: const Text('Checking Progress'),
+              ),
         ],
       ),
     );
@@ -3707,7 +3728,7 @@ extension on LibraryImportState {
       case LibraryImportStatus.startingJob:
         return 'Starting sync';
       case LibraryImportStatus.completed:
-        return 'Sync queued';
+        return 'Sync started';
       case LibraryImportStatus.failed:
         return 'Needs attention';
       case LibraryImportStatus.ready:
@@ -3736,7 +3757,7 @@ extension on LibraryImportState {
       case LibraryImportStatus.startingJob:
         return 'Files are attached. The app is now asking the server to start sync.';
       case LibraryImportStatus.completed:
-        return 'The server accepted the sync pass, and this book can now be monitored from the library or opened in the reader.';
+        return 'Your book is uploaded and syncing now. Watch progress here, then open it when synced reading is ready.';
       case LibraryImportStatus.failed:
         return 'The draft is preserved, so you can correct the problem and launch again.';
     }
